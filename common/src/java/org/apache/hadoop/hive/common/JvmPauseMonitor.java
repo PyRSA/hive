@@ -96,7 +96,7 @@ public class JvmPauseMonitor {
     return monitorThread != null;
   }
 
-  public long getNumGcWarnThresholdExceeded() {
+  public long getNumGcWarnThreadholdExceeded() {
     return numGcWarnThresholdExceeded;
   }
 

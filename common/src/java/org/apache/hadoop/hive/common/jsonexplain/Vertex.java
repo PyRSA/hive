@@ -18,14 +18,18 @@
 
 package org.apache.hadoop.hive.common.jsonexplain;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
+import java.util.Set;
 import java.util.TreeMap;
 
 import org.apache.hadoop.hive.common.jsonexplain.Op.OpType;
+import org.codehaus.jackson.JsonParseException;
+import org.codehaus.jackson.map.JsonMappingException;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -53,7 +57,7 @@ public final class Vertex implements Comparable<Vertex>{
   public final List<Op> inputOps= new ArrayList<>();
   // we create a dummy vertex for a mergejoin branch for a self join if this
   // vertex is a mergejoin
-  public final List<Vertex> mergeJoinDummyVertices = new ArrayList<>();
+  public final List<Vertex> mergeJoinDummyVertexs = new ArrayList<>();
   // this vertex has multiple reduce operators
   public int numReduceOp = 0;
   // execution mode
@@ -63,7 +67,7 @@ public final class Vertex implements Comparable<Vertex>{
   // tag
   public String tag;
   protected final Logger LOG = LoggerFactory.getLogger(this.getClass().getName());
-
+  
   public static enum VertexType {
     MAP, REDUCE, UNION, UNKNOWN
   };
@@ -101,11 +105,16 @@ public final class Vertex implements Comparable<Vertex>{
   }
 
   /**
+   * @throws JSONException
+   * @throws JsonParseException
+   * @throws JsonMappingException
+   * @throws IOException
    * @throws Exception
    *           We assume that there is a single top-level Map Operator Tree or a
    *           Reduce Operator Tree in a vertex
    */
-  public void extractOpTree() throws Exception {
+  public void extractOpTree() throws JSONException, JsonParseException, JsonMappingException,
+      IOException, Exception {
     if (vertexObject.length() != 0) {
       for (String key : JSONObject.getNames(vertexObject)) {
         if (key.equals("Map Operator Tree:")) {
@@ -121,7 +130,7 @@ public final class Vertex implements Comparable<Vertex>{
             Vertex v = new Vertex(null, mpOpTree, this.stage, parser);
             v.extractOpTree();
             v.dummy = true;
-            mergeJoinDummyVertices.add(v);
+            mergeJoinDummyVertexs.add(v);
           }
         } else if (key.equals("Merge File Operator")) {
           JSONObject opTree = vertexObject.getJSONObject(key);
@@ -150,13 +159,19 @@ public final class Vertex implements Comparable<Vertex>{
 
   /**
    * @param object
+   * @param isInput
    * @param parent
    * @return
+   * @throws JSONException
+   * @throws JsonParseException
+   * @throws JsonMappingException
+   * @throws IOException
    * @throws Exception
    *           assumption: each operator only has one parent but may have many
    *           children
    */
-  Op extractOp(JSONObject object, Op parent) throws Exception {
+  Op extractOp(JSONObject object, Op parent) throws JSONException, JsonParseException, JsonMappingException,
+      IOException, Exception {
     String[] names = JSONObject.getNames(object);
     if (names.length != 1) {
       throw new Exception("Expect only one operator in " + object.toString());
@@ -209,7 +224,8 @@ public final class Vertex implements Comparable<Vertex>{
     }
   }
 
-  public void print(Printer printer, int indentFlag, String type, Vertex callingVertex) throws Exception {
+  public void print(Printer printer, int indentFlag, String type, Vertex callingVertex)
+      throws JSONException, Exception {
     // print vertexname
     if (parser.printSet.contains(this) && numReduceOp <= 1) {
       if (type != null) {
@@ -254,7 +270,7 @@ public final class Vertex implements Comparable<Vertex>{
       }
     }
     if (vertexType == VertexType.UNION) {
-      // print dependent vertices
+      // print dependent vertexs
       indentFlag++;
       for (int index = 0; index < this.parentConnections.size(); index++) {
         Connection connection = this.parentConnections.get(index);
@@ -265,7 +281,7 @@ public final class Vertex implements Comparable<Vertex>{
 
   /**
    * We check if a vertex has multiple reduce operators.
-   * @throws JSONException
+   * @throws JSONException 
    */
   public void checkMultiReduceOperator(boolean rewriteObject) throws JSONException {
     // check if it is a reduce vertex and its children is more than 1;
@@ -274,7 +290,7 @@ public final class Vertex implements Comparable<Vertex>{
     for (Op op : this.outputOps) {
       if (op.type == OpType.RS) {
         if (rewriteObject) {
-          Vertex outputVertex = this.stage.vertices.get(op.outputVertexName);
+          Vertex outputVertex = this.stage.vertexs.get(op.outputVertexName);
           if (outputVertex != null && outputVertex.inputOps.size() > 0) {
             JSONArray array = new JSONArray();
             for (Op inputOp : outputVertex.inputOps) {
@@ -290,25 +306,6 @@ public final class Vertex implements Comparable<Vertex>{
 
   public void setType(String type) {
     this.edgeType = this.parser.mapEdgeType(type);
-  }
-
-  @Override
-  public boolean equals(Object o) {
-    if (this == o) {
-      return true;
-    }
-    if (o == null || getClass() != o.getClass()) {
-      return false;
-    }
-    Vertex vertex = (Vertex) o;
-    return Objects.equals(name, vertex.name) &&
-            Objects.equals(stage, vertex.stage) &&
-            Objects.equals(vertexObject, vertex.vertexObject);
-  }
-
-  @Override
-  public int hashCode() {
-    return Objects.hash(name, stage, vertexObject);
   }
 
   // The following code should be gone after HIVE-11075 using topological order

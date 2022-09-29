@@ -17,7 +17,7 @@
  */
 package org.apache.hadoop.hive.conf;
 
-import org.junit.Assert;
+import junit.framework.Assert;
 import org.junit.Test;
 
 import java.util.HashMap;

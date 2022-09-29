@@ -19,34 +19,25 @@
 package org.apache.hadoop.hive.conf;
 
 import com.google.common.collect.Iterables;
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang.StringUtils;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.common.classification.InterfaceAudience.Private;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.mapred.JobConf;
-import org.apache.hadoop.mapreduce.MRJobConfig;
-import org.apache.tez.dag.api.TezConfiguration;
 import org.apache.hive.common.util.HiveStringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 import java.util.StringTokenizer;
-import java.util.stream.Stream;
-
-import static org.apache.hive.common.util.HiveStringUtils.COMMA;
-import static org.apache.hive.common.util.HiveStringUtils.EQUALS;
 
 /**
  * Hive Configuration utils
@@ -54,7 +45,7 @@ import static org.apache.hive.common.util.HiveStringUtils.EQUALS;
 @Private
 public class HiveConfUtil {
   private static final String CLASS_NAME = HiveConfUtil.class.getName();
-  private static final Logger LOG = LoggerFactory.getLogger(CLASS_NAME);
+  private static final Log LOG = LogFactory.getLog(CLASS_NAME);
   /**
    * Check if metastore is being used in embedded mode.
    * This utility function exists so that the logic for determining the mode is same
@@ -191,48 +182,23 @@ public class HiveConfUtil {
 
     String jobKeyStoreLocation = jobConf.get(HiveConf.ConfVars.HIVE_SERVER2_JOB_CREDENTIAL_PROVIDER_PATH.varname);
     String oldKeyStoreLocation = jobConf.get(Constants.HADOOP_CREDENTIAL_PROVIDER_PATH_CONFIG);
-
     if (StringUtils.isNotBlank(jobKeyStoreLocation)) {
       jobConf.set(Constants.HADOOP_CREDENTIAL_PROVIDER_PATH_CONFIG, jobKeyStoreLocation);
       LOG.debug("Setting job conf credstore location to " + jobKeyStoreLocation
           + " previous location was " + oldKeyStoreLocation);
     }
 
-    updateCredentialProviderPasswordForJobs(jobConf);
-  }
-
-  public static void updateCredentialProviderPasswordForJobs(Configuration jobConf) {
-    String credstorePassword = getJobCredentialProviderPassword(jobConf);
-    if (credstorePassword != null) {
+    String credStorepassword = getJobCredentialProviderPassword(jobConf);
+    if (credStorepassword != null) {
+      // if the execution engine is MR set the map/reduce env with the credential store password
       String execEngine = jobConf.get(ConfVars.HIVE_EXECUTION_ENGINE.varname);
-
-      if ("mr".equalsIgnoreCase(execEngine) || "tez".equalsIgnoreCase(execEngine)) {
-        // if the execution engine is MR/Tez set the map/reduce env with the credential store password
-        Collection<String> redactedProperties =
-            jobConf.getStringCollection(MRJobConfig.MR_JOB_REDACTED_PROPERTIES);
-        /*
-         * There are AM + task related environment props below, used for both MR and Tez.
-         * Hiveserver2 copies some of them while creating the vertex in
-         * DagUtils.createVertex -> setTaskEnvironment(getContainerEnvironment(conf)).
-         * So for clarity's sake, TEZ_TASK_LAUNCH_ENV is not added here to avoid confusion of
-         * taking care of task env twice. Comments below clarifies which execution engine relies on which property.
-         * "MR -> Tez" means that DagUtils copies them to tez tasks' environment.
-         */
-        Stream.of(
-            JobConf.MAPRED_MAP_TASK_ENV, // MR -> Tez
-            JobConf.MAPRED_REDUCE_TASK_ENV, // MR -> Tez
-            MRJobConfig.MR_AM_ADMIN_USER_ENV, // MR
-            TezConfiguration.TEZ_AM_LAUNCH_ENV) // Tez
-
-            .forEach(property -> {
-              addKeyValuePair(jobConf, property,
-                  Constants.HADOOP_CREDENTIAL_PASSWORD_ENVVAR, credstorePassword);
-              redactedProperties.add(property);
-            });
-
-        // Hide sensitive configuration values from MR HistoryUI by telling MR to redact the following list.
-        jobConf.set(MRJobConfig.MR_JOB_REDACTED_PROPERTIES,
-            StringUtils.join(redactedProperties, COMMA));
+      if ("mr".equalsIgnoreCase(execEngine)) {
+        addKeyValuePair(jobConf, JobConf.MAPRED_MAP_TASK_ENV,
+            Constants.HADOOP_CREDENTIAL_PASSWORD_ENVVAR, credStorepassword);
+        addKeyValuePair(jobConf, JobConf.MAPRED_REDUCE_TASK_ENV,
+            Constants.HADOOP_CREDENTIAL_PASSWORD_ENVVAR, credStorepassword);
+        addKeyValuePair(jobConf, "yarn.app.mapreduce.am.admin.user.env",
+            Constants.HADOOP_CREDENTIAL_PASSWORD_ENVVAR, credStorepassword);
       }
     }
   }
@@ -258,33 +224,15 @@ public class HiveConfUtil {
     return null;
   }
 
-  /**
-   * Sets a "keyName=newKeyValue" pair to a jobConf to a given property.
-   * If the property is empty, it simply inserts keyName=newKeyValue,
-   * if it's already filled, it takes care of appending or replacing it in the currently present value.
-   * The property in jobConf contains a value like: "key1=value1,key2=value2".
-   * @param jobConf
-   * @param property
-   * @param keyName
-   * @param newKeyValue
-   */
-  private static void addKeyValuePair(Configuration jobConf, String property, String keyName, String newKeyValue) {
+  private static void addKeyValuePair(Configuration jobConf, String property, String keyName,
+      String newKeyValue) {
     String existingValue = jobConf.get(property);
-
-    if (StringUtils.isBlank(existingValue)) {
-      jobConf.set(property, (keyName + EQUALS + newKeyValue));
+    if (existingValue == null) {
+      jobConf.set(property, (keyName + "=" + newKeyValue));
       return;
     }
+
     String propertyValue = HiveStringUtils.insertValue(keyName, newKeyValue, existingValue);
     jobConf.set(property, propertyValue);
-  }
-
-  @SuppressWarnings("unchecked")
-  public static void copyFromProperties(Properties propSource, HiveConf confTarget) {
-    Enumeration<String> props = (Enumeration<String>) propSource.propertyNames();
-    while (props.hasMoreElements()) {
-      String key = props.nextElement();
-      confTarget.set(key, propSource.getProperty(key));
-    }
   }
 }

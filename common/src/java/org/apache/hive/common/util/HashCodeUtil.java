@@ -33,12 +33,15 @@ public class HashCodeUtil {
     return key;
   }
 
-  public static int calculateTwoLongHashCode(long l0, long l1) {
-    return Murmur3.hash32(l0, l1);
-  }
-
   public static int calculateLongHashCode(long key) {
-    return Murmur3.hash32(key);
+    // Mixing down into the lower bits - this produces a worse hashcode in purely
+    // numeric terms, but leaving entropy in the higher bits is not useful for a
+    // 2^n bucketing scheme. See JSR166 ConcurrentHashMap r1.89 (released under Public Domain)
+    // Note: ConcurrentHashMap has since reverted this to retain entropy bits higher
+    // up, to support the 2-level hashing for segment which operates at a higher bitmask
+    key ^= (key >>> 7) ^ (key >>> 4);
+    key ^= (key >>> 20) ^ (key >>> 12);
+    return (int) key;
   }
 
   public static void calculateLongArrayHashCodes(long[] longs, int[] hashCodes, final int count) {
@@ -47,9 +50,7 @@ public class HashCodeUtil {
     }
   }
 
-  @Deprecated
   public static int calculateBytesHashCode(byte[] keyBytes, int keyStart, int keyLength) {
-    // Don't use this for ReduceSinkOperators
     return murmurHash(keyBytes, keyStart, keyLength);
   }
 

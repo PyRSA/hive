@@ -154,13 +154,6 @@ public class FixedSizedObjectPool<T> implements Pool<T> {
     return offerImpl(t);
   }
 
-  @Override public void clear() {
-    T result = takeImpl();
-    while (result != null) {
-      result = takeImpl();
-    }
-  }
-
   private T takeImpl() {
     long oldState = reserveArrayIndex(OBJECTS, EMPTY);
     if (oldState == NO_INDEX) return null; // For whatever reason, reserve failed.
@@ -310,7 +303,7 @@ public class FixedSizedObjectPool<T> implements Pool<T> {
     public synchronized void dumpLog(boolean doSleep) {
       if (doSleep) {
         try {
-          this.wait(100);
+          Thread.sleep(100);
         } catch (InterruptedException e) {
         }
       }

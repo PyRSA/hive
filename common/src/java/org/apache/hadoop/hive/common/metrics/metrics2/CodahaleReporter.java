@@ -15,30 +15,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.hadoop.hive.common.metrics.metrics2;
 
-package org.apache.hadoop.hive.ql.lib;
+import com.codahale.metrics.Reporter;
+import java.io.Closeable;
 
-import java.util.Collection;
-import java.util.HashMap;
-
-import org.apache.hadoop.hive.ql.metadata.HiveException;
-
-/**
- * Interface for operator graph walker.
- */
-public interface GraphWalker {
+public interface CodahaleReporter extends Closeable, Reporter {
 
   /**
-   * starting point for walking.
-   *
-   * @param startNodes
-   *          list of starting operators
-   * @param nodeOutput
-   *          If this parameter is not null, the call to the function returns
-   *          the map from node to objects returned by the processors.
-   * @throws HiveException
+   * Start the reporter.
    */
-  void startWalking(Collection<Node> startNodes,
-                    HashMap<Node, Object> nodeOutput) throws HiveException;
-
+  public void start();
 }

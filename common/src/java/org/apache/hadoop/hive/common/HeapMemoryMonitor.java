@@ -28,8 +28,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import javax.management.NotificationEmitter;
-import javax.management.NotificationListener;
-import javax.management.ListenerNotFoundException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,7 +44,6 @@ public class HeapMemoryMonitor {
 
   private final double threshold;
   private List<Listener> listeners = new ArrayList<>();
-  private NotificationListener notificationListener;
 
   public interface Listener {
     void memoryUsageAboveThreshold(long usedMemory, long maxMemory);
@@ -143,7 +140,7 @@ public class HeapMemoryMonitor {
     }
     MemoryMXBean mxBean = ManagementFactory.getMemoryMXBean();
     NotificationEmitter emitter = (NotificationEmitter) mxBean;
-    notificationListener = (n, hb) -> {
+    emitter.addNotificationListener((n, hb) -> {
       if (n.getType().equals(
         MemoryNotificationInfo.MEMORY_COLLECTION_THRESHOLD_EXCEEDED)) {
         long maxMemory = tenuredGenPool.getUsage().getMax();
@@ -152,19 +149,6 @@ public class HeapMemoryMonitor {
           listener.memoryUsageAboveThreshold(usedMemory, maxMemory);
         }
       }
-    };
-    emitter.addNotificationListener(notificationListener, null, null);
-  }
-
-  public void close() {
-    if(notificationListener != null) {
-      MemoryMXBean mxBean = ManagementFactory.getMemoryMXBean();
-      NotificationEmitter emitter = (NotificationEmitter) mxBean;
-      try {
-        emitter.removeNotificationListener(notificationListener);
-      } catch(ListenerNotFoundException e) {
-        LOG.warn("Failed to remove HeapMemoryMonitor notification listener from MemoryMXBean", e);
-      }
-    }
+    }, null, null);
   }
 }

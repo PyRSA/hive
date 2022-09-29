@@ -15,8 +15,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.hadoop.hive.common.metrics.common;
 
 /**
- * Deals with formatting and parsing of datetime objects.
+ * Metrics Scope to represent duration of an event.
+ *
+ * Implementation can capture information like the average duration of open scopes,
+ * number of open scopes, number of completed scopes.
+ *
+ * Scopes are created via the Metrics framework (see Metrics#createScope or Metrics$createStoredScope)
+ *
+ * Scope may be stored by the Metrics framework via 'storedScope' concept for further reference.
+ *
+ * In either case, it is the caller's responsibility to end the scope via the Metrics framework (see Metrics#endScope)
  */
-package org.apache.hadoop.hive.common.format.datetime;
+public interface MetricsScope {
+}

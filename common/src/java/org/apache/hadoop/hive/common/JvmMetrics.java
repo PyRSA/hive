@@ -128,7 +128,7 @@ public class JvmMetrics implements MetricsSource {
 
     if (pauseMonitor != null) {
       rb.addCounter(GcNumWarnThresholdExceeded,
-          pauseMonitor.getNumGcWarnThresholdExceeded());
+          pauseMonitor.getNumGcWarnThreadholdExceeded());
       rb.addCounter(GcNumInfoThresholdExceeded,
           pauseMonitor.getNumGcInfoThresholdExceeded());
       rb.addCounter(GcTotalExtraSleepTime,

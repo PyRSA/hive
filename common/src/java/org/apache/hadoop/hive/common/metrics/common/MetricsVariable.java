@@ -15,23 +15,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.hadoop.hive.common.metrics.common;
 
-package org.apache.hive.common.util;
-
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-
-@Retention(RetentionPolicy.CLASS)
-public @interface SuppressFBWarnings {
-    /**
-     * The set of FindBugs warnings that are to be suppressed in
-     * annotated element. The value can be a bug category, kind or pattern.
-     *
-     */
-    String[] value() default {};
-
-    /**
-     * Optional documentation of the reason why the warning is suppressed
-     */
-    String justification() default "";
+/**
+ * Interface for metrics variables. For example a the database service could expose the number of
+ * currently active connections.
+ */
+public interface MetricsVariable<T> {
+  public T getValue();
 }

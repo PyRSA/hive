@@ -32,10 +32,9 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.LoggerConfig;
+import org.codehaus.jackson.map.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * A servlet to configure log4j2.
@@ -67,28 +66,28 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * <li>
  *    Returns all loggers with levels in JSON format:
  *    <pre>
- *      curl http://hostname:port/conflog
+ *      curl http://hostame:port/conflog
  *    </pre>
  * </li>
  * <li>
  *    Set root logger to INFO:
  *    <pre>
  *      curl -v -H "Content-Type: application/json" -X POST -d '{ "loggers" : [ { "logger" : "", "level" : "INFO" } ] }'
- *      http://hostname:port/conflog
+ *      http://hostame:port/conflog
  *    </pre>
  * </li>
  * <li>
  *    Set logger with level:
  *    <pre>
  *      curl -v -H "Content-Type: application/json" -X POST -d '{ "loggers" : [
- *      { "logger" : "LlapIoOrc", "level" : "INFO" } ] }' http://hostname:port/conflog
+ *      { "logger" : "LlapIoOrc", "level" : "INFO" } ] }' http://hostame:port/conflog
  *    </pre>
  * </li>
  * <li>
  *    Set log level for all classes under a package:
  *    <pre>
  *      curl -v -H "Content-Type: application/json" -X POST -d '{ "loggers" : [
- *      { "logger" : "org.apache.orc", "level" : "INFO" } ] }' http://hostname:port/conflog
+ *      { "logger" : "org.apache.orc", "level" : "INFO" } ] }' http://hostame:port/conflog
  *    </pre>
  * </li>
  * <li>
@@ -97,7 +96,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  *      curl -v -H "Content-Type: application/json" -X POST -d '{ "loggers" : [ { "logger" : "", "level" : "INFO" },
  *      { "logger" : "LlapIoOrc", "level" : "WARN" },
  *      { "logger" : "org.apache.hadoop.hive.llap.daemon.impl.LlapDaemon", "level" : "INFO" },
- *      { "logger" : "org.apache.orc", "level" : "INFO" } ] }' http://hostname:port/conflog
+ *      { "logger" : "org.apache.orc", "level" : "INFO" } ] }' http://hostame:port/conflog
  *    </pre>
  * </li>
  * </ul>
@@ -240,11 +239,15 @@ public class Log4j2ConfiguratorServlet extends HttpServlet {
         // that user requested.
         if (!loggerName.equals(LogManager.ROOT_LOGGER_NAME) &&
           loggerConfig.getName().equals(LogManager.ROOT_LOGGER_NAME)) {
-          LOG.debug("Requested logger ({}) not found. Adding as new logger with {} level", loggerName, logLevel);
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Requested logger ({}) not found. Adding as new logger with {} level", loggerName, logLevel);
+          }
           // requested logger not found. Add the new logger with the requested level
           conf.addLogger(loggerName, new LoggerConfig(loggerName, logLevel, true));
         } else {
-          LOG.debug("Updating logger ({}) to {} level", loggerName, logLevel);
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Updating logger ({}) to {} level", loggerName, logLevel);
+          }
           // update the log level for the specified logger
           loggerConfig.setLevel(logLevel);
         }

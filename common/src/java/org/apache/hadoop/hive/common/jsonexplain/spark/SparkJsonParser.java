@@ -16,14 +16,20 @@
  * limitations under the License.
  */
 
-package org.apache.hadoop.hive.conf;
+package org.apache.hadoop.hive.common.jsonexplain.spark;
 
-/**
- * Hive Transport mode.
- */
-public enum HiveServer2TransportMode {
-  /**
-   * Three modes: http, binary or all (which includes binary as well as http).
-   */
-  http, binary, all
+import org.apache.hadoop.hive.common.jsonexplain.DagJsonParser;
+
+
+public class SparkJsonParser extends DagJsonParser {
+
+  @Override
+  public String mapEdgeType(String edgeName) {
+    return edgeName;
+  }
+
+  @Override
+  public String getFrameworkName() {
+    return "Spark";
+  }
 }

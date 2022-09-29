@@ -15,31 +15,41 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.hadoop.hive.common.io;
 
-import java.io.OutputStream;
-import java.io.PrintStream;
-import java.io.UnsupportedEncodingException;
+package org.apache.hadoop.hive.common.metrics.metrics2;
+
+import com.codahale.metrics.ConsoleReporter;
+import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.Reporter;
+import java.io.Closeable;
+import java.util.concurrent.TimeUnit;
+import org.apache.hadoop.hive.conf.HiveConf;
+
 
 /**
- * The Session uses this stream instead of PrintStream to prevent closing of System out and System err.
- * Ref: HIVE-21033
+ * A wrapper around Codahale ConsoleReporter to make it a pluggable/configurable Hive Metrics reporter.
  */
-public class SessionStream extends PrintStream {
+public class ConsoleMetricsReporter implements CodahaleReporter {
 
-  public SessionStream(OutputStream out) {
-    super(out);
+  private final ConsoleReporter reporter;
+
+  public ConsoleMetricsReporter(MetricRegistry registry, HiveConf conf) {
+
+    reporter = ConsoleReporter.forRegistry(registry)
+        .convertRatesTo(TimeUnit.SECONDS)
+        .convertDurationsTo(TimeUnit.MILLISECONDS)
+        .build();
+
   }
 
-  public SessionStream(OutputStream out, boolean autoFlush, String encoding) throws UnsupportedEncodingException {
-    super(out, autoFlush, encoding);
+  @Override
+  public void start() {
+    reporter.start(1, TimeUnit.SECONDS);
   }
 
   @Override
   public void close() {
-    if (out != System.out && out != System.err) {
-      //Don't close if system out or system err
-      super.close();
-    }
+    reporter.close();
   }
 }
+

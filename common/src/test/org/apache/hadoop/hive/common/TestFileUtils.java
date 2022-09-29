@@ -22,7 +22,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -33,22 +33,15 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 import org.apache.hadoop.fs.ContentSummary;
-import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.LocalFileSystem;
-import org.apache.hadoop.fs.LocatedFileStatus;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.fs.RemoteIterator;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.shims.HadoopShims;
 
-import org.apache.hadoop.security.UserGroupInformation;
-import org.apache.hive.common.util.MockFileSystem;
-import org.apache.hive.common.util.MockFileSystem.MockFile;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -246,70 +239,16 @@ public class TestFileUtils {
     FileSystem fs = copySrc.getFileSystem(conf);
 
     String doAsUser = conf.getVar(HiveConf.ConfVars.HIVE_DISTCP_DOAS_USER);
-    UserGroupInformation proxyUser = UserGroupInformation.createProxyUser(
-            doAsUser, UserGroupInformation.getLoginUser());
 
     HadoopShims shims = mock(HadoopShims.class);
-    when(shims.runDistCpAs(Collections.singletonList(copySrc), copyDst, conf, proxyUser)).thenReturn(true);
+    when(shims.runDistCpAs(Collections.singletonList(copySrc), copyDst, conf, doAsUser)).thenReturn(true);
     when(shims.runDistCp(Collections.singletonList(copySrc), copyDst, conf)).thenReturn(false);
 
     // doAs when asked
-    Assert.assertTrue(FileUtils.distCp(fs, Collections.singletonList(copySrc), copyDst, false, proxyUser, conf, shims));
-    verify(shims).runDistCpAs(Collections.singletonList(copySrc), copyDst, conf, proxyUser);
+    Assert.assertTrue(FileUtils.distCp(fs, Collections.singletonList(copySrc), copyDst, true, doAsUser, conf, shims));
+    verify(shims).runDistCpAs(Collections.singletonList(copySrc), copyDst, conf, doAsUser);
     // don't doAs when not asked
     Assert.assertFalse(FileUtils.distCp(fs, Collections.singletonList(copySrc), copyDst, true, null, conf, shims));
     verify(shims).runDistCp(Collections.singletonList(copySrc), copyDst, conf);
-
-    // When distcp is done with doAs, the delete should also be done as doAs. But in current code its broken. This
-    // should be fixed. For now check is added to avoid wrong usage. So if doAs is set, delete source should be false.
-    try {
-      FileUtils.distCp(fs, Collections.singletonList(copySrc), copyDst, true, proxyUser, conf, shims);
-      Assert.assertTrue("Should throw IOException as doAs is called with delete source set to true".equals(""));
-    } catch (IOException e) {
-      Assert.assertTrue(e.getMessage().
-              equalsIgnoreCase("Distcp is called with doAsUser and delete source set as true"));
-    }
-  }
-
-  @Test
-  public void testMakeRelative() {
-    Path parentPath = new Path("/user/hive/database");
-    Path childPath = new Path(parentPath, "table/dir/subdir");
-    Path relativePath = FileUtils.makeRelative(parentPath, childPath);
-    assertEquals("table/dir/subdir", relativePath.toString());
-
-    // try with parent as Root.
-    relativePath = FileUtils.makeRelative(new Path(Path.SEPARATOR), childPath);
-    assertEquals("user/hive/database/table/dir/subdir", relativePath.toString());
-
-    // try with non child path, it should return the child path as is.
-    childPath = new Path("/user/hive/database1/table/dir/subdir");
-    relativePath = FileUtils.makeRelative(parentPath, childPath);
-    assertEquals(childPath.toString(), relativePath.toString());
-  }
-
-  @Test
-  public void testListStatusIterator() throws Exception {
-    MockFileSystem fs = new MockFileSystem(new HiveConf(),
-        new MockFile("mock:/tmp/.staging", 500, new byte[0]),
-        new MockFile("mock:/tmp/_dummy", 500, new byte[0]),
-        new MockFile("mock:/tmp/dummy", 500, new byte[0]));
-    Path path = new MockFileSystem.MockPath(fs, "/tmp");
-    
-    RemoteIterator<FileStatus> it = FileUtils.listStatusIterator(fs, path, FileUtils.HIDDEN_FILES_PATH_FILTER);
-    assertEquals(1, assertExpectedFilePaths(it, Collections.singletonList("mock:/tmp/dummy")));
-    
-    RemoteIterator<LocatedFileStatus> itr = FileUtils.listFiles(fs, path, true, FileUtils.HIDDEN_FILES_PATH_FILTER);
-    assertEquals(1, assertExpectedFilePaths(itr, Collections.singletonList("mock:/tmp/dummy")));
-  }
-
-  private int assertExpectedFilePaths(RemoteIterator<? extends FileStatus> lfs, List<String> expectedPaths)
-      throws Exception {
-    int count = 0;
-    while (lfs.hasNext()) {
-      assertTrue(expectedPaths.contains(lfs.next().getPath().toString()));
-      count++;
-    }
-    return count;
   }
 }

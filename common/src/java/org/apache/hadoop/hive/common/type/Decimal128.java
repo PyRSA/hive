@@ -703,11 +703,11 @@ public final class Decimal128 extends Number implements Comparable<Decimal128> {
       } else if (str[cursor] == 'e' || str[cursor] == 'E') {
         // exponent part
         ++cursor;
-        boolean exponentNegative = false;
+        boolean exponentNagative = false;
         if (str[cursor] == '+') {
           ++cursor;
         } else if (str[cursor] == '-') {
-          exponentNegative = true;
+          exponentNagative = true;
           ++cursor;
         }
         while (cursor < end) {
@@ -718,7 +718,7 @@ public final class Decimal128 extends Number implements Comparable<Decimal128> {
           }
           ++cursor;
         }
-        if (exponentNegative) {
+        if (exponentNagative) {
           exponent = -exponent;
         }
       } else {

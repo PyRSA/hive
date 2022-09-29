@@ -12,23 +12,28 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 -->
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
     <groupId>org.apache.hive</groupId>
     <artifactId>hive</artifactId>
-    <version>4.0.0-alpha-2-SNAPSHOT</version>
+    <version>3.1.2</version>
     <relativePath>../pom.xml</relativePath>
   </parent>
+
   <artifactId>hive-common</artifactId>
   <packaging>jar</packaging>
   <name>Hive Common</name>
+
   <properties>
     <hive.path.to.root>..</hive.path.to.root>
   </properties>
+
   <dependencies>
-    <!-- dependencies are always listed in sorted order by groupId, artifactId -->
-    <!-- intra-project -->
+    <!-- dependencies are always listed in sorted order by groupId, artifectId -->
+    <!-- intra-proect -->
     <dependency>
       <groupId>org.apache.hive</groupId>
       <artifactId>hive-classification</artifactId>
@@ -43,28 +48,21 @@
       <groupId>org.apache.hive</groupId>
       <artifactId>hive-storage-api</artifactId>
     </dependency>
-    <dependency>
-      <groupId>org.apache.hive</groupId>
-      <artifactId>hive-standalone-metastore-common</artifactId>
-      <version>${standalone-metastore.version}</version>
-    </dependency>
     <!-- inter-project -->
-    <dependency>
-      <groupId>com.google.guava</groupId>
-      <artifactId>guava</artifactId>
-    </dependency>
     <dependency>
       <groupId>commons-cli</groupId>
       <artifactId>commons-cli</artifactId>
+      <version>${commons-cli.version}</version>
     </dependency>
     <dependency>
-      <groupId>org.apache.commons</groupId>
-      <artifactId>commons-lang3</artifactId>
-      <version>${commons-lang3.version}</version>
+      <groupId>commons-lang</groupId>
+      <artifactId>commons-lang</artifactId>
+      <version>${commons-lang.version}</version>
     </dependency>
     <dependency>
-      <groupId>org.apache.commons</groupId>
-      <artifactId>commons-math3</artifactId>
+       <groupId>org.apache.commons</groupId>
+       <artifactId>commons-lang3</artifactId>
+       <version>${commons-lang3.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.orc</groupId>
@@ -73,6 +71,7 @@
     <dependency>
       <groupId>jline</groupId>
       <artifactId>jline</artifactId>
+      <version>${jline.version}</version>
     </dependency>
     <dependency>
       <groupId>javax.servlet</groupId>
@@ -81,6 +80,7 @@
     <dependency>
       <groupId>org.eclipse.jetty</groupId>
       <artifactId>jetty-http</artifactId>
+      <version>${jetty.version}</version>
     </dependency>
     <dependency>
       <groupId>org.eclipse.jetty</groupId>
@@ -106,18 +106,22 @@
     <dependency>
       <groupId>org.apache.logging.log4j</groupId>
       <artifactId>log4j-1.2-api</artifactId>
+      <version>${log4j2.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.logging.log4j</groupId>
       <artifactId>log4j-web</artifactId>
+      <version>${log4j2.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.logging.log4j</groupId>
       <artifactId>log4j-slf4j-impl</artifactId>
+      <version>${log4j2.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.commons</groupId>
       <artifactId>commons-compress</artifactId>
+      <version>${commons-compress.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.ant</groupId>
@@ -127,12 +131,9 @@
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-common</artifactId>
+      <version>${hadoop.version}</version>
       <optional>true</optional>
       <exclusions>
-        <exclusion>
-          <groupId>commons-beanutils</groupId>
-          <artifactId>commons-beanutils</artifactId>
-        </exclusion>
         <exclusion>
           <groupId>commons-collections</groupId>
           <artifactId>commons-collections</artifactId>
@@ -146,15 +147,23 @@
           <artifactId>jsp-api</artifactId>
         </exclusion>
         <exclusion>
+          <groupId>org.mortbay.jetty</groupId>
+          <artifactId>jetty</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>org.mortbay.jetty</groupId>
+          <artifactId>jetty-util</artifactId>
+        </exclusion>
+        <exclusion>
           <groupId>org.slf4j</groupId>
           <artifactId>slf4j-log4j12</artifactId>
         </exclusion>
         <exclusion>
-          <groupId>commons-logging</groupId>
+          <groupId>commmons-logging</groupId>
           <artifactId>commons-logging</artifactId>
         </exclusion>
       </exclusions>
-    </dependency>
+   </dependency>
     <dependency>
       <groupId>net.sf.jpam</groupId>
       <artifactId>jpam</artifactId>
@@ -165,7 +174,7 @@
           <artifactId>slf4j-log4j12</artifactId>
         </exclusion>
         <exclusion>
-          <groupId>commons-logging</groupId>
+          <groupId>commmons-logging</groupId>
           <artifactId>commons-logging</artifactId>
         </exclusion>
       </exclusions>
@@ -173,6 +182,7 @@
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-mapreduce-client-core</artifactId>
+      <version>${hadoop.version}</version>
       <optional>true</optional>
       <exclusions>
         <exclusion>
@@ -180,44 +190,30 @@
           <artifactId>servlet-api</artifactId>
         </exclusion>
         <exclusion>
+          <groupId>org.mortbay.jetty</groupId>
+          <artifactId>jetty-util</artifactId>
+        </exclusion>
+        <exclusion>
           <groupId>org.slf4j</groupId>
           <artifactId>slf4j-log4j12</artifactId>
         </exclusion>
         <exclusion>
-          <groupId>commons-logging</groupId>
+          <groupId>commmons-logging</groupId>
           <artifactId>commons-logging</artifactId>
         </exclusion>
       </exclusions>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.tez</groupId>
-      <artifactId>tez-api</artifactId>
-      <version>${tez.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.fusesource.jansi</groupId>
-      <artifactId>jansi</artifactId>
-      <version>${jansi.version}</version>
-    </dependency>
+  </dependency>
     <!-- test inter-project -->
     <dependency>
       <groupId>com.google.code.tempus-fugit</groupId>
       <artifactId>tempus-fugit</artifactId>
+      <version>${tempus-fugit.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter-engine</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.junit.vintage</groupId>
-      <artifactId>junit-vintage-engine</artifactId>
+      <version>${junit.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -254,31 +250,20 @@
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
+      <version>${jackson.version}</version>
     </dependency>
     <dependency>
       <groupId>com.github.joshelser</groupId>
       <artifactId>dropwizard-metrics-hadoop-metrics2-reporter</artifactId>
       <version>${dropwizard-metrics-hadoop-metrics2-reporter.version}</version>
-      <exclusions>
-        <exclusion>
-          <groupId>org.slf4j</groupId>
-          <artifactId>slf4j-log4j12</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>commons-beanutils</groupId>
-          <artifactId>commons-beanutils</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>commons-logging</groupId>
-          <artifactId>commons-logging</artifactId>
-        </exclusion>
-      </exclusions>
     </dependency>
     <dependency>
       <groupId>javolution</groupId>
       <artifactId>javolution</artifactId>
+      <version>${javolution.version}</version>
     </dependency>
   </dependencies>
+
   <profiles>
     <profile>
       <id>sources</id>
@@ -313,7 +298,8 @@
                 <configuration>
                   <target>
                     <property name="compile.classpath" refid="maven.runtime.classpath"/>
-                    <taskdef name="templategen" classname="org.apache.hadoop.hive.ant.GenHiveTemplate" classpath="${compile.classpath}"/>
+                    <taskdef name="templategen" classname="org.apache.hadoop.hive.ant.GenHiveTemplate"
+                             classpath="${compile.classpath}"/>
                     <templategen templateFile="${basedir}/../conf/hive-default.xml.template"/>
                   </target>
                 </configuration>
@@ -327,6 +313,7 @@
       </build>
     </profile>
   </profiles>
+
   <build>
     <sourceDirectory>${basedir}/src/java</sourceDirectory>
     <testSourceDirectory>${basedir}/src/test</testSourceDirectory>
@@ -378,23 +365,23 @@
           </execution>
         </executions>
       </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-jar-plugin</artifactId>
-        <executions>
-          <execution>
-            <goals>
-              <goal>test-jar</goal>
-            </goals>
-            <configuration>
-              <!--exclude configuration xml that might be picked up-->
-              <excludes>
-                <exclude>*.xml</exclude>
-              </excludes>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-jar-plugin</artifactId>
+          <executions>
+            <execution>
+              <goals>
+                <goal>test-jar</goal>
+              </goals>
+              <configuration>
+                <!--exclude configuration xml that might be picked up-->
+                <excludes>
+                   <exclude>*.xml</exclude>
+                </excludes>
+              </configuration>
+            </execution>
+          </executions>
+        </plugin>
     </plugins>
   </build>
 </project>

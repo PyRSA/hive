@@ -15,28 +15,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-package org.apache.hadoop.hive.ql.lib;
-
-import java.util.Stack;
-
-import org.apache.hadoop.hive.ql.metadata.HiveException;
+package org.apache.hadoop.hive.common.metrics.metrics2;
 
 /**
- * Rule interface for Operators Used in operator dispatching to dispatch
- * process/visitor functions for operators.
+ * Reporting options for org.apache.hadoop.hive.common.metrics.metrics2.Metrics.
  */
-public interface Rule {
-
-  /**
-   * @return the cost of the rule - the lower the cost, the better the rule
-   *         matches
-   * @throws HiveException
-   */
-  int cost(Stack<Node> stack) throws HiveException;
-
-  /**
-   * @return the name of the rule - may be useful for debugging
-   */
-  String getName();
+public enum MetricsReporting {
+  JMX,
+  CONSOLE,
+  JSON_FILE,
+  HADOOP2
 }

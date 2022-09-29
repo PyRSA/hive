@@ -93,9 +93,9 @@ public final class Op {
       // get the map for posToVertex
       Map<String, Vertex> posToVertex = new LinkedHashMap<>();
       if (opObject.has("input vertices:")) {
-        JSONObject vertexObj = opObject.getJSONObject("input vertices:");
-        for (String pos : JSONObject.getNames(vertexObj)) {
-          String vertexName = vertexObj.getString(pos);
+        JSONObject verticeObj = opObject.getJSONObject("input vertices:");
+        for (String pos : JSONObject.getNames(verticeObj)) {
+          String vertexName = verticeObj.getString(pos);
           // update the connection
           Connection c = null;
           for (Connection connection : vertex.parentConnections) {
@@ -195,7 +195,7 @@ public final class Op {
     // should be merge join
     else {
       Map<String, String> posToOpId = new LinkedHashMap<>();
-      if (vertex.mergeJoinDummyVertices.isEmpty()) {
+      if (vertex.mergeJoinDummyVertexs.size() == 0) {
         for (Entry<String, String> entry : vertex.tagToInput.entrySet()) {
           Connection c = null;
           for (Connection connection : vertex.parentConnections) {
@@ -226,7 +226,7 @@ public final class Op {
         }
       } else {
         posToOpId.put(vertex.tag, this.parent.operatorId);
-        for (Vertex v : vertex.mergeJoinDummyVertices) {
+        for (Vertex v : vertex.mergeJoinDummyVertexs) {
           if (v.outputOps.size() != 1) {
             throw new Exception("Can not find a single root operators in a single vertex " + v.name
                 + " when hive explain user is trying to identify the operator id.");
@@ -244,8 +244,10 @@ public final class Op {
           }
         }
         // inline merge join operator in a self-join
-        for (Vertex v : this.vertex.mergeJoinDummyVertices) {
+        if (this.vertex != null) {
+          for (Vertex v : this.vertex.mergeJoinDummyVertexs) {
             parser.addInline(this, new Connection(null, v));
+          }
         }
       }
       // update the attrs
@@ -278,7 +280,7 @@ public final class Op {
     if (operatorId != null) {
       sb.append(" [" + operatorId + "]");
     }
-    if (!DagJsonParserUtils.getOperatorNoStats().contains(name) && attrs.containsKey("Statistics:")) {
+    if (!DagJsonParserUtils.OperatorNoStats.contains(name) && attrs.containsKey("Statistics:")) {
       sb.append(" (" + attrs.get("Statistics:") + ")");
     }
     attrs.remove("Statistics:");

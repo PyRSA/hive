@@ -18,11 +18,16 @@
 
 package org.apache.hadoop.hive.common;
 
+import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.PrintStream;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.net.URLClassLoader;
 import java.util.Arrays;
 import java.util.List;
+
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,6 +38,22 @@ import org.slf4j.LoggerFactory;
  */
 public final class JavaUtils {
   private static final Logger LOG = LoggerFactory.getLogger(JavaUtils.class);
+  private static final Method SUN_MISC_UTIL_RELEASE;
+
+  static {
+    if (Closeable.class.isAssignableFrom(URLClassLoader.class)) {
+      SUN_MISC_UTIL_RELEASE = null;
+    } else {
+      Method release = null;
+      try {
+        Class<?> clazz = Class.forName("sun.misc.ClassLoaderUtil");
+        release = clazz.getMethod("releaseLoader", URLClassLoader.class);
+      } catch (Exception e) {
+        // ignore
+      }
+      SUN_MISC_UTIL_RELEASE = release;
+    }
+  }
 
   /**
    * Standard way of getting classloader in Hive code (outside of Hadoop).
@@ -70,10 +91,8 @@ public final class JavaUtils {
       try {
         closeClassLoader(current);
       } catch (IOException e) {
-        String detailedMessage = current instanceof URLClassLoader ?
-            Arrays.toString(((URLClassLoader) current).getURLs()) :
-            "";
-        LOG.info("Failed to close class loader " + current + " " + detailedMessage, e);
+        LOG.info("Failed to close class loader " + current +
+            Arrays.toString(((URLClassLoader) current).getURLs()), e);
       }
     }
     return true;
@@ -89,12 +108,35 @@ public final class JavaUtils {
     return current == stop;
   }
 
+  // best effort to close
+  // see https://issues.apache.org/jira/browse/HIVE-3969 for detail
   public static void closeClassLoader(ClassLoader loader) throws IOException {
     if (loader instanceof Closeable) {
-      ((Closeable) loader).close();
-    } else {
-      LOG.warn("Ignoring attempt to close class loader ({}) -- not instance of UDFClassLoader.",
-          loader == null ? "mull" : loader.getClass().getSimpleName());
+      ((Closeable)loader).close();
+    } else if (SUN_MISC_UTIL_RELEASE != null && loader instanceof URLClassLoader) {
+      PrintStream outputStream = System.out;
+      ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+      PrintStream newOutputStream = new PrintStream(byteArrayOutputStream);
+      try {
+        // SUN_MISC_UTIL_RELEASE.invoke prints to System.out
+        // So we're changing the outputstream for that call,
+        // and setting it back to original System.out when we're done
+        System.setOut(newOutputStream);
+        SUN_MISC_UTIL_RELEASE.invoke(null, loader);
+        String output = byteArrayOutputStream.toString("UTF8");
+        LOG.debug(output);
+      } catch (InvocationTargetException e) {
+        if (e.getTargetException() instanceof IOException) {
+          throw (IOException)e.getTargetException();
+        }
+        throw new IOException(e.getTargetException());
+      } catch (Exception e) {
+        throw new IOException(e);
+      }
+      finally {
+        System.setOut(outputStream);
+        newOutputStream.close();
+      }
     }
   }
 
@@ -120,13 +162,5 @@ public final class JavaUtils {
 
   private JavaUtils() {
     // prevent instantiation
-  }
-
-  public static Throwable findRootCause(Throwable throwable) {
-    Throwable rootCause = throwable;
-    while (rootCause.getCause() != null && rootCause.getCause() != rootCause) {
-      rootCause = rootCause.getCause();
-    }
-    return rootCause;
   }
 }

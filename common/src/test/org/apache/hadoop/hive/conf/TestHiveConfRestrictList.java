@@ -17,24 +17,18 @@
  */
 package org.apache.hadoop.hive.conf;
 
-
+import junit.framework.TestCase;
 
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-import org.junit.Before;
 import org.junit.Test;
 
-/**
- * HiveConfRestrictList Test.
- */
-public class TestHiveConfRestrictList {
+public class TestHiveConfRestrictList extends TestCase {
 
   private HiveConf conf = null;
 
-  @Before
-  public void setUp() throws Exception {
-
+  @Override
+  protected void setUp() throws Exception {
+    super.setUp();
     System.setProperty(ConfVars.HIVE_CONF_RESTRICTED_LIST.varname,
         ConfVars.HIVETESTMODEPREFIX.varname);
     conf = new HiveConf();
@@ -61,7 +55,7 @@ public class TestHiveConfRestrictList {
   }
 
   /**
-   * Test that restrict list config itself can't be changed
+   * Test that restrict list config itselft can't be changed
    * @throws Exception
    */
   @Test

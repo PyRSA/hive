@@ -31,19 +31,22 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Properties;
 import java.util.StringTokenizer;
 import java.util.regex.Pattern;
 
 import com.google.common.base.Splitter;
-import org.apache.commons.lang3.StringUtils;
+import com.google.common.collect.Interner;
+import com.google.common.collect.Interners;
+
+import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang3.text.translate.CharSequenceTranslator;
 import org.apache.commons.lang3.text.translate.EntityArrays;
-import org.apache.commons.lang3.text.translate.JavaUnicodeEscaper;
 import org.apache.commons.lang3.text.translate.LookupTranslator;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.common.classification.InterfaceAudience;
@@ -83,9 +86,6 @@ public class HiveStringUtils {
           {"\\", "\\\\"},
       }).with(
         new LookupTranslator(EntityArrays.JAVA_CTRL_CHARS_ESCAPE()));
-
-  private static final CharSequenceTranslator UNICODE_CONVERTER =
-      JavaUnicodeEscaper.outsideOf(32, 127);
 
   static {
     NumberFormat numberFormat = NumberFormat.getNumberInstance(Locale.ENGLISH);
@@ -166,6 +166,35 @@ public class HiveStringUtils {
       return fullHostname.substring(0, offset);
     }
     return fullHostname;
+  }
+
+  private static DecimalFormat oneDecimal = new DecimalFormat("0.0");
+
+  /**
+   * Given an integer, return a string that is in an approximate, but human
+   * readable format.
+   * It uses the bases 'k', 'm', and 'g' for 1024, 1024**2, and 1024**3.
+   * @param number the number to format
+   * @return a human readable form of the integer
+   */
+  public static String humanReadableInt(long number) {
+    long absNumber = Math.abs(number);
+    double result = number;
+    String suffix = "";
+    if (absNumber < 1024) {
+      // since no division has occurred, don't format with a decimal point
+      return String.valueOf(number);
+    } else if (absNumber < 1024 * 1024) {
+      result = number / 1024.0;
+      suffix = "k";
+    } else if (absNumber < 1024 * 1024 * 1024) {
+      result = number / (1024.0 * 1024);
+      suffix = "m";
+    } else {
+      result = number / (1024.0 * 1024 * 1024);
+      suffix = "g";
+    }
+    return oneDecimal.format(result) + suffix;
   }
 
   /**
@@ -298,7 +327,7 @@ public class HiveStringUtils {
    *
    * Given a finish and start time in long milliseconds, returns a
    * String in the format Xhrs, Ymins, Z sec, for the time difference between two times.
-   * If finish time comes before start time then negative values of X, Y and Z will return.
+   * If finish time comes before start time then negative valeus of X, Y and Z wil return.
    *
    * @param finishTime finish time
    * @param startTime start time
@@ -342,7 +371,7 @@ public class HiveStringUtils {
    * If finish time is 0, empty string is returned, if start time is 0
    * then difference is not appended to return value.
    * @param dateFormat date format to use
-   * @param finishTime finish time
+   * @param finishTime fnish time
    * @param startTime start time
    * @return formatted value.
    */
@@ -360,8 +389,8 @@ public class HiveStringUtils {
 
   /**
    * Returns an arraylist of strings.
-   * @param str the comma separated string values
-   * @return the arraylist of the comma separated string values
+   * @param str the comma seperated string values
+   * @return the arraylist of the comma seperated string values
    */
   public static String[] getStrings(String str){
     Collection<String> values = getStringCollection(str);
@@ -373,7 +402,7 @@ public class HiveStringUtils {
 
   /**
    * Returns a collection of strings.
-   * @param str comma separated string values
+   * @param str comma seperated string values
    * @return an <code>ArrayList</code> of string values
    */
   public static Collection<String> getStringCollection(String str){
@@ -514,40 +543,32 @@ public class HiveStringUtils {
   }
 
   /**
-   * In a given string of comma-separated key=value pairs associates the specified value with
-   * the specified key.
-   * If the `string` previously contained a mapping for the key, the old value is replaced.
+   * In a given string of comma-separated key=value pairs insert a new value of a given key
    *
-   * @param key key with which the specified value is to be associated
-   * @param value value to be associated with the specified key
+   * @param key The key whose value needs to be replaced
+   * @param newValue The new value of the key
    * @param strKvPairs Comma separated key=value pairs Eg: "k1=v1, k2=v2, k3=v3"
-   * @return Updated comma separated string of key=value pairs
+   * @return Comma separated string of key=value pairs with the new value for key keyName
    */
-  public static String insertValue(String key, String value, String strKvPairs) {
-    boolean keyNotFound = true;
-
+  public static String insertValue(String key, String newValue,
+      String strKvPairs) {
     String[] keyValuePairs = HiveStringUtils.split(strKvPairs);
     StringBuilder sb = new StringBuilder();
-
     for (int i = 0; i < keyValuePairs.length; i++) {
       String[] pair = HiveStringUtils.split(keyValuePairs[i], ESCAPE_CHAR, EQUALS);
       if (pair.length != 2) {
         throw new RuntimeException("Error parsing the keyvalue pair " + keyValuePairs[i]);
       }
-      sb.append(pair[0]).append(EQUALS);
+      sb.append(pair[0]);
+      sb.append(EQUALS);
       if (pair[0].equals(key)) {
-        sb.append(value);
-        keyNotFound = false;
+        sb.append(newValue);
       } else {
         sb.append(pair[1]);
       }
-      if (i < (keyValuePairs.length - 1) || keyNotFound) {
+      if (i < (keyValuePairs.length - 1)) {
         sb.append(COMMA);
       }
-    }
-
-    if (keyNotFound) {
-      sb.append(key).append(EQUALS).append(value);
     }
     return sb.toString();
   }
@@ -653,16 +674,6 @@ public class HiveStringUtils {
    */
   public static String escapeHiveCommand(String str) {
     return ESCAPE_HIVE_COMMAND.translate(str);
-  }
-
-  /**
-   * Escape java unicode characters.
-   *
-   * @param str Original string
-   * @return Escaped string
-   */
-  public static String escapeUnicode(String str) {
-    return UNICODE_CONVERTER.translate(str);
   }
 
   /**
@@ -1051,6 +1062,19 @@ public class HiveStringUtils {
 	  return identifier.trim().toLowerCase();
 	}
 
+  public static Map getPropertiesExplain(Properties properties) {
+    if (properties != null) {
+      String value = properties.getProperty("columns.comments");
+      if (value != null) {
+        // should copy properties first
+        Map clone = new HashMap(properties);
+        clone.put("columns.comments", quoteComments(value));
+        return clone;
+      }
+    }
+    return properties;
+  }
+
   public static String quoteComments(String value) {
     char[] chars = value.toCharArray();
     if (!commentProvided(chars)) {
@@ -1116,7 +1140,7 @@ public class HiveStringUtils {
         ret.append("\n");
       }
     }
-    return ret.toString().trim();
+    return ret.toString();
   }
 
   /**
@@ -1158,7 +1182,7 @@ public class HiveStringUtils {
       index++;
     }
 
-    return builder.toString();
+    return builder.toString().trim();
   }
 
   /**

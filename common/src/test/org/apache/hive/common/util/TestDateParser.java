@@ -17,30 +17,28 @@
  */
 package org.apache.hive.common.util;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 
 import org.apache.hadoop.hive.common.type.Date;
 import org.junit.Test;
 
 public class TestDateParser {
-  private Date date = new Date();
+  DateParser parser = new DateParser();
+  Date date = new Date();
 
   void checkValidCase(String strValue, Date expected) {
-    Date dateValue = DateParser.parseDate(strValue);
+    Date dateValue = parser.parseDate(strValue);
     assertEquals(expected, dateValue);
 
-    assertTrue(DateParser.parseDate(strValue, date));
+    assertTrue(parser.parseDate(strValue, date));
     assertEquals(expected, date);
   }
 
   void checkInvalidCase(String strValue) {
-    Date dateValue = DateParser.parseDate(strValue);
+    Date dateValue = parser.parseDate(strValue);
     assertNull(dateValue);
 
-    assertFalse(DateParser.parseDate(strValue, date));
+    assertFalse(parser.parseDate(strValue, date));
   }
 
   @Test
@@ -58,6 +56,9 @@ public class TestDateParser {
     // Leading spaces
     checkValidCase(" 1946-01-01", Date.valueOf("1946-01-01"));
     checkValidCase(" 2001-11-12 01:02:03", Date.valueOf("2001-11-12"));
+
+    checkValidCase("2001-13-12", Date.valueOf("2002-01-12"));
+    checkValidCase("2001-11-31", Date.valueOf("2001-12-01"));
   }
 
   @Test
@@ -67,8 +68,5 @@ public class TestDateParser {
     checkInvalidCase("abc");
     checkInvalidCase(" 2001 ");
     checkInvalidCase("a2001-01-01");
-    checkInvalidCase("0000-00-00");
-    checkInvalidCase("2001-13-12");
-    checkInvalidCase("2001-11-31");
   }
 }
