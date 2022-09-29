@@ -46,7 +46,6 @@ public class ReflectiveCommandHandler extends AbstractCommandHandler {
     this.beeLine = beeLine;
   }
 
-  @Override
   public boolean execute(String line) {
     lastException = null;
     ClientHook hook = ClientCommandHookFactory.get().getHook(beeLine, line);

@@ -27,7 +27,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
-import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -37,10 +36,24 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.apache.commons.lang3.StringUtils;
+import com.google.common.base.Splitter;
+
+import jline.console.ConsoleReader;
+import jline.console.completer.Completer;
+import jline.console.history.FileHistory;
+import jline.console.history.History;
+import jline.console.history.PersistentHistory;
+import jline.console.completer.StringsCompleter;
+import jline.console.completer.ArgumentCompleter;
+import jline.console.completer.ArgumentCompleter.ArgumentDelimiter;
+import jline.console.completer.ArgumentCompleter.AbstractArgumentDelimiter;
+
+import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hive.cli.CliSessionState;
+import org.apache.hadoop.hive.cli.OptionsProcessor;
 import org.apache.hadoop.hive.common.HiveInterruptUtils;
 import org.apache.hadoop.hive.common.LogUtils;
 import org.apache.hadoop.hive.common.LogUtils.LogInitializationException;
@@ -48,45 +61,29 @@ import org.apache.hadoop.hive.common.cli.EscapeCRLFHelper;
 import org.apache.hadoop.hive.common.cli.ShellCmdExecutor;
 import org.apache.hadoop.hive.common.io.CachingPrintStream;
 import org.apache.hadoop.hive.common.io.FetchConverter;
-import org.apache.hadoop.hive.common.io.SessionStream;
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.conf.HiveVariableSource;
 import org.apache.hadoop.hive.conf.Validator;
 import org.apache.hadoop.hive.conf.VariableSubstitution;
+import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.ql.IDriver;
 import org.apache.hadoop.hive.ql.exec.FunctionRegistry;
 import org.apache.hadoop.hive.ql.exec.mr.HadoopJobExecHelper;
 import org.apache.hadoop.hive.ql.exec.tez.TezJobExecHelper;
 import org.apache.hadoop.hive.ql.metadata.HiveMaterializedViewsRegistry;
-import org.apache.hadoop.hive.ql.metadata.HiveMetaStoreClientWithLocalCache;
-import org.apache.hadoop.hive.ql.parse.CalcitePlanner;
 import org.apache.hadoop.hive.ql.parse.HiveParser;
 import org.apache.hadoop.hive.ql.processors.CommandProcessor;
-import org.apache.hadoop.hive.ql.processors.CommandProcessorException;
 import org.apache.hadoop.hive.ql.processors.CommandProcessorFactory;
 import org.apache.hadoop.hive.ql.processors.CommandProcessorResponse;
 import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hadoop.hive.ql.session.SessionState.LogHelper;
-import org.apache.hadoop.hive.shims.ShimLoader;
 import org.apache.hadoop.io.IOUtils;
 import org.apache.hive.common.util.HiveStringUtils;
 import org.apache.hive.common.util.ShutdownHookManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.base.Splitter;
-
-import jline.console.ConsoleReader;
-import jline.console.completer.ArgumentCompleter;
-import jline.console.completer.ArgumentCompleter.AbstractArgumentDelimiter;
-import jline.console.completer.ArgumentCompleter.ArgumentDelimiter;
-import jline.console.completer.Completer;
-import jline.console.completer.StringsCompleter;
-import jline.console.history.FileHistory;
-import jline.console.history.History;
-import jline.console.history.PersistentHistory;
 import sun.misc.Signal;
 import sun.misc.SignalHandler;
 
@@ -112,29 +109,23 @@ public class CliDriver {
     SessionState ss = SessionState.get();
     conf = (ss != null) ? ss.getConf() : new Configuration();
     Logger LOG = LoggerFactory.getLogger("CliDriver");
-    LOG.debug("CliDriver inited with classpath {}", System.getProperty("java.class.path"));
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("CliDriver inited with classpath {}", System.getProperty("java.class.path"));
+    }
     console = new LogHelper(LOG);
   }
 
-  public CommandProcessorResponse processCmd(String cmd) throws CommandProcessorException {
+  public int processCmd(String cmd) {
     CliSessionState ss = (CliSessionState) SessionState.get();
     ss.setLastCommand(cmd);
+
+    ss.updateThreadName();
+
     // Flush the print stream, so it doesn't include output from the last command
     ss.err.flush();
-    try {
-      ss.updateThreadName();
-      return processCmd1(cmd);
-    } finally {
-      ss.resetThreadName();
-    }
-  }
-
-  public CommandProcessorResponse processCmd1(String cmd) throws CommandProcessorException {
-    CliSessionState ss = (CliSessionState) SessionState.get();
-
     String cmd_trimmed = HiveStringUtils.removeComments(cmd).trim();
     String[] tokens = tokenizeCmd(cmd_trimmed);
-    CommandProcessorResponse response = new CommandProcessorResponse();
+    int ret = 0;
 
     if (cmd_trimmed.toLowerCase().equals("quit") || cmd_trimmed.toLowerCase().equals("exit")) {
 
@@ -156,14 +147,14 @@ public class CliDriver {
       File sourceFile = new File(cmd_1);
       if (! sourceFile.isFile()){
         console.printError("File: "+ cmd_1 + " is not a file.");
-        throw new CommandProcessorException(1);
+        ret = 1;
       } else {
         try {
-          response = processFile(cmd_1);
+          ret = processFile(cmd_1);
         } catch (IOException e) {
           console.printError("Failed processing file "+ cmd_1 +" "+ e.getLocalizedMessage(),
             stringifyException(e));
-          throw new CommandProcessorException(1);
+          ret = 1;
         }
       }
     } else if (cmd_trimmed.startsWith("!")) {
@@ -179,17 +170,14 @@ public class CliDriver {
       // shell_cmd = "/bin/bash -c \'" + shell_cmd + "\'";
       try {
         ShellCmdExecutor executor = new ShellCmdExecutor(shell_cmd, ss.out, ss.err);
-        int responseCode = executor.execute();
-        if (responseCode != 0) {
-          console.printError("Command failed with exit code = " + response);
-          ss.resetThreadName();
-          throw new CommandProcessorException(responseCode);
+        ret = executor.execute();
+        if (ret != 0) {
+          console.printError("Command failed with exit code = " + ret);
         }
-        response = new CommandProcessorResponse();
       } catch (Exception e) {
         console.printError("Exception raised from Shell command " + e.getLocalizedMessage(),
             stringifyException(e));
-        throw new CommandProcessorException(1);
+        ret = 1;
       }
     }  else { // local mode
       try {
@@ -197,23 +185,23 @@ public class CliDriver {
         try (CommandProcessor proc = CommandProcessorFactory.get(tokens, (HiveConf) conf)) {
           if (proc instanceof IDriver) {
             // Let Driver strip comments using sql parser
-            response = processLocalCmd(cmd, proc, ss);
+            ret = processLocalCmd(cmd, proc, ss);
           } else {
-            response = processLocalCmd(cmd_trimmed, proc, ss);
+            ret = processLocalCmd(cmd_trimmed, proc, ss);
           }
         }
       } catch (SQLException e) {
         console.printError("Failed processing command " + tokens[0] + " " + e.getLocalizedMessage(),
           org.apache.hadoop.util.StringUtils.stringifyException(e));
-        throw new CommandProcessorException(1);
-      } catch (CommandProcessorException e) {
-        throw e;
-      } catch (Exception e) {
+        ret = 1;
+      }
+      catch (Exception e) {
         throw new RuntimeException(e);
       }
     }
 
-    return response;
+    ss.resetThreadName();
+    return ret;
   }
 
   /**
@@ -235,10 +223,9 @@ public class CliDriver {
     return cmd.split("\\s+");
   }
 
-  CommandProcessorResponse processLocalCmd(String cmd, CommandProcessor proc, CliSessionState ss)
-      throws CommandProcessorException {
+  int processLocalCmd(String cmd, CommandProcessor proc, CliSessionState ss) {
     boolean escapeCRLF = HiveConf.getBoolVar(conf, HiveConf.ConfVars.HIVE_CLI_PRINT_ESCAPE_CRLF);
-    CommandProcessorResponse response = new CommandProcessorResponse();
+    int ret = 0;
 
     if (proc != null) {
       if (proc instanceof IDriver) {
@@ -249,14 +236,10 @@ public class CliDriver {
           out.println(cmd);
         }
 
-        // Set HDFS CallerContext to queryId and reset back to sessionId after the query is done
-        ShimLoader.getHadoopShims().setHadoopQueryContext(qp.getQueryState().getQueryId());
-        try {
-          response = qp.run(cmd);
-        } catch (CommandProcessorException e) {
+        ret = qp.run(cmd).getResponseCode();
+        if (ret != 0) {
           qp.close();
-          ShimLoader.getHadoopShims().setHadoopSessionContext(ss.getSessionId());
-          throw e;
+          return ret;
         }
 
         // query has run capture the time
@@ -289,18 +272,17 @@ public class CliDriver {
         } catch (IOException e) {
           console.printError("Failed with exception " + e.getClass().getName() + ":" + e.getMessage(),
               "\n" + org.apache.hadoop.util.StringUtils.stringifyException(e));
-          throw new CommandProcessorException(1);
-        } finally {
-          qp.close();
-          ShimLoader.getHadoopShims().setHadoopSessionContext(ss.getSessionId());
-
-          if (out instanceof FetchConverter) {
-            ((FetchConverter) out).fetchFinished();
-          }
-
-          console.printInfo(
-              "Time taken: " + timeTaken + " seconds" + (counter == 0 ? "" : ", Fetched: " + counter + " row(s)"));
+          ret = 1;
         }
+
+        qp.close();
+
+        if (out instanceof FetchConverter) {
+          ((FetchConverter) out).fetchFinished();
+        }
+
+        console.printInfo(
+            "Time taken: " + timeTaken + " seconds" + (counter == 0 ? "" : ", Fetched: " + counter + " row(s)"));
       } else {
         String firstToken = tokenizeCmd(cmd.trim())[0];
         String cmd_1 = getFirstCmd(cmd.trim(), firstToken.length());
@@ -308,20 +290,21 @@ public class CliDriver {
         if (ss.getIsVerbose()) {
           ss.out.println(firstToken + " " + cmd_1);
         }
-
-        try {
-          CommandProcessorResponse res = proc.run(cmd_1);
-          if (res.getMessage() != null) {
-            console.printInfo(res.getMessage());
-          }
-          return res;
-        } catch (CommandProcessorException e) {
-          ss.out.println("Query returned non-zero code: " + e.getResponseCode() + ", cause: " + e.getMessage());
-          throw e;
+        CommandProcessorResponse res = proc.run(cmd_1);
+        if (res.getResponseCode() != 0) {
+          ss.out
+              .println("Query returned non-zero code: " + res.getResponseCode() + ", cause: " + res.getErrorMessage());
         }
+        if (res.getConsoleMessages() != null) {
+          for (String consoleMsg : res.getConsoleMessages()) {
+            console.printInfo(consoleMsg);
+          }
+        }
+        ret = res.getResponseCode();
       }
     }
-    return response;
+
+    return ret;
   }
 
   /**
@@ -348,7 +331,7 @@ public class CliDriver {
     }
   }
 
-  public CommandProcessorResponse processLine(String line) throws CommandProcessorException {
+  public int processLine(String line) {
     return processLine(line, false);
   }
 
@@ -362,7 +345,7 @@ public class CliDriver {
    *          returning -1
    * @return 0 if ok
    */
-  public CommandProcessorResponse processLine(String line, boolean allowInterrupting) throws CommandProcessorException {
+  public int processLine(String line, boolean allowInterrupting) {
     SignalHandler oldSignal = null;
     Signal interruptSignal = null;
 
@@ -398,35 +381,30 @@ public class CliDriver {
     }
 
     try {
-      CommandProcessorResponse lastRet = new CommandProcessorResponse();
-      CommandProcessorResponse ret;
+      int lastRet = 0, ret = 0;
 
       // we can not use "split" function directly as ";" may be quoted
       List<String> commands = splitSemiColon(line);
 
-      StringBuilder command = new StringBuilder();
+      String command = "";
       for (String oneCmd : commands) {
 
         if (StringUtils.endsWith(oneCmd, "\\")) {
-          command.append(StringUtils.chop(oneCmd) + ";");
+          command += StringUtils.chop(oneCmd) + ";";
           continue;
         } else {
-          command.append(oneCmd);
+          command += oneCmd;
         }
-        if (StringUtils.isBlank(command.toString())) {
+        if (StringUtils.isBlank(command)) {
           continue;
         }
 
-        try {
-          ret = processCmd(command.toString());
-          lastRet = ret;
-        } catch (CommandProcessorException e) {
-          boolean ignoreErrors = HiveConf.getBoolVar(conf, HiveConf.ConfVars.CLIIGNOREERRORS);
-          if (!ignoreErrors) {
-            throw e;
-          }
-        } finally {
-          command.setLength(0);
+        ret = processCmd(command);
+        command = "";
+        lastRet = ret;
+        boolean ignoreErrors = HiveConf.getBoolVar(conf, HiveConf.ConfVars.CLIIGNOREERRORS);
+        if (ret != 0 && !ignoreErrors) {
+          return ret;
         }
       }
       return lastRet;
@@ -438,60 +416,48 @@ public class CliDriver {
     }
   }
 
-  /**
-   * Split the line by semicolon by ignoring the ones in the single/double quotes.
-   *
-   */
   public static List<String> splitSemiColon(String line) {
-    boolean inQuotes = false;
+    boolean insideSingleQuote = false;
+    boolean insideDoubleQuote = false;
     boolean escape = false;
-
-    List<String> ret = new ArrayList<>();
-
-    char quoteChar = '"';
     int beginIndex = 0;
+    List<String> ret = new ArrayList<>();
     for (int index = 0; index < line.length(); index++) {
-      char c = line.charAt(index);
-      switch (c) {
-      case ';':
-        if (!inQuotes) {
+      if (line.charAt(index) == '\'') {
+        // take a look to see if it is escaped
+        if (!escape) {
+          // flip the boolean variable
+          insideSingleQuote = !insideSingleQuote;
+        }
+      } else if (line.charAt(index) == '\"') {
+        // take a look to see if it is escaped
+        if (!escape) {
+          // flip the boolean variable
+          insideDoubleQuote = !insideDoubleQuote;
+        }
+      } else if (line.charAt(index) == ';') {
+        if (insideSingleQuote || insideDoubleQuote) {
+          // do not split
+        } else {
+          // split, do not include ; itself
           ret.add(line.substring(beginIndex, index));
           beginIndex = index + 1;
         }
-        break;
-      case '"':
-      case '`':
-      case '\'':
-        if (!escape) {
-          if (!inQuotes) {
-            quoteChar = c;
-            inQuotes = !inQuotes;
-          } else {
-            if (c == quoteChar) {
-              inQuotes = !inQuotes;
-            }
-          }
-        }
-        break;
-      default:
-        break;
+      } else {
+        // nothing to do
       }
-
+      // set the escape
       if (escape) {
         escape = false;
-      } else if (c == '\\') {
+      } else if (line.charAt(index) == '\\') {
         escape = true;
       }
     }
-
-    if (beginIndex < line.length()) {
-      ret.add(line.substring(beginIndex));
-    }
-
+    ret.add(line.substring(beginIndex));
     return ret;
   }
 
-  public CommandProcessorResponse processReader(BufferedReader r) throws IOException, CommandProcessorException {
+  public int processReader(BufferedReader r) throws IOException {
     String line;
     StringBuilder qsb = new StringBuilder();
 
@@ -505,7 +471,7 @@ public class CliDriver {
     return (processLine(qsb.toString()));
   }
 
-  public CommandProcessorResponse processFile(String fileName) throws IOException, CommandProcessorException {
+  public int processFile(String fileName) throws IOException {
     Path path = new Path(fileName);
     FileSystem fs;
     if (!path.toUri().isAbsolute()) {
@@ -515,27 +481,34 @@ public class CliDriver {
       fs = FileSystem.get(path.toUri(), conf);
     }
     BufferedReader bufferReader = null;
-
+    int rc = 0;
     try {
-      bufferReader = new BufferedReader(new InputStreamReader(fs.open(path), StandardCharsets.UTF_8));
-      return processReader(bufferReader);
+      bufferReader = new BufferedReader(new InputStreamReader(fs.open(path)));
+      rc = processReader(bufferReader);
     } finally {
       IOUtils.closeStream(bufferReader);
     }
+    return rc;
   }
 
-  public void processInitFiles(CliSessionState ss) throws IOException, CommandProcessorException {
+  public void processInitFiles(CliSessionState ss) throws IOException {
     boolean saveSilent = ss.getIsSilent();
     ss.setIsSilent(true);
     for (String initFile : ss.initFiles) {
-      processFileExitOnFailure(initFile);
+      int rc = processFile(initFile);
+      if (rc != 0) {
+        System.exit(rc);
+      }
     }
     if (ss.initFiles.size() == 0) {
       if (System.getenv("HIVE_HOME") != null) {
         String hivercDefault = System.getenv("HIVE_HOME") + File.separator +
           "bin" + File.separator + HIVERCFILE;
         if (new File(hivercDefault).exists()) {
-          processFileExitOnFailure(hivercDefault);
+          int rc = processFile(hivercDefault);
+          if (rc != 0) {
+            System.exit(rc);
+          }
           console.printError("Putting the global hiverc in " +
                              "$HIVE_HOME/bin/.hiverc is deprecated. Please "+
                              "use $HIVE_CONF_DIR/.hiverc instead.");
@@ -545,40 +518,33 @@ public class CliDriver {
         String hivercDefault = System.getenv("HIVE_CONF_DIR") + File.separator
           + HIVERCFILE;
         if (new File(hivercDefault).exists()) {
-          processFileExitOnFailure(hivercDefault);
+          int rc = processFile(hivercDefault);
+          if (rc != 0) {
+            System.exit(rc);
+          }
         }
       }
       if (System.getProperty("user.home") != null) {
         String hivercUser = System.getProperty("user.home") + File.separator +
           HIVERCFILE;
         if (new File(hivercUser).exists()) {
-          processFileExitOnFailure(hivercUser);
+          int rc = processFile(hivercUser);
+          if (rc != 0) {
+            System.exit(rc);
+          }
         }
       }
     }
     ss.setIsSilent(saveSilent);
   }
 
-  private void processFileExitOnFailure(String fileName) throws IOException {
-    try {
-      processFile(fileName);
-    } catch (CommandProcessorException e) {
-      System.exit(e.getResponseCode());
-    }
-  }
-
-  private void processLineExitOnFailure(String command) throws IOException {
-    try {
-      processLine(command);
-    } catch (CommandProcessorException e) {
-      System.exit(e.getResponseCode());
-    }
-  }
-
-  public void processSelectDatabase(CliSessionState ss) throws IOException, CommandProcessorException {
+  public void processSelectDatabase(CliSessionState ss) throws IOException {
     String database = ss.database;
     if (database != null) {
-      processLineExitOnFailure("use " + database + ";");
+      int rc = processLine("use " + database + ";");
+      if (rc != 0) {
+        System.exit(rc);
+      }
     }
   }
 
@@ -718,7 +684,7 @@ public class CliDriver {
     System.exit(ret);
   }
 
-  public int run(String[] args) throws Exception {
+  public  int run(String[] args) throws Exception {
 
     OptionsProcessor oproc = new OptionsProcessor();
     if (!oproc.process_stage1(args)) {
@@ -739,12 +705,9 @@ public class CliDriver {
     CliSessionState ss = new CliSessionState(new HiveConf(SessionState.class));
     ss.in = System.in;
     try {
-      ss.out =
-          new SessionStream(System.out, true, StandardCharsets.UTF_8.name());
-      ss.info =
-          new SessionStream(System.err, true, StandardCharsets.UTF_8.name());
-      ss.err = new CachingPrintStream(System.err, true,
-          StandardCharsets.UTF_8.name());
+      ss.out = new PrintStream(System.out, true, "UTF-8");
+      ss.info = new PrintStream(System.err, true, "UTF-8");
+      ss.err = new CachingPrintStream(System.err, true, "UTF-8");
     } catch (UnsupportedEncodingException e) {
       return 3;
     }
@@ -788,22 +751,12 @@ public class CliDriver {
 
     ss.updateThreadName();
 
-    // Initialize metadata provider class and trimmer
-    CalcitePlanner.warmup();
     // Create views registry
     HiveMaterializedViewsRegistry.get().init();
 
-    // init metastore client cache
-    if (HiveConf.getBoolVar(conf, ConfVars.MSC_CACHE_ENABLED)) {
-      HiveMetaStoreClientWithLocalCache.init(conf);
-    }
-
     // execute cli driver work
     try {
-      executeDriver(ss, conf, oproc);
-      return 0;
-    } catch (CommandProcessorException e) {
-      return e.getResponseCode();
+      return executeDriver(ss, conf, oproc);
     } finally {
       ss.resetThreadName();
       ss.close();
@@ -818,7 +771,7 @@ public class CliDriver {
    * @return status of the CLI command execution
    * @throws Exception
    */
-  private CommandProcessorResponse executeDriver(CliSessionState ss, HiveConf conf, OptionsProcessor oproc)
+  private int executeDriver(CliSessionState ss, HiveConf conf, OptionsProcessor oproc)
       throws Exception {
 
     CliDriver cli = new CliDriver();
@@ -831,7 +784,8 @@ public class CliDriver {
     cli.processInitFiles(ss);
 
     if (ss.execString != null) {
-      return cli.processLine(ss.execString);
+      int cmdProcessStatus = cli.processLine(ss.execString);
+      return cmdProcessStatus;
     }
 
     try {
@@ -840,7 +794,7 @@ public class CliDriver {
       }
     } catch (FileNotFoundException e) {
       System.err.println("Could not open input file for reading. (" + e.getMessage() + ")");
-      throw new CommandProcessorException(3);
+      return 3;
     }
     if ("mr".equals(HiveConf.getVar(conf, ConfVars.HIVE_EXECUTION_ENGINE))) {
       console.printInfo(HiveConf.generateMrDeprecationWarning());
@@ -849,34 +803,34 @@ public class CliDriver {
     setupConsoleReader();
 
     String line;
-    CommandProcessorResponse response = new CommandProcessorResponse();
-    StringBuilder prefix = new StringBuilder();
+    int ret = 0;
+    String prefix = "";
     String curDB = getFormattedDb(conf, ss);
     String curPrompt = prompt + curDB;
     String dbSpaces = spacesForString(curDB);
 
     while ((line = reader.readLine(curPrompt + "> ")) != null) {
-      if (!prefix.toString().equals("")) {
-        prefix.append('\n');
+      if (!prefix.equals("")) {
+        prefix += '\n';
       }
       if (line.trim().startsWith("--")) {
         continue;
       }
       if (line.trim().endsWith(";") && !line.trim().endsWith("\\;")) {
         line = prefix + line;
-        response = cli.processLine(line, true);
-        prefix.setLength(0);;
+        ret = cli.processLine(line, true);
+        prefix = "";
         curDB = getFormattedDb(conf, ss);
         curPrompt = prompt + curDB;
         dbSpaces = dbSpaces.length() == curDB.length() ? dbSpaces : spacesForString(curDB);
       } else {
-        prefix.append(line);
+        prefix = prefix + line;
         curPrompt = prompt2 + dbSpaces;
         continue;
       }
     }
 
-    return response;
+    return ret;
   }
 
   private void setupCmdHistory() {

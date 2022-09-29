@@ -17,10 +17,18 @@
  */
 package org.apache.hive.beeline;
 
-import org.junit.Assert;
+import junit.framework.Assert;
 import org.apache.thrift.transport.TTransportException;
 import org.junit.Test;
+import org.mockito.ArgumentCaptor;
+
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 public class TestBeeLineExceptionHandling {
 

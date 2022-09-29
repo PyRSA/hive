@@ -15,11 +15,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.hive.beeline.schematool;
+package org.apache.hive.beeline;
 
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.conf.MetastoreConf;
-import org.apache.hadoop.hive.metastore.tools.schematool.HiveSchemaHelper;
+import org.apache.hadoop.hive.metastore.tools.HiveSchemaHelper;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -35,20 +35,21 @@ import java.util.Arrays;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.same;
+import static org.mockito.Matchers.eq;
+import static org.mockito.Matchers.same;
 import static org.mockito.Mockito.when;
 import static org.powermock.api.mockito.PowerMockito.mockStatic;
+import static org.powermock.api.mockito.PowerMockito.verifyStatic;
 
 @RunWith(PowerMockRunner.class)
 @PowerMockIgnore("javax.management.*")
-@PrepareForTest({ HiveSchemaHelper.class, HiveSchemaTool.HiveSchemaToolCommandBuilder.class })
+@PrepareForTest({ HiveSchemaHelper.class, HiveSchemaTool.CommandBuilder.class })
 public class TestHiveSchemaTool {
 
   String scriptFile = System.getProperty("java.io.tmpdir") + File.separator + "someScript.sql";
   @Mock
   private HiveConf hiveConf;
-  private HiveSchemaTool.HiveSchemaToolCommandBuilder builder;
+  private HiveSchemaTool.CommandBuilder builder;
   private String pasword = "reallySimplePassword";
 
   @Before
@@ -65,11 +66,12 @@ public class TestHiveSchemaTool {
     if (!file.exists()) {
       file.createNewFile();
     }
-    builder = new HiveSchemaTool.HiveSchemaToolCommandBuilder(hiveConf, null, null, "testUser", pasword, scriptFile);
+    builder = new HiveSchemaTool.CommandBuilder(hiveConf, null, null, "testUser", pasword, scriptFile);
   }
 
   @After
   public void globalAssert() throws IOException {
+    verifyStatic();
     HiveSchemaHelper.getValidConfVar(eq(MetastoreConf.ConfVars.CONNECT_URL_KEY), same(hiveConf));
     HiveSchemaHelper
         .getValidConfVar(eq(MetastoreConf.ConfVars.CONNECTION_DRIVER), same(hiveConf));

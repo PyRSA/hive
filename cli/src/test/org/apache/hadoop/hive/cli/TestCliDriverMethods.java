@@ -18,9 +18,9 @@
 package org.apache.hadoop.hive.cli;
 
 
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Matchers.anyBoolean;
+import static org.mockito.Matchers.anyString;
+import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -43,54 +43,40 @@ import java.util.Map;
 import jline.console.ConsoleReader;
 import jline.console.completer.ArgumentCompleter;
 import jline.console.completer.Completer;
-
+import junit.framework.TestCase;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hive.common.io.SessionStream;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.api.Schema;
 import org.apache.hadoop.hive.ql.IDriver;
-import org.apache.hadoop.hive.ql.QueryState;
-import org.apache.hadoop.hive.ql.processors.CommandProcessorException;
 import org.apache.hadoop.hive.ql.processors.CommandProcessorResponse;
-import org.junit.Test;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
-import org.junit.Before;
-import org.junit.After;
 
 
 // Cannot call class TestCliDriver since that's the name of the generated
 // code for the script-based testing
-/**
- * TestCliDriverMethods.
- */
-public class TestCliDriverMethods {
+public class TestCliDriverMethods extends TestCase {
 
   SecurityManager securityManager;
 
   // Some of these tests require intercepting System.exit() using the SecurityManager.
   // It is safer to  register/unregister our SecurityManager during setup/teardown instead
   // of doing it within the individual test cases.
-  @Before
+  @Override
   public void setUp() {
     securityManager = System.getSecurityManager();
     System.setSecurityManager(new NoExitSecurityManager(securityManager));
   }
 
-  @After
+  @Override
   public void tearDown() {
     System.setSecurityManager(securityManager);
   }
 
   // If the command has an associated schema, make sure it gets printed to use
-  @Test
-  public void testThatCliDriverPrintsHeaderForCommandsWithSchema() throws CommandProcessorException {
+  public void testThatCliDriverPrintsHeaderForCommandsWithSchema() {
     Schema mockSchema = mock(Schema.class);
     List<FieldSchema> fieldSchemas = new ArrayList<FieldSchema>();
     String fieldName = "FlightOfTheConchords";
@@ -104,8 +90,7 @@ public class TestCliDriverMethods {
   }
 
   // If the command has no schema, make sure nothing is printed
-  @Test
-  public void testThatCliDriverPrintsNoHeaderForCommandsWithNoSchema() throws CommandProcessorException {
+  public void testThatCliDriverPrintsNoHeaderForCommandsWithNoSchema() {
     Schema mockSchema = mock(Schema.class);
     when(mockSchema.getFieldSchemas()).thenReturn(null);
 
@@ -115,7 +100,6 @@ public class TestCliDriverMethods {
   }
 
   // Test that CliDriver does not strip comments starting with '--'
-  @Test
   public void testThatCliDriverDoesNotStripComments() throws Exception {
     // We need to overwrite System.out and System.err as that is what is used in ShellCmdExecutor
     // So save old values...
@@ -124,10 +108,10 @@ public class TestCliDriverMethods {
 
     // Capture stdout and stderr
     ByteArrayOutputStream dataOut = new ByteArrayOutputStream();
-    SessionStream out = new SessionStream(dataOut);
+    PrintStream out = new PrintStream(dataOut);
     System.setOut(out);
     ByteArrayOutputStream dataErr = new ByteArrayOutputStream();
-    SessionStream err = new SessionStream(dataErr);
+    PrintStream err = new PrintStream(dataErr);
     System.setErr(err);
 
     CliSessionState ss = new CliSessionState(new HiveConf());
@@ -137,14 +121,12 @@ public class TestCliDriverMethods {
     // Save output as yo cannot print it while System.out and System.err are weird
     String message;
     String errors;
+    int ret;
     try {
       CliSessionState.start(ss);
       CliDriver cliDriver = new CliDriver();
       // issue a command with bad options
-      cliDriver.processCmd("!ls --abcdefghijklmnopqrstuvwxyz123456789");
-      assertTrue("Comments with '--; should not have been stripped, so command should fail", false);
-    } catch (CommandProcessorException e) {
-      // this is expected to happen
+      ret = cliDriver.processCmd("!ls --abcdefghijklmnopqrstuvwxyz123456789");
     } finally {
       // restore System.out and System.err
       System.setOut(oldOut);
@@ -152,6 +134,8 @@ public class TestCliDriverMethods {
     }
     message = dataOut.toString("UTF-8");
     errors = dataErr.toString("UTF-8");
+    assertTrue("Comments with '--; should not have been stripped,"
+        + " so command should fail", ret != 0);
     assertTrue("Comments with '--; should not have been stripped,"
         + " so we should have got an error in the output: '" + errors + "'.",
         errors.contains("option"));
@@ -164,11 +148,10 @@ public class TestCliDriverMethods {
    * @param mockSchema
    *          Schema to throw against test
    * @return Output that would have been sent to the user
-   * @throws CommandProcessorException
    * @throws CommandNeedRetryException
    *           won't actually be thrown
    */
-  private PrintStream headerPrintingTestDriver(Schema mockSchema) throws CommandProcessorException {
+  private PrintStream headerPrintingTestDriver(Schema mockSchema) {
     CliDriver cliDriver = new CliDriver();
 
     // We want the driver to try to print the header...
@@ -181,15 +164,14 @@ public class TestCliDriverMethods {
     IDriver proc = mock(IDriver.class);
 
     CommandProcessorResponse cpr = mock(CommandProcessorResponse.class);
-    QueryState queryState = new QueryState.Builder().withGenerateNewQueryId(true).build();
+    when(cpr.getResponseCode()).thenReturn(0);
     when(proc.run(anyString())).thenReturn(cpr);
-    when(proc.getQueryState()).thenReturn(queryState);
 
     // and then see what happens based on the provided schema
     when(proc.getSchema()).thenReturn(mockSchema);
 
     CliSessionState mockSS = mock(CliSessionState.class);
-    SessionStream mockOut = mock(SessionStream.class);
+    PrintStream mockOut = mock(PrintStream.class);
 
     mockSS.out = mockOut;
 
@@ -198,16 +180,16 @@ public class TestCliDriverMethods {
   }
 
 
-  @Test
   public void testGetCommandCompletor() {
     Completer[] completors = CliDriver.getCommandCompleter();
     assertEquals(2, completors.length);
     assertTrue(completors[0] instanceof ArgumentCompleter);
     assertTrue(completors[1] instanceof Completer);
 
-    List<CharSequence> testList = Arrays.asList(")");
+    //comletor add space after last delimeter
+   List<CharSequence>testList=new ArrayList<CharSequence>(Arrays.asList(new String[]{")"}));
     completors[1].complete("fdsdfsdf", 0, testList);
-    assertEquals(")", testList.get(0));
+    assertEquals(") ", testList.get(0));
     testList=new ArrayList<CharSequence>();
     completors[1].complete("len", 0, testList);
     assertTrue(testList.get(0).toString().endsWith("length("));
@@ -218,7 +200,6 @@ public class TestCliDriverMethods {
 
   }
 
-  @Test
   public void testRun() throws Exception {
     // clean history
     String historyDirectory = System.getProperty("user.home");
@@ -257,12 +238,11 @@ public class TestCliDriverMethods {
   /**
    * Test commands exit and quit
    */
-  @Test
   public void testQuit() throws Exception {
 
     CliSessionState ss = new CliSessionState(new HiveConf());
-    ss.err = new SessionStream(System.err);
-    ss.out = new SessionStream(System.out);
+    ss.err = System.err;
+    ss.out = System.out;
 
     try {
       CliSessionState.start(ss);
@@ -288,12 +268,11 @@ public class TestCliDriverMethods {
 
   }
 
-  @Test
   public void testProcessSelectDatabase() throws Exception {
     CliSessionState sessinState = new CliSessionState(new HiveConf());
     CliSessionState.start(sessinState);
     ByteArrayOutputStream data = new ByteArrayOutputStream();
-    sessinState.err = new SessionStream(data);
+    sessinState.err = new PrintStream(data);
     sessinState.database = "database";
     CliDriver driver = new CliDriver();
 
@@ -309,7 +288,6 @@ public class TestCliDriverMethods {
         "FAILED: ParseException line 1:4 cannot recognize input near 'database'"));
   }
 
-  @Test
   public void testprocessInitFiles() throws Exception {
     String oldHiveHome = System.getenv("HIVE_HOME");
     String oldHiveConfDir = System.getenv("HIVE_CONF_DIR");
@@ -329,9 +307,8 @@ public class TestCliDriverMethods {
 
     ByteArrayOutputStream data = new ByteArrayOutputStream();
 
-    sessionState.err = new SessionStream(data);
-    sessionState.out = new SessionStream(System.out);
-    sessionState.setIsQtestLogging(true);
+    sessionState.err = new PrintStream(data);
+    sessionState.out = System.out;
     try {
       CliSessionState.start(sessionState);
       CliDriver cliDriver = new CliDriver();
@@ -374,28 +351,6 @@ public class TestCliDriverMethods {
       assertTrue(data.toString().contains("cannot recognize input near 'bla' 'bla' 'bla'"));
 
     }
-  }
-
-  @Test
-  public void testCommandSplits() {
-    // Test double quote in the string
-    String cmd1 = "insert into escape1 partition (ds='1', part='\"') values (\"!\")";
-    assertEquals(cmd1, CliDriver.splitSemiColon(cmd1).get(0));
-    assertEquals(cmd1, CliDriver.splitSemiColon(cmd1 + ";").get(0));
-
-    // Test escape
-    String cmd2 = "insert into escape1 partition (ds='1', part='\"\\'') values (\"!\")";
-    assertEquals(cmd2, CliDriver.splitSemiColon(cmd2).get(0));
-    assertEquals(cmd2, CliDriver.splitSemiColon(cmd2 + ";").get(0));
-
-    // Test multiple commands
-    List<String> results = CliDriver.splitSemiColon(cmd1 + ";" + cmd2);
-    assertEquals(cmd1, results.get(0));
-    assertEquals(cmd2, results.get(1));
-
-    results = CliDriver.splitSemiColon(cmd1 + ";" + cmd2 + ";");
-    assertEquals(cmd1, results.get(0));
-    assertEquals(cmd2, results.get(1));
   }
 
   private static void setEnv(String key, String value) throws Exception {

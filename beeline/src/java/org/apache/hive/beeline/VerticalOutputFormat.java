@@ -36,7 +36,6 @@ class VerticalOutputFormat implements OutputFormat {
     this.beeLine = beeLine;
   }
 
-  @Override
   public int print(Rows rows) {
     int count = 0;
     Rows.Row header = (Rows.Row) rows.next();

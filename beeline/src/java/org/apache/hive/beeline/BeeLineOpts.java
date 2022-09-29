@@ -48,7 +48,7 @@ import jline.console.completer.StringsCompleter;
 import jline.console.history.MemoryHistory;
 import org.apache.hadoop.hive.conf.HiveConf;
 
-public class BeeLineOpts implements Completer {
+class BeeLineOpts implements Completer {
   public static final int DEFAULT_MAX_WIDTH = 80;
   public static final int DEFAULT_MAX_HEIGHT = 80;
   public static final int DEFAULT_HEADER_INTERVAL = 100;
@@ -68,7 +68,6 @@ public class BeeLineOpts implements Completer {
   private final BeeLine beeLine;
   private boolean autosave = false;
   private boolean silent = false;
-  private Boolean report = null;
   private boolean color = false;
   private boolean showHeader = true;
   private boolean escapeCRLF = false;
@@ -97,7 +96,6 @@ public class BeeLineOpts implements Completer {
   private HiveConf conf;
   private boolean trimScripts = true;
   private boolean allowMultiLineCommand = true;
-  private int fetchSize = -1;
 
   //This can be set for old behavior of nulls printed as empty strings
   private boolean nullEmptyString = false;
@@ -116,7 +114,6 @@ public class BeeLineOpts implements Completer {
   private Map<String, String> hiveVariables = new HashMap<String, String>();
   private Map<String, String> hiveConfVariables = new HashMap<String, String>();
   private boolean helpAsked;
-  private boolean beelineSiteUrlsAsked;
 
   private String lastConnectedUrl = null;
 
@@ -506,12 +503,11 @@ public class BeeLineOpts implements Completer {
   public boolean getEscapeCRLF() {
     if (beeLine.isBeeLine()) {
       return escapeCRLF;
-    } else { //hive cli
-      if(conf != null) {
-        return HiveConf.getBoolVar(conf, HiveConf.ConfVars.HIVE_CLI_PRINT_ESCAPE_CRLF);
-      } else {
-        return false;
-      }
+    } else {
+      boolean flag;
+      HiveConf conf = beeLine.getCommands().getHiveConf(true);
+      flag = HiveConf.getBoolVar(conf, HiveConf.ConfVars.HIVE_CLI_PRINT_ESCAPE_CRLF);
+      return flag;
     }
   }
 
@@ -573,14 +569,6 @@ public class BeeLineOpts implements Completer {
     return silent;
   }
 
-  public void setReport(boolean report) {
-    this.report = report;
-  }
-
-  public Boolean isReport() {
-    return report;
-  }
-
   public void setAutosave(boolean autosave) {
     this.autosave = autosave;
   }
@@ -626,10 +614,6 @@ public class BeeLineOpts implements Completer {
   }
 
   public void setHiveVariables(Map<String, String> hiveVariables) {
-    if (hiveVariables == null) {
-      this.hiveVariables.clear();
-      return;
-    }
     this.hiveVariables = hiveVariables;
   }
 
@@ -639,14 +623,6 @@ public class BeeLineOpts implements Completer {
 
   public void setAllowMultiLineCommand(boolean allowMultiLineCommand) {
     this.allowMultiLineCommand = allowMultiLineCommand;
-  }
-
-  public int getFetchSize() {
-    return fetchSize;
-  }
-
-  public void setFetchSize(int fetchSize) {
-    this.fetchSize = fetchSize;
   }
 
   /**
@@ -671,10 +647,6 @@ public class BeeLineOpts implements Completer {
   }
 
   public void setHiveConfVariables(Map<String, String> hiveConfVariables) {
-    if (hiveConfVariables == null) {
-      this.hiveConfVariables.clear();
-      return;
-    }
     this.hiveConfVariables = hiveConfVariables;
   }
 
@@ -706,16 +678,7 @@ public class BeeLineOpts implements Completer {
   public boolean isHelpAsked() {
     return helpAsked;
   }
-  
-  public void setBeelineSiteUrlsAsked(boolean beelineSiteUrlsAsked) {
-    this.beelineSiteUrlsAsked = beelineSiteUrlsAsked;
-  }
 
-  public boolean isBeelineSiteUrlsAsked() {
-    return beelineSiteUrlsAsked;
-  }
-
-  
   public String getLastConnectedUrl(){
     return lastConnectedUrl;
   }

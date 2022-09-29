@@ -20,7 +20,10 @@ package org.apache.hive.beeline;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
-import org.junit.Assert;
+import static org.mockito.Mockito.times;
+
+import junit.framework.Assert;
+import org.junit.BeforeClass;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 

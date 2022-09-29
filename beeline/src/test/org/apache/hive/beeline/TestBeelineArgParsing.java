@@ -18,12 +18,7 @@
 
 package org.apache.hive.beeline;
 
-import java.io.BufferedWriter;
-import java.io.ByteArrayOutputStream;
-import java.io.FileInputStream;
-import java.io.FileWriter;
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -43,6 +38,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hive.common.util.HiveTestUtils;
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -109,15 +105,11 @@ public class TestBeelineArgParsing {
     extraContent.put(new File("META-INF/services/java.sql.Driver"), dummyDriverClazzName);
     File jarFile = HiveTestUtils.genLocalJarForTest(u, dummyDriverClazzName, extraContent);
     String pathToDummyDriver = jarFile.getAbsolutePath();
-    String pathToPostgresJar = System.getProperty("maven.local.repository")
-        + File.separator + "org"
-        + File.separator + "postgresql"
-        + File.separator + "postgresql"
-        + File.separator + "42.4.1"
-        + File.separator
-        + "postgresql-42.4.1.jar";
     return Arrays.asList(new Object[][] {
-        { "jdbc:postgresql://host:5432/testdb", "org.postgresql.Driver", pathToPostgresJar, true },
+        { "jdbc:postgresql://host:5432/testdb", "org.postgresql.Driver",
+            System.getProperty("maven.local.repository") + File.separator + "postgresql"
+                + File.separator + "postgresql" + File.separator + "9.1-901.jdbc4" + File.separator
+                + "postgresql-9.1-901.jdbc4.jar", true },
         { "jdbc:dummy://host:5432/testdb", dummyDriverClazzName, pathToDummyDriver, false } });
   }
 
@@ -130,33 +122,6 @@ public class TestBeelineArgParsing {
     Assert.assertTrue(bl.connectArgs.equals("url name password driver"));
     Assert.assertTrue(bl.getOpts().getAuthType().equals("authType"));
   }
-
-  @Test
-  public void testEmptyHiveConfVariable() throws Exception {
-    ByteArrayOutputStream os = new ByteArrayOutputStream();
-    PrintStream ops = new PrintStream(os);
-    TestBeeline bl = new TestBeeline();
-    bl.setOutputStream(ops);
-    BeeLineOpts opts = new BeeLineOpts(bl, System.getProperties());
-    String[] args = { "--hiveconf", "hadoop.tmp.dir=/tmp" };
-
-    File rcFile = new File(opts.saveDir(), "beeline.properties");
-    rcFile.deleteOnExit();
-
-    BufferedWriter writer = new BufferedWriter(new FileWriter(rcFile));
-    writer.write("beeline.hiveconfvariables={}");
-    writer.newLine();
-    writer.write("beeline.hivevariables={}");
-    writer.newLine();
-    writer.flush();
-
-    try (InputStream stream = new FileInputStream(rcFile)) {
-      bl.getOpts().load(stream);
-      bl.initArgs(args);
-      bl.getOpts().getHiveVariables().get("test");
-    }
-  }
-
 
   @Test
   public void testPasswordFileArgs() throws Exception {
@@ -193,13 +158,11 @@ public class TestBeelineArgParsing {
   public void testQueryScripts() throws Exception {
     TestBeeline bl = new TestBeeline();
     String args[] = new String[] {"-u", "url", "-n", "name",
-      "-p", "password", "-d", "driver", "-e", "select1", "-e", "select2",
-      "-e", "select \"hive\""};
+      "-p", "password", "-d", "driver", "-e", "select1", "-e", "select2"};
     Assert.assertEquals(0, bl.initArgs(args));
     Assert.assertTrue(bl.connectArgs.equals("url name password driver"));
     Assert.assertTrue(bl.queries.contains("select1"));
     Assert.assertTrue(bl.queries.contains("select2"));
-    Assert.assertTrue(bl.queries.contains("select \"hive\""));
   }
 
   /**
@@ -388,47 +351,6 @@ public class TestBeelineArgParsing {
     String args[] = new String[] {"--maxHistoryRows=100"};
     Assert.assertEquals(0, bl.initArgs(args));
     Assert.assertTrue(bl.getOpts().getMaxHistoryRows() == 100);
-    bl.close();
-  }
-
-  /**
-   * Test the file parameter option
-   * @throws Exception
-   */
-  @Test
-  public void testFileParam() throws Exception {
-    TestBeeline bl = new TestBeeline();
-    String args[] = new String[] {"-u", "url", "-n", "name",
-        "-p", "password", "-d", "driver", "-f", "hdfs://myscript"};
-    Assert.assertEquals(0, bl.initArgs(args));
-    Assert.assertTrue(bl.connectArgs.equals("url name password driver"));
-    Assert.assertTrue(bl.getOpts().getScriptFile().equals("hdfs://myscript"));
-  }
-
-  /**
-   * Test the report parameter option.
-   * @throws Exception
-   */
-  @Test
-  public void testReport() throws Exception {
-    TestBeeline bl = new TestBeeline();
-    String args[] = new String[] {"--report=true"};
-    Assert.assertEquals(0, bl.initArgs(args));
-    Assert.assertTrue(bl.getOpts().isReport());
-    bl.close();
-  }
-
-  /**
-   * Test property file option with query.
-   */
-  @Test
-  public void testPropertyFileWithQuery() throws Exception {
-    TestBeeline bl = new TestBeeline();
-    String args[] =
-        new String[] {"--property-file", "props", "-e", "show tables"};
-    Assert.assertEquals(0, bl.initArgs(args));
-    Assert.assertEquals("props", bl.properties.get(0));
-    Assert.assertEquals("show tables", bl.queries.get(0));
     bl.close();
   }
 }
