@@ -98,6 +98,7 @@
           <artifactId>jackson-module-scala_${scala.binary.version}</artifactId>
         </exclusion>
       </exclusions>
+      <scope>provided</scope>
    </dependency>
     <dependency>
       <groupId>junit</groupId>

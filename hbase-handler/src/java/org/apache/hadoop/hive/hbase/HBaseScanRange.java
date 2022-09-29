@@ -66,10 +66,10 @@ public class HBaseScanRange implements Serializable {
     if (!filterOnly) {
       // Set the start and stop rows only if asked to
       if (startRow != null) {
-        scan.setStartRow(startRow);
+        scan.withStartRow(startRow);
       }
       if (stopRow != null) {
-        scan.setStopRow(stopRow);
+        scan.withStopRow(stopRow);
       }
     }
 

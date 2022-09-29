@@ -22,6 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.apache.hadoop.fs.FileSystem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -118,7 +119,11 @@ class IndexCache {
     LOG.debug("IndexCache MISS: MapId " + mapId + " not found") ;
     TezSpillRecord tmp = null;
     try {
-      tmp = new TezSpillRecord(indexFileName, conf, expectedIndexOwner);
+      // tez 0.9.1 version
+      // tmp = new TezSpillRecord(indexFileName, conf, expectedIndexOwner);
+      // tez 0.10.0 version
+      final FileSystem rfs = FileSystem.getLocal(conf).getRaw();
+      tmp = new TezSpillRecord(indexFileName, rfs, expectedIndexOwner);
     } catch (Throwable e) {
       tmp = new TezSpillRecord(0);
       cache.remove(mapId);

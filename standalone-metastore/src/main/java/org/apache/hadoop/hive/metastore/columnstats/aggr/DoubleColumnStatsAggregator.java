@@ -37,6 +37,9 @@ import org.apache.hadoop.hive.metastore.utils.MetaStoreUtils.ColStatsObjWithSour
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static org.apache.hadoop.hive.metastore.columnstats.ColumnsStatsUtils.doubleInspectorFromStats;
+
+
 public class DoubleColumnStatsAggregator extends ColumnStatsAggregator implements
     IExtrapolatePartStatus {
 
@@ -62,8 +65,7 @@ public class DoubleColumnStatsAggregator extends ColumnStatsAggregator implement
         LOG.trace("doAllPartitionContainStats for column: {} is: {}", colName,
             doAllPartitionContainStats);
       }
-      DoubleColumnStatsDataInspector doubleColumnStatsData =
-          (DoubleColumnStatsDataInspector) cso.getStatsData().getDoubleStats();
+      DoubleColumnStatsDataInspector doubleColumnStatsData = doubleInspectorFromStats(cso);
       if (doubleColumnStatsData.getNdvEstimator() == null) {
         ndvEstimator = null;
         break;
@@ -95,8 +97,7 @@ public class DoubleColumnStatsAggregator extends ColumnStatsAggregator implement
       double densityAvgSum = 0.0;
       for (ColStatsObjWithSourceInfo csp : colStatsWithSourceInfo) {
         ColumnStatisticsObj cso = csp.getColStatsObj();
-        DoubleColumnStatsDataInspector newData =
-            (DoubleColumnStatsDataInspector) cso.getStatsData().getDoubleStats();
+        DoubleColumnStatsDataInspector newData = doubleInspectorFromStats(cso);
         lowerBound = Math.max(lowerBound, newData.getNumDVs());
         higherBound += newData.getNumDVs();
         densityAvgSum += (newData.getHighValue() - newData.getLowValue()) / newData.getNumDVs();
@@ -172,8 +173,7 @@ public class DoubleColumnStatsAggregator extends ColumnStatsAggregator implement
         for (ColStatsObjWithSourceInfo csp : colStatsWithSourceInfo) {
           ColumnStatisticsObj cso = csp.getColStatsObj();
           String partName = csp.getPartName();
-          DoubleColumnStatsDataInspector newData =
-              (DoubleColumnStatsDataInspector) cso.getStatsData().getDoubleStats();
+          DoubleColumnStatsDataInspector newData = doubleInspectorFromStats(cso);
           // newData.isSetBitVectors() should be true for sure because we
           // already checked it before.
           if (indexMap.get(partName) != curIndex) {

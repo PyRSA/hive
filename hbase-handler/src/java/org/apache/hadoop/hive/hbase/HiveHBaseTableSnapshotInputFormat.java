@@ -26,7 +26,6 @@ import org.apache.hadoop.hbase.mapred.TableInputFormat;
 import org.apache.hadoop.hbase.mapred.TableSnapshotInputFormat;
 import org.apache.hadoop.hbase.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.protobuf.generated.ClientProtos;
-import org.apache.hadoop.hbase.util.Base64;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.mapred.FileInputFormat;
 import org.apache.hadoop.mapred.InputFormat;
@@ -37,6 +36,7 @@ import org.apache.hadoop.mapred.Reporter;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Base64;
 
 public class HiveHBaseTableSnapshotInputFormat
     implements InputFormat<ImmutableBytesWritable, ResultWritable> {
@@ -54,7 +54,7 @@ public class HiveHBaseTableSnapshotInputFormat
   // Copied from HBase's TableMapreduceUtil since it is not public API
   static String convertScanToString(Scan scan) throws IOException {
     ClientProtos.Scan proto = ProtobufUtil.toScan(scan);
-    return Base64.encodeBytes(proto.toByteArray());
+    return Base64.getEncoder().encodeToString(proto.toByteArray());
   }
 
   @Override

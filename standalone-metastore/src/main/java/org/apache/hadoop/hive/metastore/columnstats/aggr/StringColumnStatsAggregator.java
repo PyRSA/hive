@@ -38,6 +38,9 @@ import org.apache.hadoop.hive.metastore.utils.MetaStoreUtils.ColStatsObjWithSour
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static org.apache.hadoop.hive.metastore.columnstats.ColumnsStatsUtils.stringInspectorFromStats;
+
+
 public class StringColumnStatsAggregator extends ColumnStatsAggregator implements
     IExtrapolatePartStatus {
 
@@ -63,8 +66,7 @@ public class StringColumnStatsAggregator extends ColumnStatsAggregator implement
         LOG.trace("doAllPartitionContainStats for column: {} is: {}", colName,
             doAllPartitionContainStats);
       }
-      StringColumnStatsDataInspector stringColumnStatsData =
-          (StringColumnStatsDataInspector) cso.getStatsData().getStringStats();
+      StringColumnStatsDataInspector stringColumnStatsData = stringInspectorFromStats(cso);
       if (stringColumnStatsData.getNdvEstimator() == null) {
         ndvEstimator = null;
         break;
@@ -93,8 +95,7 @@ public class StringColumnStatsAggregator extends ColumnStatsAggregator implement
       StringColumnStatsDataInspector aggregateData = null;
       for (ColStatsObjWithSourceInfo csp : colStatsWithSourceInfo) {
         ColumnStatisticsObj cso = csp.getColStatsObj();
-        StringColumnStatsDataInspector newData =
-            (StringColumnStatsDataInspector) cso.getStatsData().getStringStats();
+        StringColumnStatsDataInspector newData = stringInspectorFromStats(cso);
         if (ndvEstimator != null) {
           ndvEstimator.mergeEstimators(newData.getNdvEstimator());
         }
@@ -148,8 +149,7 @@ public class StringColumnStatsAggregator extends ColumnStatsAggregator implement
         for (ColStatsObjWithSourceInfo csp : colStatsWithSourceInfo) {
           ColumnStatisticsObj cso = csp.getColStatsObj();
           String partName = csp.getPartName();
-          StringColumnStatsDataInspector newData =
-              (StringColumnStatsDataInspector) cso.getStatsData().getStringStats();
+          StringColumnStatsDataInspector newData = stringInspectorFromStats(cso);
           // newData.isSetBitVectors() should be true for sure because we
           // already checked it before.
           if (indexMap.get(partName) != curIndex) {
