@@ -110,11 +110,6 @@ public class AppConfig extends Configuration {
   public static final String MAPPER_MEMORY_MB    = "templeton.mapper.memory.mb";
   public static final String MR_AM_MEMORY_MB     = "templeton.mr.am.memory.mb";
   public static final String TEMPLETON_JOBSLIST_ORDER = "templeton.jobs.listorder";
-  public static final String USE_SSL = "templeton.use.ssl";
-  public static final String KEY_STORE_PATH = "templeton.keystore.path";
-  public static final String KEY_STORE_PASSWORD = "templeton.keystore.password";
-  public static final String SSL_PROTOCOL_BLACKLIST = "templeton.ssl.protocol.blacklist";
-  public static final String HOST = "templeton.host";
 
   /*
    * These parameters controls the maximum number of concurrent job submit/status/list
@@ -168,7 +163,6 @@ public class AppConfig extends Configuration {
    * of escape/unescape methods in {@link org.apache.hadoop.util.StringUtils} in webhcat.
    */
   public static final String HIVE_PROPS_NAME     = "templeton.hive.properties";
-  public static final String HIVE_SERVER2_URL    = "templeton.hive.hs2.url";
   public static final String SQOOP_ARCHIVE_NAME  = "templeton.sqoop.archive";
   public static final String SQOOP_PATH_NAME     = "templeton.sqoop.path";
   public static final String SQOOP_HOME_PATH     = "templeton.sqoop.home";
