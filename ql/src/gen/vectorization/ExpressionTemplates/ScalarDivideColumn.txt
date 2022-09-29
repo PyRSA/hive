@@ -20,7 +20,6 @@ package org.apache.hadoop.hive.ql.exec.vector.expressions.gen;
 
 import java.util.Arrays;
 
-import org.apache.hadoop.hive.ql.exec.vector.expressions.OverflowUtils;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorExpression;
 import org.apache.hadoop.hive.ql.exec.vector.VectorExpressionDescriptor;
 
@@ -36,7 +35,7 @@ import org.apache.hadoop.hive.ql.exec.vector.expressions.NullUtil;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 
 /**
- * Generated from template ScalarDivideColumn.txt.
+ * Generated from template ScalarArithmeticColumn.txt.
  * Implements a vectorized arithmetic operator with a scalar on the left and a
  * column vector on the right. The result is output to an output column vector.
  */
@@ -45,10 +44,12 @@ public class <ClassName> extends VectorExpression {
   private static final long serialVersionUID = 1L;
 
   private final <OperandType1> value;
+  private final int colNum;
 
   public <ClassName>(<OperandType1> value, int colNum, int outputColumnNum) {
-    super(colNum, outputColumnNum);
+    super(outputColumnNum);
     this.value = value;
+    this.colNum = colNum;
   }
 
   public <ClassName>() {
@@ -56,6 +57,7 @@ public class <ClassName> extends VectorExpression {
 
     // Dummy final assignments.
     value = 0;
+    colNum = -1;
   }
 
   @Override
@@ -76,7 +78,7 @@ public class <ClassName> extends VectorExpression {
       super.evaluateChildren(batch);
     }
 
-    <InputColumnVectorType> inputColVector = (<InputColumnVectorType>) batch.cols[inputColumnNum[0]];
+    <InputColumnVectorType> inputColVector = (<InputColumnVectorType>) batch.cols[colNum];
     <OutputColumnVectorType> outputColVector = (<OutputColumnVectorType>) batch.cols[outputColumnNum];
     int[] sel = batch.selected;
     boolean[] inputIsNull = inputColVector.isNull;
@@ -92,15 +94,9 @@ public class <ClassName> extends VectorExpression {
     if (inputColVector.isRepeating) {
      if (inputColVector.noNulls || !inputIsNull[0]) {
        outputIsNull[0] = false;
-       final <OperandType2> denom = vector[0];
-       hasDivBy0 = hasDivBy0 || (denom == 0);
-#IF MANUAL_DIVIDE_BY_ZERO_CHECK
-       if (denom != 0) {
-         outputVector[0] = value <OperatorSymbol> denom;
-       }
-#ELSE
+       <OperandType2> denom = vector[0];
        outputVector[0] = value <OperatorSymbol> denom;
-#ENDIF MANUAL_DIVIDE_BY_ZERO_CHECK
+       hasDivBy0 = hasDivBy0 || (denom == 0);
      } else {
        outputIsNull[0] = true;
        outputColVector.noNulls = false;
@@ -116,27 +112,15 @@ public class <ClassName> extends VectorExpression {
              final int i = sel[j];
              outputIsNull[i] = false;
              <OperandType2> denom = vector[i];
-             hasDivBy0 = hasDivBy0 || (denom == 0);
-#IF MANUAL_DIVIDE_BY_ZERO_CHECK
-             if (denom != 0) {
-               outputVector[i] = value <OperatorSymbol> denom;
-             }
-#ELSE
              outputVector[i] = value <OperatorSymbol> denom;
-#ENDIF MANUAL_DIVIDE_BY_ZERO_CHECK
+             hasDivBy0 = hasDivBy0 || (denom == 0);
           }
          } else {
            for(int j = 0; j != n; j++) {
              final int i = sel[j];
-             final <OperandType2> denom = vector[i];
-             hasDivBy0 = hasDivBy0 || (denom == 0);
-#IF MANUAL_DIVIDE_BY_ZERO_CHECK
-             if (denom != 0) {
-               outputVector[i] = value <OperatorSymbol> denom;
-             }
-#ELSE
+             <OperandType2> denom = vector[i];
              outputVector[i] = value <OperatorSymbol> denom;
-#ENDIF MANUAL_DIVIDE_BY_ZERO_CHECK
+             hasDivBy0 = hasDivBy0 || (denom == 0);
            }
          }
       } else {
@@ -148,15 +132,9 @@ public class <ClassName> extends VectorExpression {
           outputColVector.noNulls = true;
         }
         for(int i = 0; i != n; i++) {
-          final <OperandType2> denom = vector[i];
-          hasDivBy0 = hasDivBy0 || (denom == 0);
-#IF MANUAL_DIVIDE_BY_ZERO_CHECK
-          if (denom != 0) {
-            outputVector[i] = value <OperatorSymbol> denom;
-          }
-#ELSE
+          <OperandType2> denom = vector[i];
           outputVector[i] = value <OperatorSymbol> denom;
-#ENDIF MANUAL_DIVIDE_BY_ZERO_CHECK
+          hasDivBy0 = hasDivBy0 || (denom == 0);
         }
       }
     } else /* there are NULLs in the inputColVector */ {
@@ -168,38 +146,20 @@ public class <ClassName> extends VectorExpression {
         for(int j = 0; j != n; j++) {
           int i = sel[j];
           outputIsNull[i] = inputIsNull[i];
-          final <OperandType2> denom = vector[i];
-          hasDivBy0 = hasDivBy0 || (denom == 0);
-#IF MANUAL_DIVIDE_BY_ZERO_CHECK
-          if (denom != 0) {
-            outputVector[i] = value <OperatorSymbol> denom;
-          }
-#ELSE
+          <OperandType2> denom = vector[i];
           outputVector[i] = value <OperatorSymbol> denom;
-#ENDIF MANUAL_DIVIDE_BY_ZERO_CHECK
+          hasDivBy0 = hasDivBy0 || (denom == 0);
         }
       } else {
         System.arraycopy(inputIsNull, 0, outputIsNull, 0, n);
         for(int i = 0; i != n; i++) {
-          final <OperandType2> denom = vector[i];
-          hasDivBy0 = hasDivBy0 || (denom == 0);
-#IF MANUAL_DIVIDE_BY_ZERO_CHECK
-          if (denom != 0) {
-            outputVector[i] = value <OperatorSymbol> denom;
-          }
-#ELSE
+          <OperandType2> denom = vector[i];
           outputVector[i] = value <OperatorSymbol> denom;
-#ENDIF MANUAL_DIVIDE_BY_ZERO_CHECK
+          hasDivBy0 = hasDivBy0 || (denom == 0);
         }
       }
     }
 
-#IF CHECKED
-    //when operating in checked mode make sure we handle overflows similar to non-vectorized expression
-    OverflowUtils.accountForOverflow<CamelReturnType>(getOutputTypeInfo(), outputColVector,
-        batch.selectedInUse, sel, n);
-#ELSE
-#ENDIF CHECKED
     if (!hasDivBy0) {
       NullUtil.setNullOutputEntriesColScalar(outputColVector, batch.selectedInUse, sel, n);
     } else {
@@ -210,7 +170,7 @@ public class <ClassName> extends VectorExpression {
 
   @Override
   public String vectorExpressionParameters() {
-    return "val " + value + ", " + getColumnParamString(1, inputColumnNum[0]);
+    return "val " + value + ", " + getColumnParamString(1, colNum);
   }
 
   @Override

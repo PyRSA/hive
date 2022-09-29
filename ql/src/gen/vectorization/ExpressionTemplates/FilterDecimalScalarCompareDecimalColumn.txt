@@ -28,7 +28,7 @@ import org.apache.hadoop.hive.common.type.HiveDecimal;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 
 /**
- * This is a generated class to evaluate a comparison on a vector of decimal
+ * This is a generated class to evaluate a <OperatorSymbol> comparison on a vector of decimal
  * values.
  */
 public class <ClassName> extends VectorExpression {
@@ -36,10 +36,12 @@ public class <ClassName> extends VectorExpression {
   private static final long serialVersionUID = 1L;
 
   private final HiveDecimal value;
+  private final int colNum;
 
   public <ClassName>(HiveDecimal value, int colNum) {
-    super(colNum, -1);
+    super();
     this.value = value;
+    this.colNum = colNum;
   }
 
   public <ClassName>() {
@@ -47,6 +49,7 @@ public class <ClassName> extends VectorExpression {
 
     // Dummy final assignments.
     value = null;
+    colNum = -1;
   }
 
   @Override
@@ -61,7 +64,7 @@ public class <ClassName> extends VectorExpression {
     if (childExpressions != null) {
       super.evaluateChildren(batch);
     }
-    DecimalColumnVector inputColVector = (DecimalColumnVector) batch.cols[inputColumnNum[0]];
+    DecimalColumnVector inputColVector = (DecimalColumnVector) batch.cols[colNum];
     int[] sel = batch.selected;
     boolean[] inputIsNull = inputColVector.isNull;
 
@@ -138,7 +141,7 @@ public class <ClassName> extends VectorExpression {
 
   @Override
   public String vectorExpressionParameters() {
-    return "val " + value.toString() + ", " + getColumnParamString(1, inputColumnNum[0]);
+    return "val " + value.toString() + ", " + getColumnParamString(1, colNum);
   }
 
   @Override

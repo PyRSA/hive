@@ -23,9 +23,6 @@ import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorExpression;
 import org.apache.hadoop.hive.ql.exec.vector.VectorExpressionDescriptor;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
-#IF DECIMAL
-import org.apache.hadoop.hive.serde2.io.HiveDecimalWritable;
-#ENDIF DECIMAL
 
 /**
  * Compute IF(expr1, expr2, expr3) for 3 input column expressions.
@@ -36,13 +33,25 @@ public class <ClassName> extends VectorExpression {
 
   private static final long serialVersionUID = 1L;
 
+  private final int arg1Column;
+  private final int arg2Column;
+  private final int arg3Column;
+
   public <ClassName>(int arg1Column, int arg2Column, int arg3Column,
       int outputColumnNum) {
-    super(arg1Column, arg2Column, arg3Column, outputColumnNum);
+    super(outputColumnNum);
+    this.arg1Column = arg1Column;
+    this.arg2Column = arg2Column;
+    this.arg3Column = arg3Column;
   }
 
   public <ClassName>() {
     super();
+
+    // Dummy final assignments.
+    arg1Column = -1;
+    arg2Column = -1;
+    arg3Column = -1;
   }
 
   @Override
@@ -52,17 +61,11 @@ public class <ClassName> extends VectorExpression {
       super.evaluateChildren(batch);
     }
 
-    LongColumnVector arg1ColVector = (LongColumnVector) batch.cols[inputColumnNum[0]];
-    <ColumnVectorType> arg2ColVector = (<ColumnVectorType>) batch.cols[inputColumnNum[1]];
+    LongColumnVector arg1ColVector = (LongColumnVector) batch.cols[arg1Column];
+    <ColumnVectorType> arg2ColVector = (<ColumnVectorType>) batch.cols[arg2Column];
     boolean[] arg2IsNull = arg2ColVector.isNull;
-#IF DECIMAL
-    HiveDecimalWritable[] vector2 = arg2ColVector.vector;
-#ENDIF DECIMAL
-    <ColumnVectorType> arg3ColVector = (<ColumnVectorType>) batch.cols[inputColumnNum[2]];
+    <ColumnVectorType> arg3ColVector = (<ColumnVectorType>) batch.cols[arg3Column];
     boolean[] arg3IsNull = arg3ColVector.isNull;
-#IF DECIMAL
-    HiveDecimalWritable[] vector3 = arg3ColVector.vector;
-#ENDIF DECIMAL
     <ColumnVectorType> outputColVector = (<ColumnVectorType>) batch.cols[outputColumnNum];
     int[] sel = batch.selected;
     boolean[] outputIsNull = outputColVector.isNull;
@@ -104,11 +107,7 @@ public class <ClassName> extends VectorExpression {
           if (vector1[i] == 1) {
             if (!arg2IsNull[i]) {
               outputIsNull[i] = false;
-#IF DECIMAL
-              outputColVector.set(i, vector2[i]);
-#ELSE
               outputColVector.set(i, arg2ColVector.asScratch<ObjectName>(i));
-#ENDIF DECIMAL
             } else {
               outputIsNull[i] = true;
               outputColVector.noNulls = false;
@@ -116,11 +115,7 @@ public class <ClassName> extends VectorExpression {
           } else {
             if (!arg3IsNull[i]) {
               outputIsNull[i] = false;
-#IF DECIMAL
-              outputColVector.set(i, vector3[i]);
-#ELSE
               outputColVector.set(i, arg3ColVector.asScratch<ObjectName>(i));
-#ENDIF DECIMAL
             } else {
               outputIsNull[i] = true;
               outputColVector.noNulls = false;
@@ -132,11 +127,7 @@ public class <ClassName> extends VectorExpression {
           if (vector1[i] == 1) {
             if (!arg2IsNull[i]) {
               outputIsNull[i] = false;
-#IF DECIMAL
-              outputColVector.set(i, vector2[i]);
-#ELSE
               outputColVector.set(i, arg2ColVector.asScratch<ObjectName>(i));
-#ENDIF DECIMAL
             } else {
               outputIsNull[i] = true;
               outputColVector.noNulls = false;
@@ -144,11 +135,7 @@ public class <ClassName> extends VectorExpression {
           } else {
             if (!arg3IsNull[i]) {
               outputIsNull[i] = false;
-#IF DECIMAL
-              outputColVector.set(i, vector3[i]);
-#ELSE
               outputColVector.set(i, arg3ColVector.asScratch<ObjectName>(i));
-#ENDIF DECIMAL
             } else {
               outputIsNull[i] = true;
               outputColVector.noNulls = false;
@@ -163,11 +150,7 @@ public class <ClassName> extends VectorExpression {
           if (!arg1ColVector.isNull[i] && vector1[i] == 1) {
             if (!arg2IsNull[i]) {
               outputIsNull[i] = false;
-#IF DECIMAL
-              outputColVector.set(i, vector2[i]);
-#ELSE
               outputColVector.set(i, arg2ColVector.asScratch<ObjectName>(i));
-#ENDIF DECIMAL
             } else {
               outputIsNull[i] = true;
               outputColVector.noNulls = false;
@@ -175,11 +158,7 @@ public class <ClassName> extends VectorExpression {
           } else {
             if (!arg3IsNull[i]) {
               outputIsNull[i] = false;
-#IF DECIMAL
-              outputColVector.set(i, vector3[i]);
-#ELSE
               outputColVector.set(i, arg3ColVector.asScratch<ObjectName>(i));
-#ENDIF DECIMAL
             } else {
               outputIsNull[i] = true;
               outputColVector.noNulls = false;
@@ -191,11 +170,7 @@ public class <ClassName> extends VectorExpression {
           if (!arg1ColVector.isNull[i] && vector1[i] == 1) {
             if (!arg2IsNull[i]) {
               outputIsNull[i] = false;
-#IF DECIMAL
-              outputColVector.set(i, vector2[i]);
-#ELSE
               outputColVector.set(i, arg2ColVector.asScratch<ObjectName>(i));
-#ENDIF DECIMAL
             } else {
               outputIsNull[i] = true;
               outputColVector.noNulls = false;
@@ -203,11 +178,7 @@ public class <ClassName> extends VectorExpression {
           } else {
             if (!arg3IsNull[i]) {
               outputIsNull[i] = false;
-#IF DECIMAL
-              outputColVector.set(i, vector3[i]);
-#ELSE
               outputColVector.set(i, arg3ColVector.asScratch<ObjectName>(i));
-#ENDIF DECIMAL
             } else {
               outputIsNull[i] = true;
               outputColVector.noNulls = false;
@@ -224,8 +195,8 @@ public class <ClassName> extends VectorExpression {
 
   @Override
   public String vectorExpressionParameters() {
-    return getColumnParamString(0, inputColumnNum[0]) + ", " + getColumnParamString(1, inputColumnNum[1]) +
-        getColumnParamString(2, inputColumnNum[2]);
+    return getColumnParamString(0, arg1Column) + ", " + getColumnParamString(1, arg2Column) +
+        getColumnParamString(2, arg3Column);
   }
 
   @Override

@@ -18,6 +18,7 @@
  
 package org.apache.hadoop.hive.ql.exec.vector.expressions.gen;
 
+import org.apache.hadoop.hive.ql.udf.UDFToString;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.StringExpr;
 import org.apache.hadoop.io.LongWritable;
 
