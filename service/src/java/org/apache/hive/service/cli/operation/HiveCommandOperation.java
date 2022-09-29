@@ -24,16 +24,15 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.hadoop.hive.common.io.SessionStream;
+import org.apache.commons.lang3.CharEncoding;
 import org.apache.hadoop.hive.metastore.api.Schema;
 import org.apache.hadoop.hive.ql.processors.CommandProcessor;
-import org.apache.hadoop.hive.ql.processors.CommandProcessorException;
 import org.apache.hadoop.hive.ql.processors.CommandProcessorResponse;
 import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hive.service.ServiceUtils;
@@ -51,6 +50,7 @@ import org.apache.hive.service.cli.session.HiveSession;
 public class HiveCommandOperation extends ExecuteStatementOperation {
   private final CommandProcessor commandProcessor;
   private TableSchema resultSchema = null;
+  private boolean closeSessionStreams = true; // Only close file based streams, not System.out and System.err.
 
   /**
    * For processors other than Hive queries (Driver), they output to session.out (a temp file)
@@ -60,37 +60,35 @@ public class HiveCommandOperation extends ExecuteStatementOperation {
 
   protected HiveCommandOperation(HiveSession parentSession, String statement,
       CommandProcessor commandProcessor, Map<String, String> confOverlay) {
-    super(parentSession, statement, confOverlay);
+    super(parentSession, statement, confOverlay, false);
     this.commandProcessor = commandProcessor;
     setupSessionIO(parentSession.getSessionState());
   }
 
   private void setupSessionIO(SessionState sessionState) {
     try {
-      log.info("Putting temp output to file " + sessionState.getTmpOutputFile()
-          + " and error output to file " + sessionState.getTmpErrOutputFile());
+      LOG.info("Putting temp output to file " + sessionState.getTmpOutputFile().toString()
+          + " and error output to file " + sessionState.getTmpErrOutputFile().toString());
       sessionState.in = null; // hive server's session input stream is not used
       // open a per-session file in auto-flush mode for writing temp results and tmp error output
-      sessionState.out = new SessionStream(
-          new FileOutputStream(sessionState.getTmpOutputFile()), true,
-          StandardCharsets.UTF_8.name());
-      sessionState.err = new SessionStream(
-          new FileOutputStream(sessionState.getTmpErrOutputFile()), true,
-          StandardCharsets.UTF_8.name());
+      sessionState.out =
+          new PrintStream(new FileOutputStream(sessionState.getTmpOutputFile()), true, CharEncoding.UTF_8);
+      sessionState.err =
+          new PrintStream(new FileOutputStream(sessionState.getTmpErrOutputFile()), true,CharEncoding.UTF_8);
     } catch (IOException e) {
-      log.error("Error in creating temp output file", e);
+      LOG.error("Error in creating temp output file ", e);
 
       // Close file streams to avoid resource leaking
-      ServiceUtils.cleanup(log, parentSession.getSessionState().out, parentSession.getSessionState().err);
+      ServiceUtils.cleanup(LOG, parentSession.getSessionState().out, parentSession.getSessionState().err);
+      closeSessionStreams = false;
 
       try {
         sessionState.in = null;
-        sessionState.out =
-            new SessionStream(System.out, true, StandardCharsets.UTF_8.name());
-        sessionState.err =
-            new SessionStream(System.err, true, StandardCharsets.UTF_8.name());
+        sessionState.out = new PrintStream(System.out, true, CharEncoding.UTF_8);
+        sessionState.err = new PrintStream(System.err, true, CharEncoding.UTF_8);
       } catch (UnsupportedEncodingException ee) {
-        log.error("Error creating PrintStream", e);
+        LOG.error("Error creating PrintStream", e);
+        ee.printStackTrace();
         sessionState.out = null;
         sessionState.err = null;
       }
@@ -99,7 +97,9 @@ public class HiveCommandOperation extends ExecuteStatementOperation {
 
 
   private void tearDownSessionIO() {
-    ServiceUtils.cleanup(log, parentSession.getSessionState().out, parentSession.getSessionState().err);
+    if (closeSessionStreams) {
+      ServiceUtils.cleanup(LOG, parentSession.getSessionState().out, parentSession.getSessionState().err);
+    }
   }
 
   @Override
@@ -107,10 +107,14 @@ public class HiveCommandOperation extends ExecuteStatementOperation {
     setState(OperationState.RUNNING);
     try {
       String command = getStatement().trim();
-      String[] tokens = command.split("\\s");
+      String[] tokens = statement.split("\\s");
       String commandArgs = command.substring(tokens[0].length()).trim();
 
       CommandProcessorResponse response = commandProcessor.run(commandArgs);
+      int returnCode = response.getResponseCode();
+      if (returnCode != 0) {
+        throw toSQLException("Error while processing statement", response);
+      }
       Schema schema = response.getSchema();
       if (schema != null) {
         setHasResultSet(true);
@@ -119,12 +123,14 @@ public class HiveCommandOperation extends ExecuteStatementOperation {
         setHasResultSet(false);
         resultSchema = new TableSchema();
       }
-      if (response.getMessage() != null) {
-        log.info(response.getMessage());
+      if (response.getConsoleMessages() != null) {
+        for (String consoleMsg : response.getConsoleMessages()) {
+          LOG.info(consoleMsg);
+        }
       }
-    } catch (CommandProcessorException e) {
+    } catch (HiveSQLException e) {
       setState(OperationState.ERROR);
-      throw toSQLException("Error while processing statement", e);
+      throw e;
     } catch (Exception e) {
       setState(OperationState.ERROR);
       throw new HiveSQLException("Error running query: " + e.toString(), e);
@@ -189,7 +195,8 @@ public class HiveCommandOperation extends ExecuteStatementOperation {
       try {
         resultReader = new BufferedReader(new FileReader(tmp));
       } catch (FileNotFoundException e) {
-        throw new HiveSQLException("File " + tmp + " not found", e);
+        LOG.error("File " + tmp + " not found. ", e);
+        throw new HiveSQLException(e);
       }
     }
     List<String> results = new ArrayList<String>();
@@ -204,7 +211,8 @@ public class HiveCommandOperation extends ExecuteStatementOperation {
           results.add(line);
         }
       } catch (IOException e) {
-        throw new HiveSQLException("Unable to read line from file", e);
+        LOG.error("Reading temp results encountered an exception: ", e);
+        throw new HiveSQLException(e);
       }
     }
     return results;
@@ -219,7 +227,7 @@ public class HiveCommandOperation extends ExecuteStatementOperation {
 
   private void resetResultReader() {
     if (resultReader != null) {
-      ServiceUtils.cleanup(log, resultReader);
+      ServiceUtils.cleanup(LOG, resultReader);
       resultReader = null;
     }
   }

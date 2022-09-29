@@ -30,13 +30,13 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.apache.commons.io.filefilter.WildcardFileFilter;
-import org.apache.commons.lang3.ArrayUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.commons.lang.ArrayUtils;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 
 public class JdbcJarDownloadServlet extends HttpServlet {
 
-  private static final Logger LOG = LoggerFactory.getLogger(JdbcJarDownloadServlet.class);
+  private static final Log LOG = LogFactory.getLog(JdbcJarDownloadServlet.class);
 
   private static final String JDBC_JAR_DIR = System.getenv("HIVE_HOME") + "/jdbc/";
   private static final String JDBC_JAR_PATTERN = "hive-jdbc-*-standalone.jar";

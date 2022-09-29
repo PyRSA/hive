@@ -20,7 +20,6 @@ package org.apache.hadoop.hive.serde2.avro;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -30,7 +29,7 @@ import org.apache.avro.file.DataFileStream;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.DatumReader;
-import org.apache.commons.lang3.ClassUtils;
+import org.apache.commons.lang.ClassUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.serde2.SerDeException;
@@ -387,7 +386,7 @@ public class AvroLazyObjectInspector extends LazySimpleStructObjectInspector {
    * Convert the given object to a lazy object using the given {@link ObjectInspector}
    *
    * @param obj Object to be converted to a {@link LazyObject}
-   * @param objectInspector ObjectInspector used for the conversion
+   * @param oi ObjectInspector used for the conversion
    * @return the created {@link LazyObject lazy object}
    * */
   private Object toLazyListObject(Object obj, ObjectInspector objectInspector) {
@@ -415,7 +414,7 @@ public class AvroLazyObjectInspector extends LazySimpleStructObjectInspector {
    * Convert the given object to a lazy object using the given {@link ObjectInspector}
    *
    * @param obj Object to be converted to a {@link LazyObject}
-   * @param objectInspector ObjectInspector used for the conversion
+   * @param oi ObjectInspector used for the conversion
    * @return the created {@link LazyObject lazy object}
    * */
   @SuppressWarnings({ "rawtypes", "unchecked" })
@@ -452,7 +451,7 @@ public class AvroLazyObjectInspector extends LazySimpleStructObjectInspector {
    * Convert the given object to a lazy object using the given {@link ObjectInspector}
    *
    * @param obj Object to be converted to a {@link LazyObject}
-   * @param objectInspector ObjectInspector used for the conversion
+   * @param oi ObjectInspector used for the conversion
    * @return the created {@link LazyObject lazy object}
    * */
   private Object toLazyUnionObject(Object obj, ObjectInspector objectInspector) {
@@ -499,6 +498,6 @@ public class AvroLazyObjectInspector extends LazySimpleStructObjectInspector {
    * */
   private boolean isPrimitive(Class<?> clazz) {
     return clazz.isPrimitive() || ClassUtils.wrapperToPrimitive(clazz) != null
-      || Arrays.asList("String", "Timestamp").contains(clazz.getSimpleName());
+        || clazz.getSimpleName().equals("String");
   }
 }

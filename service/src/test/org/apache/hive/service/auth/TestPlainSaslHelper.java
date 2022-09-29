@@ -17,7 +17,7 @@
  */
 package org.apache.hive.service.auth;
 
-
+import junit.framework.TestCase;
 
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
@@ -25,20 +25,13 @@ import org.apache.hive.service.cli.CLIService;
 import org.apache.hive.service.cli.thrift.ThriftCLIService;
 import org.apache.hive.service.cli.thrift.ThriftBinaryCLIService;
 import org.apache.thrift.TProcessorFactory;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertEquals;
-import org.junit.Test;
 
-/**
- * TestPlainSaslHelper.
- */
-public class TestPlainSaslHelper {
+public class TestPlainSaslHelper extends TestCase {
 
   /**
    * Test setting {@link HiveConf.ConfVars}} config parameter
    *   HIVE_SERVER2_ENABLE_DOAS for unsecure mode
    */
-  @Test
   public void testDoAsSetting(){
 
     HiveConf hconf = new HiveConf();
@@ -49,9 +42,9 @@ public class TestPlainSaslHelper {
         hconf.getBoolVar(ConfVars.HIVE_SERVER2_ENABLE_DOAS));
 
 
-    CLIService cliService = new CLIService(null, true);
+    CLIService cliService = new CLIService(null);
     cliService.init(hconf);
-    ThriftCLIService tcliService = new ThriftBinaryCLIService(cliService);
+    ThriftCLIService tcliService = new ThriftBinaryCLIService(cliService, null);
     tcliService.init(hconf);
     TProcessorFactory procFactory = PlainSaslHelper.getPlainProcessorFactory(tcliService);
     assertEquals("doAs enabled processor for unsecure mode",

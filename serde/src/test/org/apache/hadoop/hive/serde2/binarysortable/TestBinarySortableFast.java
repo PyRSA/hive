@@ -24,7 +24,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.hive.serde2.ByteStream.Output;
 import org.apache.hadoop.hive.serde2.AbstractSerDe;
 import org.apache.hadoop.hive.serde2.SerdeRandomRowSource;
@@ -39,12 +39,10 @@ import org.apache.hadoop.hive.serde2.objectinspector.UnionObject;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
 import org.apache.hadoop.io.BytesWritable;
 
+import junit.framework.TestCase;
 import org.junit.Assert;
-import static org.junit.Assert.fail;
-import static org.junit.Assert.assertTrue;
-import org.junit.Test;
 
-public class TestBinarySortableFast {
+public class TestBinarySortableFast extends TestCase {
 
   private static String debugDetailedReadPositionString;
   private static StackTraceElement[] debugStackTrace;
@@ -142,7 +140,7 @@ public class TestBinarySortableFast {
         }
       }
       if (writeColumnCount == columnCount) {
-        assertTrue(binarySortableDeserializeRead.isEndOfInputReached());
+        TestCase.assertTrue(binarySortableDeserializeRead.isEndOfInputReached());
       }
 
       /*
@@ -308,7 +306,7 @@ public class TestBinarySortableFast {
         }
       }
       if (writeColumnCount == columnCount) {
-        assertTrue(binarySortableDeserializeRead.isEndOfInputReached());
+        TestCase.assertTrue(binarySortableDeserializeRead.isEndOfInputReached());
       }
     }
   }
@@ -321,7 +319,7 @@ public class TestBinarySortableFast {
       Object complexFieldObj = VerifyFast.deserializeReadComplexType(binarySortableDeserializeRead, typeInfo);
       if (expectedObject == null) {
         if (complexFieldObj != null) {
-          fail("Field reports not null but object is null (class " + complexFieldObj.getClass().getName() +
+          TestCase.fail("Field reports not null but object is null (class " + complexFieldObj.getClass().getName() +
               ", " + complexFieldObj.toString() + ")");
         }
       } else {
@@ -333,12 +331,12 @@ public class TestBinarySortableFast {
               return;
             }
           }
-          fail("Field reports null but object is not null (class " + expectedObject.getClass().getName() +
+          TestCase.fail("Field reports null but object is not null (class " + expectedObject.getClass().getName() +
               ", " + expectedObject.toString() + ")");
         }
       }
       if (!VerifyLazy.lazyCompare(typeInfo, complexFieldObj, expectedObject)) {
-        fail("Comparison failed typeInfo " + typeInfo.toString());
+        TestCase.fail("Comparision failed typeInfo " + typeInfo.toString());
       }
     }
   }
@@ -416,7 +414,7 @@ public class TestBinarySortableFast {
     Arrays.fill(columnNotNullMarker, BinarySortableSerDe.ONE);
 
     /*
-     * Ascending.
+     * Acending.
      */
     testBinarySortableFast(source, rows,
         columnSortOrderIsDesc, columnNullMarker, columnNotNullMarker,
@@ -502,17 +500,14 @@ public class TestBinarySortableFast {
     }
   }
 
-  @Test
   public void testBinarySortableFastPrimitive() throws Throwable {
     testBinarySortableFast(SerdeRandomRowSource.SupportedTypes.PRIMITIVE, 0);
   }
 
-  @Test
   public void testBinarySortableFastComplexDepthOne() throws Throwable {
     testBinarySortableFast(SerdeRandomRowSource.SupportedTypes.ALL_EXCEPT_MAP, 1);
   }
 
-  @Test
   public void testBinarySortableFastComplexDepthFour() throws Throwable {
     testBinarySortableFast(SerdeRandomRowSource.SupportedTypes.ALL_EXCEPT_MAP, 4);
   }

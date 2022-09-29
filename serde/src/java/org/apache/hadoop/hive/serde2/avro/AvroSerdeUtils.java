@@ -68,8 +68,6 @@ public class AvroSerdeUtils {
     SCHEMA_NAME("avro.schema.name"),
     SCHEMA_DOC("avro.schema.doc"),
     AVRO_SERDE_SCHEMA("avro.serde.schema"),
-    AVRO_SERDE_TYPE("avro.serde.type"),
-    AVRO_SERDE_SKIP_BYTES("avro.serde.skip.bytes"),
     SCHEMA_RETRIEVER("avro.schema.retriever");
 
     private final String propName;
@@ -160,7 +158,11 @@ public class AvroSerdeUtils {
       fs = FileSystem.get(new URI(schemaFSUrl), conf);
     } catch (IOException ioe) {
       //return null only if the file system in schema is not recognized
-      LOG.debug("Failed to open file system for uri {} assuming it is not a FileSystem url", schemaFSUrl, ioe);
+      if (LOG.isDebugEnabled()) {
+        String msg = "Failed to open file system for uri " + schemaFSUrl + " assuming it is not a FileSystem url";
+        LOG.debug(msg, ioe);
+      }
+
       return null;
     }
     try {
@@ -274,20 +276,17 @@ public class AvroSerdeUtils {
     return dec;
   }
 
-  private static Schema.Parser getSchemaParser() {
-    // HIVE-24797: Disable validate default values when parsing Avro schemas.
-    return new Schema.Parser().setValidateDefaults(false);
-  }
-
   public static Schema getSchemaFor(String str) {
-    Schema schema = getSchemaParser().parse(str);
+    Schema.Parser parser = new Schema.Parser();
+    Schema schema = parser.parse(str);
     return schema;
   }
 
   public static Schema getSchemaFor(File file) {
+    Schema.Parser parser = new Schema.Parser();
     Schema schema;
     try {
-      schema = getSchemaParser().parse(file);
+      schema = parser.parse(file);
     } catch (IOException e) {
       throw new RuntimeException("Failed to parse Avro schema from " + file.getName(), e);
     }
@@ -295,9 +294,10 @@ public class AvroSerdeUtils {
   }
 
   public static Schema getSchemaFor(InputStream stream) {
+    Schema.Parser parser = new Schema.Parser();
     Schema schema;
     try {
-      schema = getSchemaParser().parse(stream);
+      schema = parser.parse(stream);
     } catch (IOException e) {
       throw new RuntimeException("Failed to parse Avro schema", e);
     }
@@ -319,18 +319,6 @@ public class AvroSerdeUtils {
           // Ignore
         }
       }
-    }
-  }
-
-  public static int getIntFromSchema(Schema schema, String name) {
-    Object obj = schema.getObjectProp(name);
-    if (obj instanceof String) {
-      return Integer.parseInt((String) obj);
-    } else if (obj instanceof Integer) {
-      return (int) obj;
-    } else {
-      throw new IllegalArgumentException("Expect integer or string value from property " + name
-        + " but found type " + obj.getClass().getName());
     }
   }
 

@@ -45,7 +45,7 @@ public class TimestampLocalTZTypeInfo extends PrimitiveTypeInfo {
 
   @Override
   public void setTypeName(String typeName) {
-    // No need to set type name, it should always be {@link serdeConstants.TIMESTAMPLOCALTZ_TYPE_NAME}
+    // No need to set type name, it should always be timestamplocaltz
     return;
   }
 
@@ -73,21 +73,19 @@ public class TimestampLocalTZTypeInfo extends PrimitiveTypeInfo {
 
   @Override
   public String toString() {
-    return getQualifiedName(timeZone);
+    return getQualifiedName();
   }
 
   @Override
   public String getQualifiedName() {
-    return getQualifiedName(null);
+    return getQualifiedName(timeZone);
   }
 
   public static String getQualifiedName(ZoneId timeZone) {
     StringBuilder sb = new StringBuilder(serdeConstants.TIMESTAMPLOCALTZ_TYPE_NAME);
-    if (timeZone != null) {
-      sb.append("('");
-      sb.append(timeZone);
-      sb.append("')");
-    }
+    sb.append("('");
+    sb.append(timeZone);
+    sb.append("')");
     return sb.toString();
   }
 

@@ -32,7 +32,7 @@
   import="java.util.Collection"
   import="java.util.Date"
   import="java.util.List"
-  import="jodd.net.HtmlEncoder"
+  import="jodd.util.HtmlEncoder"
 %>
 
 <%
@@ -79,7 +79,6 @@ String remoteUser = request.getRemoteUser();
                 <li><a href="/conf">Hive Configuration</a></li>
                 <li><a href="/stacks">Stack Trace</a></li>
                 <li><a href="/llap.html">Llap Daemons</a></li>
-                <li><a href="/logconf.jsp">Configure logging</a></li>
             </ul>
           </div><!--/.nav-collapse -->
         </div>
@@ -159,13 +158,13 @@ for (HiveSession hiveSession: hiveSessions) {
     %>
     <tr>
         <td><%= operation.getUserName() %></td>
-        <td><%= HtmlEncoder.text(operation.getQueryDisplay() == null ? "Unknown" : operation.getQueryDisplay().getQueryString()) %></td>
+        <td><%= HtmlEncoder.strict(operation.getQueryDisplay() == null ? "Unknown" : operation.getQueryDisplay().getQueryString()) %></td>
         <td><%= operation.getExecutionEngine() %>
         <td><%= operation.getState() %></td>
         <td><%= new Date(operation.getBeginTime()) %></td>
         <td><%= operation.getElapsedTime()/1000 %></td>
         <td><%= operation.getRuntime() == null ? "Not finished" : operation.getRuntime()/1000 %></td>
-        <% String link = "/query_page.html?operationId=" + operation.getOperationId(); %>
+        <% String link = "/query_page?operationId=" + operation.getOperationId(); %>
         <td>  <a href= <%= link %>>Drilldown</a> </td>
     </tr>
 
@@ -203,13 +202,13 @@ for (HiveSession hiveSession: hiveSessions) {
     %>
     <tr>
         <td><%= operation.getUserName() %></td>
-        <td><%= HtmlEncoder.text(operation.getQueryDisplay() == null ? "Unknown" : operation.getQueryDisplay().getQueryString()) %></td>
+        <td><%= HtmlEncoder.strict(operation.getQueryDisplay() == null ? "Unknown" : operation.getQueryDisplay().getQueryString()) %></td>
         <td><%= operation.getExecutionEngine() %>
         <td><%= operation.getState() %></td>
         <td><%= operation.getElapsedTime()/1000 %></td>
         <td><%= operation.getEndTime() == null ? "In Progress" : new Date(operation.getEndTime()) %></td>
         <td><%= operation.getRuntime() == null ? "n/a" : operation.getRuntime()/1000 %></td>
-        <% String link = "/query_page.html?operationId=" + operation.getOperationId(); %>
+        <% String link = "/query_page?operationId=" + operation.getOperationId(); %>
         <td>  <a href= <%= link %>>Drilldown</a> </td>
     </tr>
 

@@ -18,7 +18,6 @@
 
 package org.apache.hive.service.cli.session;
 
-import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Future;
@@ -187,32 +186,6 @@ public interface HiveSession extends HiveSessionBase {
     throws HiveSQLException;
 
   /**
-   * uploadData operation handler
-   * @param values
-   * @param tableName
-   * @param path
-   * @return
-   * @throws HiveSQLException
-   */
-  OperationHandle uploadData(
-      ByteBuffer values, String tableName, String path) throws HiveSQLException;
-
-  /**
-   * downloadData operation handler
-   * @param tableName
-   * @param query
-   * @param format
-   * @param options
-   * @return
-   * @throws HiveSQLException
-   */
-  OperationHandle downloadData(
-      String tableName,
-      String query,
-      String format,
-      Map<String, String> options) throws HiveSQLException;
-
-  /**
    *
    * @return
    * @throws HiveSQLException
@@ -226,8 +199,6 @@ public interface HiveSession extends HiveSessionBase {
   void close() throws HiveSQLException;
 
   void cancelOperation(OperationHandle opHandle) throws HiveSQLException;
-
-  void updateQueryTag(String queryId, String queryTag) throws HiveSQLException;
 
   void closeOperation(OperationHandle opHandle) throws HiveSQLException;
 

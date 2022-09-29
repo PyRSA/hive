@@ -40,7 +40,6 @@ import org.apache.thrift.protocol.TBinaryProtocol;
 import org.apache.thrift.protocol.TProtocol;
 import org.apache.thrift.protocol.TProtocolFactory;
 import org.apache.thrift.transport.TIOStreamTransport;
-import org.apache.thrift.transport.TTransportException;
 
 /**
  * CreateSequenceFile.
@@ -68,12 +67,7 @@ public final class CreateSequenceFile {
 
     public ThriftSerializer() {
       bos = new ByteStream.Output();
-      TIOStreamTransport outTransport = null;
-      try {
-        outTransport = new TIOStreamTransport(bos);
-      } catch (TTransportException e) {
-        e.printStackTrace();
-      }
+      TIOStreamTransport outTransport = new TIOStreamTransport(bos);
       TProtocolFactory outFactory = new TBinaryProtocol.Factory();
       outProtocol = outFactory.getProtocol(outTransport);
     }
@@ -142,8 +136,7 @@ public final class CreateSequenceFile {
       unionMap.put("key_" + i,  erMap);
 
       Complex complex = new Complex(rand.nextInt(), "record_"
-          + String.valueOf(i), alist, slist, islist, hash, unionMap, PropValueUnion.stringValue("test" + i),
-          PropValueUnion.unionMStringString(hash), PropValueUnion.lString(slist));
+          + (new Integer(i)).toString(), alist, slist, islist, hash, unionMap, PropValueUnion.stringValue("test" + i), PropValueUnion.unionMStringString(hash), PropValueUnion.lString(slist));
 
       Writable value = serializer.serialize(complex);
       writer.append(key, value);

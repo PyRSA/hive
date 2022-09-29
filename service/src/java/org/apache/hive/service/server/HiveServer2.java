@@ -18,9 +18,14 @@
 
 package org.apache.hive.service.server;
 
-import com.google.common.base.Joiner;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -43,25 +48,24 @@ import org.apache.commons.cli.ParseException;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
 import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.curator.framework.api.ACLProvider;
 import org.apache.curator.framework.api.BackgroundCallback;
 import org.apache.curator.framework.api.CuratorEvent;
 import org.apache.curator.framework.api.CuratorEventType;
 import org.apache.curator.framework.recipes.leader.LeaderLatch;
 import org.apache.curator.framework.recipes.leader.LeaderLatchListener;
+import org.apache.curator.framework.recipes.nodes.PersistentEphemeralNode;
+import org.apache.curator.retry.ExponentialBackoffRetry;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.common.JvmPauseMonitor;
 import org.apache.hadoop.hive.common.LogUtils;
 import org.apache.hadoop.hive.common.LogUtils.LogInitializationException;
 import org.apache.hadoop.hive.common.ServerUtils;
+import org.apache.hadoop.hive.common.cli.CommonCliOptions;
 import org.apache.hadoop.hive.common.metrics.common.MetricsFactory;
-import org.apache.hadoop.hive.common.ZKDeRegisterWatcher;
-import org.apache.hadoop.hive.common.ZooKeeperHiveHelper;
-import org.apache.hadoop.hive.conf.Constants;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
-import org.apache.hadoop.hive.conf.HiveServer2TransportMode;
-import org.apache.hadoop.hive.conf.Validator;
 import org.apache.hadoop.hive.llap.coordinator.LlapCoordinator;
 import org.apache.hadoop.hive.llap.registry.impl.LlapRegistryService;
 import org.apache.hadoop.hive.metastore.api.WMFullResourcePlan;
@@ -69,29 +73,25 @@ import org.apache.hadoop.hive.metastore.api.WMPool;
 import org.apache.hadoop.hive.metastore.api.WMResourcePlan;
 import org.apache.hadoop.hive.metastore.conf.MetastoreConf;
 import org.apache.hadoop.hive.ql.cache.results.QueryResultsCache;
+import org.apache.hadoop.hive.ql.exec.spark.session.SparkSessionManagerImpl;
 import org.apache.hadoop.hive.ql.exec.tez.TezSessionPoolManager;
 import org.apache.hadoop.hive.ql.exec.tez.WorkloadManager;
 import org.apache.hadoop.hive.ql.metadata.Hive;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.metadata.HiveMaterializedViewsRegistry;
-import org.apache.hadoop.hive.ql.metadata.HiveMetaStoreClientWithLocalCache;
 import org.apache.hadoop.hive.ql.metadata.HiveUtils;
 import org.apache.hadoop.hive.ql.metadata.events.NotificationEventPoll;
-import org.apache.hadoop.hive.ql.parse.CalcitePlanner;
-import org.apache.hadoop.hive.ql.parse.repl.metric.MetricSink;
 import org.apache.hadoop.hive.ql.plan.mapper.StatsSources;
-import org.apache.hadoop.hive.ql.scheduled.ScheduledQueryExecutionService;
 import org.apache.hadoop.hive.ql.security.authorization.HiveMetastoreAuthorizationProvider;
 import org.apache.hadoop.hive.ql.security.authorization.PolicyProviderContainer;
-import org.apache.hadoop.hive.ql.security.authorization.PrivilegeSynchronizer;
+import org.apache.hadoop.hive.ql.security.authorization.PrivilegeSynchonizer;
 import org.apache.hadoop.hive.ql.security.authorization.plugin.HiveAuthorizer;
 import org.apache.hadoop.hive.ql.session.ClearDanglingScratchDir;
 import org.apache.hadoop.hive.ql.session.SessionState;
-import org.apache.hadoop.hive.ql.txn.compactor.CompactorThread;
-import org.apache.hadoop.hive.ql.txn.compactor.Worker;
-import org.apache.hadoop.hive.registry.impl.ZookeeperUtils;
+import org.apache.hadoop.hive.ql.util.ZooKeeperHiveHelper;
 import org.apache.hadoop.hive.shims.ShimLoader;
 import org.apache.hadoop.hive.shims.Utils;
+import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hive.common.util.HiveStringUtils;
 import org.apache.hive.common.util.HiveVersionInfo;
 import org.apache.hive.common.util.ShutdownHookManager;
@@ -101,8 +101,6 @@ import org.apache.hive.http.LlapServlet;
 import org.apache.hive.http.security.PamAuthenticator;
 import org.apache.hive.service.CompositeService;
 import org.apache.hive.service.ServiceException;
-import org.apache.hive.service.auth.saml.HiveSaml2Client;
-import org.apache.hive.service.auth.saml.HiveSamlUtils;
 import org.apache.hive.service.cli.CLIService;
 import org.apache.hive.service.cli.HiveSQLException;
 import org.apache.hive.service.cli.session.HiveSession;
@@ -111,7 +109,6 @@ import org.apache.hive.service.cli.thrift.ThriftCLIService;
 import org.apache.hive.service.cli.thrift.ThriftHttpCLIService;
 import org.apache.hive.service.servlet.HS2LeadershipStatus;
 import org.apache.hive.service.servlet.HS2Peers;
-import org.apache.hive.service.servlet.QueriesRESTfulAPIServlet;
 import org.apache.hive.service.servlet.QueryProfileServlet;
 import org.apache.http.StatusLine;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -119,6 +116,8 @@ import org.apache.http.client.methods.HttpDelete;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
+import org.apache.logging.log4j.util.Strings;
+import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
@@ -129,6 +128,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Joiner;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.SettableFuture;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
@@ -138,16 +138,16 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
  *
  */
 public class HiveServer2 extends CompositeService {
+  private static CountDownLatch deleteSignal;
   private static final Logger LOG = LoggerFactory.getLogger(HiveServer2.class);
   public static final String INSTANCE_URI_CONFIG = "hive.server2.instance.uri";
   private static final int SHUTDOWN_TIME = 60;
-
-  private static CountDownLatch zkDeleteSignal;
-  private static volatile KeeperException.Code zkDeleteResultCode;
-
   private CLIService cliService;
   private ThriftCLIService thriftCLIService;
+  private PersistentEphemeralNode znode;
+  private CuratorFramework zooKeeperClient;
   private CuratorFramework zKClientForPrivSync = null;
+  private boolean deregisteredWithZooKeeper = false; // Set to true only when deregistration happens
   private HttpServer webServer; // Web UI
   private TezSessionPoolManager tezSessionPoolManager;
   private WorkloadManager wm;
@@ -165,8 +165,6 @@ public class HiveServer2 extends CompositeService {
   // used for testing
   private SettableFuture<Boolean> isLeaderTestFuture = SettableFuture.create();
   private SettableFuture<Boolean> notLeaderTestFuture = SettableFuture.create();
-  private ZooKeeperHiveHelper zooKeeperHelper = null;
-  private ScheduledQueryExecutionService scheduledQueryService;
 
   public HiveServer2() {
     super(HiveServer2.class.getSimpleName());
@@ -178,11 +176,6 @@ public class HiveServer2 extends CompositeService {
     super(HiveServer2.class.getSimpleName());
     HiveConf.setLoadHiveServer2Config(true);
     this.pamAuthenticator = pamAuthenticator;
-  }
-
-  @VisibleForTesting
-  public CLIService getCliService() {
-    return this.cliService;
   }
 
   @VisibleForTesting
@@ -219,21 +212,21 @@ public class HiveServer2 extends CompositeService {
       LOG.warn("Could not initiate the HiveServer2 Metrics system.  Metrics may not be reported.", t);
     }
 
-    // Do not allow sessions - leader election or initialization will allow them for an active HS2.
-    cliService = new CLIService(this, false);
+    cliService = new CLIService(this);
     addService(cliService);
     final HiveServer2 hiveServer2 = this;
-    boolean isHttpTransportMode = isHttpTransportMode(hiveConf);
-    boolean isAllTransportMode = isAllTransportMode(hiveConf);
-    if (isHttpTransportMode || isAllTransportMode) {
-      thriftCLIService = new ThriftHttpCLIService(cliService);
-      addService(thriftCLIService);
+    Runnable oomHook = new Runnable() {
+      @Override
+      public void run() {
+        hiveServer2.stop();
+      }
+    };
+    if (isHTTPTransportMode(hiveConf)) {
+      thriftCLIService = new ThriftHttpCLIService(cliService, oomHook);
+    } else {
+      thriftCLIService = new ThriftBinaryCLIService(cliService, oomHook);
     }
-    if (!isHttpTransportMode || isAllTransportMode)  {
-      thriftCLIService = new ThriftBinaryCLIService(cliService);
-      addService(thriftCLIService); //thriftCliService instance is used for zookeeper purposes
-    }
-
+    addService(thriftCLIService);
     super.init(hiveConf);
     // Set host name in conf
     try {
@@ -256,9 +249,6 @@ public class HiveServer2 extends CompositeService {
       LlapRegistryService.getClient(hiveConf);
     }
 
-    // Initialize metadata provider class and trimmer
-    CalcitePlanner.warmup();
-
     try {
       sessionHive = Hive.get(hiveConf);
     } catch (HiveException e) {
@@ -270,10 +260,6 @@ public class HiveServer2 extends CompositeService {
 
     StatsSources.initialize(hiveConf);
 
-    if (hiveConf.getBoolVar(ConfVars.HIVE_SCHEDULED_QUERIES_EXECUTOR_ENABLED)) {
-      scheduledQueryService = ScheduledQueryExecutionService.startScheduledQueryExecutorService(hiveConf);
-    }
-
     // Setup cache if enabled.
     if (hiveConf.getBoolVar(HiveConf.ConfVars.HIVE_QUERY_RESULTS_CACHE_ENABLED)) {
       try {
@@ -283,11 +269,6 @@ public class HiveServer2 extends CompositeService {
       }
     }
 
-    // setup metastore client cache
-    if (hiveConf.getBoolVar(ConfVars.MSC_CACHE_ENABLED)) {
-      HiveMetaStoreClientWithLocalCache.init(hiveConf);
-    }
-
     try {
       NotificationEventPoll.initialize(hiveConf);
     } catch (Exception err) {
@@ -295,7 +276,6 @@ public class HiveServer2 extends CompositeService {
     }
 
     wmQueue = hiveConf.get(ConfVars.HIVE_SERVER2_TEZ_INTERACTIVE_QUEUE.varname, "").trim();
-    this.zooKeeperAclProvider = getACLProvider(hiveConf);
 
     this.serviceDiscovery = hiveConf.getBoolVar(ConfVars.HIVE_SERVER2_SUPPORT_DYNAMIC_SERVICE_DISCOVERY);
     this.activePassiveHA = hiveConf.getBoolVar(ConfVars.HIVE_SERVER2_ACTIVE_PASSIVE_HA_ENABLE);
@@ -314,13 +294,6 @@ public class HiveServer2 extends CompositeService {
       }
     } catch (Exception e) {
       throw new ServiceException(e);
-    }
-
-    try {
-      logCompactionParameters(hiveConf);
-      maybeStartCompactorThreads(hiveConf);
-    } catch (Exception e) {
-      throw new RuntimeException(e);
     }
 
     // Setup web UI
@@ -354,7 +327,7 @@ public class HiveServer2 extends CompositeService {
           if (hiveConf.getBoolVar(ConfVars.HIVE_SERVER2_WEBUI_USE_SSL)) {
             String keyStorePath = hiveConf.getVar(
               ConfVars.HIVE_SERVER2_WEBUI_SSL_KEYSTORE_PATH);
-            if (StringUtils.isBlank(keyStorePath)) {
+            if (Strings.isBlank(keyStorePath)) {
               throw new IllegalArgumentException(
                 ConfVars.HIVE_SERVER2_WEBUI_SSL_KEYSTORE_PATH.varname
                   + " Not configured for SSL connection");
@@ -362,11 +335,6 @@ public class HiveServer2 extends CompositeService {
             builder.setKeyStorePassword(ShimLoader.getHadoopShims().getPassword(
               hiveConf, ConfVars.HIVE_SERVER2_WEBUI_SSL_KEYSTORE_PASSWORD.varname));
             builder.setKeyStorePath(keyStorePath);
-            builder.setKeyStoreType(hiveConf.getVar(ConfVars.HIVE_SERVER2_WEBUI_SSL_KEYSTORE_TYPE));
-            builder.setKeyManagerFactoryAlgorithm(
-                hiveConf.getVar(ConfVars.HIVE_SERVER2_WEBUI_SSL_KEYMANAGERFACTORY_ALGORITHM));
-            builder.setExcludeCiphersuites(
-                hiveConf.getVar(ConfVars.HIVE_SERVER2_WEBUI_SSL_EXCLUDE_CIPHERSUITES));
             builder.setUseSSL(true);
           }
           if (hiveConf.getBoolVar(ConfVars.HIVE_SERVER2_WEBUI_USE_SPNEGO)) {
@@ -374,7 +342,7 @@ public class HiveServer2 extends CompositeService {
                 ConfVars.HIVE_SERVER2_WEBUI_SPNEGO_PRINCIPAL);
             String spnegoKeytab = hiveConf.getVar(
                 ConfVars.HIVE_SERVER2_WEBUI_SPNEGO_KEYTAB);
-            if (StringUtils.isBlank(spnegoPrincipal) || StringUtils.isBlank(spnegoKeytab)) {
+            if (Strings.isBlank(spnegoPrincipal) || Strings.isBlank(spnegoKeytab)) {
               throw new IllegalArgumentException(
                 ConfVars.HIVE_SERVER2_WEBUI_SPNEGO_PRINCIPAL.varname
                   + "/" + ConfVars.HIVE_SERVER2_WEBUI_SPNEGO_KEYTAB.varname
@@ -389,7 +357,7 @@ public class HiveServer2 extends CompositeService {
             String allowedOrigins = hiveConf.getVar(ConfVars.HIVE_SERVER2_WEBUI_CORS_ALLOWED_ORIGINS);
             String allowedMethods = hiveConf.getVar(ConfVars.HIVE_SERVER2_WEBUI_CORS_ALLOWED_METHODS);
             String allowedHeaders = hiveConf.getVar(ConfVars.HIVE_SERVER2_WEBUI_CORS_ALLOWED_HEADERS);
-            if (StringUtils.isBlank(allowedOrigins) || StringUtils.isBlank(allowedMethods) || StringUtils.isBlank(allowedHeaders)) {
+            if (Strings.isBlank(allowedOrigins) || Strings.isBlank(allowedMethods) || Strings.isBlank(allowedHeaders)) {
               throw new IllegalArgumentException("CORS enabled. But " +
                 ConfVars.HIVE_SERVER2_WEBUI_CORS_ALLOWED_ORIGINS.varname + "/" +
                 ConfVars.HIVE_SERVER2_WEBUI_CORS_ALLOWED_METHODS.varname + "/" +
@@ -401,9 +369,6 @@ public class HiveServer2 extends CompositeService {
             builder.setAllowedHeaders(allowedHeaders);
             LOG.info("CORS enabled - allowed-origins: {} allowed-methods: {} allowed-headers: {}", allowedOrigins,
               allowedMethods, allowedHeaders);
-          }
-          if(hiveConf.getBoolVar(ConfVars.HIVE_SERVER2_WEBUI_XFRAME_ENABLED)){
-            builder.configureXFrame(true).setXFrameOption(hiveConf.getVar(ConfVars.HIVE_SERVER2_WEBUI_XFRAME_VALUE));
           }
           if (hiveConf.getBoolVar(ConfVars.HIVE_SERVER2_WEBUI_USE_PAM)) {
             if (hiveConf.getBoolVar(ConfVars.HIVE_SERVER2_WEBUI_USE_SSL)) {
@@ -432,8 +397,7 @@ public class HiveServer2 extends CompositeService {
           builder.setContextRootRewriteTarget("/hiveserver2.jsp");
 
           webServer = builder.build();
-          webServer.addServlet("query_page", "/query_page.html", QueryProfileServlet.class);
-          webServer.addServlet("api", "/api/*", QueriesRESTfulAPIServlet.class);
+          webServer.addServlet("query_page", "/query_page", QueryProfileServlet.class);
         }
       }
     } catch (IOException ie) {
@@ -441,21 +405,7 @@ public class HiveServer2 extends CompositeService {
     }
 
     // Add a shutdown hook for catching SIGTERM & SIGINT
-    long timeout = HiveConf.getTimeVar(getHiveConf(),
-        HiveConf.ConfVars.HIVE_SERVER2_GRACEFUL_STOP_TIMEOUT, TimeUnit.SECONDS);
-    // Extra time for releasing the resources if timeout sets to 0
-    ShutdownHookManager.addGracefulShutDownHook(() -> graceful_stop(),  timeout == 0 ? 30 : timeout);
-  }
-
-  private void logCompactionParameters(HiveConf hiveConf) {
-    LOG.info("Compaction HS2 parameters:");
-    String runWorkerIn = MetastoreConf.getVar(hiveConf, MetastoreConf.ConfVars.HIVE_METASTORE_RUNWORKER_IN);
-    LOG.info("hive.metastore.runworker.in = {}", runWorkerIn);
-    int numWorkers = MetastoreConf.getIntVar(hiveConf, MetastoreConf.ConfVars.COMPACTOR_WORKER_THREADS);
-    LOG.info("metastore.compactor.worker.threads = {}", numWorkers);
-    if ("hs2".equals(runWorkerIn) && numWorkers < 1) {
-      LOG.warn("Invalid number of Compactor Worker threads({}) on HS2", numWorkers);
-    }
+    ShutdownHookManager.addShutdownHook(() -> hiveServer2.stop());
   }
 
   private WMFullResourcePlan createTestResourcePlan() {
@@ -469,24 +419,12 @@ public class HiveServer2 extends CompositeService {
     return resourcePlan;
   }
 
-  public static boolean isHttpTransportMode(HiveConf hiveConf) {
+  public static boolean isHTTPTransportMode(Configuration hiveConf) {
     String transportMode = System.getenv("HIVE_SERVER2_TRANSPORT_MODE");
     if (transportMode == null) {
-      transportMode = hiveConf.getVar(HiveConf.ConfVars.HIVE_SERVER2_TRANSPORT_MODE);
+      transportMode = hiveConf.get(ConfVars.HIVE_SERVER2_TRANSPORT_MODE.varname);
     }
-    if (transportMode != null
-        && (transportMode.equalsIgnoreCase(HiveServer2TransportMode.http.toString()))) {
-      return true;
-    }
-    return false;
-  }
-
-  public static boolean isAllTransportMode(HiveConf hiveConf) {
-    String transportMode = System.getenv("HIVE_SERVER2_TRANSPORT_MODE");
-    if (transportMode == null) {
-      transportMode = hiveConf.getVar(HiveConf.ConfVars.HIVE_SERVER2_TRANSPORT_MODE);
-    }
-    if (transportMode != null && (transportMode.equalsIgnoreCase(HiveServer2TransportMode.all.toString()))) {
+    if (transportMode != null && (transportMode.equalsIgnoreCase("http"))) {
       return true;
     }
     return false;
@@ -503,33 +441,117 @@ public class HiveServer2 extends CompositeService {
   /**
    * ACLProvider for providing appropriate ACLs to CuratorFrameworkFactory
    */
-  private ACLProvider zooKeeperAclProvider;
+  private final ACLProvider zooKeeperAclProvider = new ACLProvider() {
 
-  private ACLProvider getACLProvider(HiveConf hiveConf) {
-    final boolean isSecure = ZookeeperUtils.isKerberosEnabled(hiveConf);
-
-    return new ACLProvider() {
-      @Override
-      public List<ACL> getDefaultAcl() {
-        List<ACL> nodeAcls = new ArrayList<ACL>();
-        if (isSecure) {
-          // Read all to the world
-          nodeAcls.addAll(Ids.READ_ACL_UNSAFE);
-          // Create/Delete/Write/Admin to the authenticated user
-          nodeAcls.add(new ACL(Perms.ALL, Ids.AUTH_IDS));
-        } else {
-          // ACLs for znodes on a non-kerberized cluster
-          // Create/Read/Delete/Write/Admin to the world
-          nodeAcls.addAll(Ids.OPEN_ACL_UNSAFE);
-        }
-        return nodeAcls;
+    @Override
+    public List<ACL> getDefaultAcl() {
+      List<ACL> nodeAcls = new ArrayList<ACL>();
+      if (UserGroupInformation.isSecurityEnabled()) {
+        // Read all to the world
+        nodeAcls.addAll(Ids.READ_ACL_UNSAFE);
+        // Create/Delete/Write/Admin to the authenticated user
+        nodeAcls.add(new ACL(Perms.ALL, Ids.AUTH_IDS));
+      } else {
+        // ACLs for znodes on a non-kerberized cluster
+        // Create/Read/Delete/Write/Admin to the world
+        nodeAcls.addAll(Ids.OPEN_ACL_UNSAFE);
       }
+      return nodeAcls;
+    }
 
-      @Override
-      public List<ACL> getAclForPath(String path) {
-        return getDefaultAcl();
+    @Override
+    public List<ACL> getAclForPath(String path) {
+      return getDefaultAcl();
+    }
+  };
+
+  private CuratorFramework startZookeeperClient(HiveConf hiveConf) throws Exception {
+    setUpZooKeeperAuth(hiveConf);
+    String zooKeeperEnsemble = ZooKeeperHiveHelper.getQuorumServers(hiveConf);
+    int sessionTimeout =
+        (int) hiveConf.getTimeVar(HiveConf.ConfVars.HIVE_ZOOKEEPER_SESSION_TIMEOUT,
+            TimeUnit.MILLISECONDS);
+    int baseSleepTime =
+        (int) hiveConf.getTimeVar(HiveConf.ConfVars.HIVE_ZOOKEEPER_CONNECTION_BASESLEEPTIME,
+            TimeUnit.MILLISECONDS);
+    int maxRetries = hiveConf.getIntVar(HiveConf.ConfVars.HIVE_ZOOKEEPER_CONNECTION_MAX_RETRIES);
+    // Create a CuratorFramework instance to be used as the ZooKeeper client
+    // Use the zooKeeperAclProvider to create appropriate ACLs
+    CuratorFramework zkClient =
+        CuratorFrameworkFactory.builder().connectString(zooKeeperEnsemble)
+            .sessionTimeoutMs(sessionTimeout).aclProvider(zooKeeperAclProvider)
+            .retryPolicy(new ExponentialBackoffRetry(baseSleepTime, maxRetries)).build();
+    zkClient.start();
+
+    // Create the parent znodes recursively; ignore if the parent already exists.
+    String rootNamespace = hiveConf.getVar(HiveConf.ConfVars.HIVE_SERVER2_ZOOKEEPER_NAMESPACE);
+    try {
+      zkClient.create().creatingParentsIfNeeded().withMode(CreateMode.PERSISTENT)
+          .forPath(ZooKeeperHiveHelper.ZOOKEEPER_PATH_SEPARATOR + rootNamespace);
+      LOG.info("Created the root name space: " + rootNamespace + " on ZooKeeper for HiveServer2");
+    } catch (KeeperException e) {
+      if (e.code() != KeeperException.Code.NODEEXISTS) {
+        LOG.error("Unable to create HiveServer2 namespace: " + rootNamespace + " on ZooKeeper", e);
+        throw e;
       }
-    };
+    }
+    return zkClient;
+  }
+
+  /**
+   * Adds a server instance to ZooKeeper as a znode.
+   *
+   * @param hiveConf
+   * @throws Exception
+   */
+  private void addServerInstanceToZooKeeper(HiveConf hiveConf, Map<String, String> confsToPublish) throws Exception {
+    zooKeeperClient = startZookeeperClient(hiveConf);
+    String rootNamespace = hiveConf.getVar(HiveConf.ConfVars.HIVE_SERVER2_ZOOKEEPER_NAMESPACE);
+    String instanceURI = getServerInstanceURI();
+
+    // Create a znode under the rootNamespace parent for this instance of the server
+    // Znode name: serverUri=host:port;version=versionInfo;sequence=sequenceNumber
+    try {
+      String pathPrefix =
+          ZooKeeperHiveHelper.ZOOKEEPER_PATH_SEPARATOR + rootNamespace
+              + ZooKeeperHiveHelper.ZOOKEEPER_PATH_SEPARATOR + "serverUri=" + instanceURI + ";"
+              + "version=" + HiveVersionInfo.getVersion() + ";" + "sequence=";
+      String znodeData = "";
+      if (hiveConf.getBoolVar(HiveConf.ConfVars.HIVE_SERVER2_ZOOKEEPER_PUBLISH_CONFIGS)) {
+        // HiveServer2 configs that this instance will publish to ZooKeeper,
+        // so that the clients can read these and configure themselves properly.
+
+        addConfsToPublish(hiveConf, confsToPublish, instanceURI);
+        // Publish configs for this instance as the data on the node
+        znodeData = Joiner.on(';').withKeyValueSeparator("=").join(confsToPublish);
+      } else {
+        znodeData = instanceURI;
+      }
+      byte[] znodeDataUTF8 = znodeData.getBytes(Charset.forName("UTF-8"));
+      znode =
+          new PersistentEphemeralNode(zooKeeperClient,
+              PersistentEphemeralNode.Mode.EPHEMERAL_SEQUENTIAL, pathPrefix, znodeDataUTF8);
+      znode.start();
+      // We'll wait for 120s for node creation
+      long znodeCreationTimeout = 120;
+      if (!znode.waitForInitialCreate(znodeCreationTimeout, TimeUnit.SECONDS)) {
+        throw new Exception("Max znode creation wait time: " + znodeCreationTimeout + "s exhausted");
+      }
+      setDeregisteredWithZooKeeper(false);
+      final String znodePath = znode.getActualPath();
+      // Set a watch on the znode
+      if (zooKeeperClient.checkExists().usingWatcher(new DeRegisterWatcher()).forPath(znodePath) == null) {
+        // No node exists, throw exception
+        throw new Exception("Unable to create znode for this HiveServer2 instance on ZooKeeper.");
+      }
+      LOG.info("Created a znode on ZooKeeper for HiveServer2 uri: " + instanceURI);
+    } catch (Exception e) {
+      LOG.error("Unable to create a znode for this server instance", e);
+      if (znode != null) {
+        znode.close();
+      }
+      throw (e);
+    }
   }
 
   /**
@@ -546,16 +568,12 @@ public class HiveServer2 extends CompositeService {
     confsToPublish.put(ConfVars.HIVE_SERVER2_TRANSPORT_MODE.varname,
         hiveConf.getVar(ConfVars.HIVE_SERVER2_TRANSPORT_MODE));
     // Transport specific confs
-    boolean isHttpTransportMode = isHttpTransportMode(hiveConf);
-    boolean isAllTransportMode = isAllTransportMode(hiveConf);
-
-    if (isHttpTransportMode || isAllTransportMode) {
+    if (isHTTPTransportMode(hiveConf)) {
       confsToPublish.put(ConfVars.HIVE_SERVER2_THRIFT_HTTP_PORT.varname,
           Integer.toString(hiveConf.getIntVar(ConfVars.HIVE_SERVER2_THRIFT_HTTP_PORT)));
       confsToPublish.put(ConfVars.HIVE_SERVER2_THRIFT_HTTP_PATH.varname,
           hiveConf.getVar(ConfVars.HIVE_SERVER2_THRIFT_HTTP_PATH));
-    }
-    if (!isHttpTransportMode || isAllTransportMode) {
+    } else {
       confsToPublish.put(ConfVars.HIVE_SERVER2_THRIFT_PORT.varname,
           Integer.toString(hiveConf.getIntVar(ConfVars.HIVE_SERVER2_THRIFT_PORT)));
       confsToPublish.put(ConfVars.HIVE_SERVER2_THRIFT_SASL_QOP.varname,
@@ -580,8 +598,8 @@ public class HiveServer2 extends CompositeService {
    * @return
    * @throws Exception
    */
-  private static void setUpZooKeeperAuth(HiveConf hiveConf) throws Exception {
-    if (ZookeeperUtils.isKerberosEnabled(hiveConf)) {
+  private void setUpZooKeeperAuth(HiveConf hiveConf) throws Exception {
+    if (UserGroupInformation.isSecurityEnabled()) {
       String principal = hiveConf.getVar(ConfVars.HIVE_SERVER2_KERBEROS_PRINCIPAL);
       if (principal.isEmpty()) {
         throw new IOException("HiveServer2 Kerberos principal is empty");
@@ -619,47 +637,56 @@ public class HiveServer2 extends CompositeService {
       hs2HARegistry.failover();
     }
   }
-
   /**
-   * The watcher class shuts down the server if there are no more active client
+   * The watcher class which sets the de-register flag when the znode corresponding to this server
+   * instance is deleted. Additionally, it shuts down the server if there are no more active client
    * sessions at the time of receiving a 'NodeDeleted' notification from ZooKeeper.
    */
-  public class DeRegisterWatcher extends ZKDeRegisterWatcher {
-    public DeRegisterWatcher(ZooKeeperHiveHelper zooKeeperHiveHelper) {
-      super(zooKeeperHiveHelper);
-    }
-
+  private class DeRegisterWatcher implements Watcher {
     @Override
     public void process(WatchedEvent event) {
-      super.process(event);
       if (event.getType().equals(Watcher.Event.EventType.NodeDeleted)) {
-        // If there are no more active client sessions, stop the server
-        if (cliService.getSessionManager().getOpenSessionCount() == 0) {
-          LOG.warn("This instance of HiveServer2 has been removed from the list of server "
+        if (znode != null) {
+          try {
+            znode.close();
+            LOG.warn("This HiveServer2 instance is now de-registered from ZooKeeper. "
+                + "The server will be shut down after the last client session completes.");
+          } catch (IOException e) {
+            LOG.error("Failed to close the persistent ephemeral znode", e);
+          } finally {
+            HiveServer2.this.setDeregisteredWithZooKeeper(true);
+            // If there are no more active client sessions, stop the server
+            if (cliService.getSessionManager().getOpenSessionCount() == 0) {
+              LOG.warn("This instance of HiveServer2 has been removed from the list of server "
                   + "instances available for dynamic service discovery. "
                   + "The last client session has ended - will shutdown now.");
-          HiveServer2.this.stop();
+              HiveServer2.this.stop();
+            }
+          }
         }
       }
     }
   }
 
-  /**
-   * @return true if the server instance was deregistered from ZooKeeper, else false. The function might
-   * be called even when the instance is not registered with the ZooKeeper (See
-   * SessionManage.closeSessionInternal()). In that case, return false since the deregistration has
-   * not really happened.
-   */
-  public boolean isDeregisteredWithZooKeeper() {
-    if (serviceDiscovery && !activePassiveHA) {
-      if (zooKeeperHelper != null) {
-        return zooKeeperHelper.isDeregisteredWithZooKeeper();
-      }
+  private void removeServerInstanceFromZooKeeper() throws Exception {
+    setDeregisteredWithZooKeeper(true);
+
+    if (znode != null) {
+      znode.close();
     }
-    return false;
+    zooKeeperClient.close();
+    LOG.info("Server instance removed from ZooKeeper.");
   }
 
-  public String getServerInstanceURI() throws Exception {
+  public boolean isDeregisteredWithZooKeeper() {
+    return deregisteredWithZooKeeper;
+  }
+
+  private void setDeregisteredWithZooKeeper(boolean deregisteredWithZooKeeper) {
+    this.deregisteredWithZooKeeper = deregisteredWithZooKeeper;
+  }
+
+  private String getServerInstanceURI() throws Exception {
     if ((thriftCLIService == null) || (thriftCLIService.getServerIPAddress() == null)) {
       throw new Exception("Unable to get the server address; it hasn't been initialized yet.");
     }
@@ -680,9 +707,6 @@ public class HiveServer2 extends CompositeService {
     // If we're supporting dynamic service discovery, we'll add the service uri for this
     // HiveServer2 instance to Zookeeper as a znode.
     HiveConf hiveConf = getHiveConf();
-    if (!serviceDiscovery || !activePassiveHA) {
-      allowClientSessions();
-    }
     if (serviceDiscovery) {
       try {
         if (activePassiveHA) {
@@ -690,26 +714,7 @@ public class HiveServer2 extends CompositeService {
           hs2HARegistry.start();
           LOG.info("HS2 HA registry started");
         } else {
-          boolean publishConfigs =
-                  hiveConf.getBoolVar(HiveConf.ConfVars.HIVE_SERVER2_ZOOKEEPER_PUBLISH_CONFIGS);
-          String instanceURI = getServerInstanceURI();
-          String znodeData;
-          if (publishConfigs) {
-            // HiveServer2 configs that this instance will publish to ZooKeeper,
-            // so that the clients can read these and configure themselves properly.
-            addConfsToPublish(hiveConf, confsToPublish, getServerInstanceURI());
-            znodeData = Joiner.on(';').withKeyValueSeparator("=").join(confsToPublish);
-          } else {
-            znodeData = instanceURI;
-          }
-
-          // Add a Znode to the specified ZooKeeper with name: serverUri=host:port;
-          // version=versionInfo; sequence=sequenceNumber
-          zooKeeperHelper = hiveConf.getZKConfig();
-          String znodePathPrefix = "serverUri=" + instanceURI + ";" +
-                  "version=" + HiveVersionInfo.getVersion() + ";" + "sequence=";
-          zooKeeperHelper.addServerInstanceToZooKeeper(znodePathPrefix, znodeData,
-                  zooKeeperAclProvider, new DeRegisterWatcher(zooKeeperHelper));
+          addServerInstanceToZooKeeper(hiveConf, confsToPublish);
         }
       } catch (Exception e) {
         LOG.error("Error adding this HiveServer2 instance to ZooKeeper: ", e);
@@ -718,9 +723,9 @@ public class HiveServer2 extends CompositeService {
     }
 
     try {
-      startPrivilegeSynchronizer(hiveConf);
+      startPrivilegeSynchonizer(hiveConf);
     } catch (Exception e) {
-      LOG.error("Error starting priviledge synchronizer: ", e);
+      LOG.error("Error starting priviledge synchonizer: ", e);
       throw new ServiceException(e);
     }
 
@@ -734,18 +739,16 @@ public class HiveServer2 extends CompositeService {
       }
     }
 
-    if (hiveConf.getVar(ConfVars.HIVE_EXECUTION_ENGINE).equals("tez")) {
-      if (!activePassiveHA) {
-        LOG.info("HS2 interactive HA not enabled. Starting tez sessions..");
-        try {
-          startOrReconnectTezSessions();
-        } catch (Exception e) {
-          LOG.error("Error starting  Tez sessions: ", e);
-          throw new ServiceException(e);
-        }
-      } else {
-        LOG.info("HS2 interactive HA enabled. Tez sessions will be started/reconnected by the leader.");
+    if (!activePassiveHA) {
+      LOG.info("HS2 interactive HA not enabled. Starting tez sessions..");
+      try {
+        startOrReconnectTezSessions();
+      } catch (Exception e) {
+        LOG.error("Error starting  Tez sessions: ", e);
+        throw new ServiceException(e);
       }
+    } else {
+      LOG.info("HS2 interactive HA enabled. Tez sessions will be started/reconnected by the leader.");
     }
   }
 
@@ -771,7 +774,6 @@ public class HiveServer2 extends CompositeService {
       }
       hiveServer2.startOrReconnectTezSessions();
       LOG.info("Started/Reconnected tez sessions.");
-      hiveServer2.allowClientSessions();
 
       // resolve futures used for testing
       if (HiveConf.getBoolVar(hiveServer2.getHiveConf(), ConfVars.HIVE_IN_TEST)) {
@@ -784,7 +786,7 @@ public class HiveServer2 extends CompositeService {
     public void notLeader() {
       LOG.info("HS2 instance {} LOST LEADERSHIP. Stopping/Disconnecting tez sessions..", hiveServer2.serviceUri);
       hiveServer2.isLeader.set(false);
-      hiveServer2.closeAndDisallowHiveSessions();
+      hiveServer2.closeHiveSessions();
       hiveServer2.stopOrDisconnectTezSessions();
       LOG.info("Stopped/Disconnected tez sessions.");
 
@@ -799,28 +801,26 @@ public class HiveServer2 extends CompositeService {
   private void startOrReconnectTezSessions() {
     LOG.info("Starting/Reconnecting tez sessions..");
     // TODO: add tez session reconnect after TEZ-3875
-    WMFullResourcePlan resourcePlan;
-    try {
-      resourcePlan = sessionHive.getActiveResourcePlan();
-    } catch (HiveException e) {
-      if (!HiveConf.getBoolVar(getHiveConf(), ConfVars.HIVE_IN_TEST_SSL)) {
-        throw new RuntimeException(e);
-      } else {
-        resourcePlan = null; // Ignore errors in SSL tests where the connection is misconfigured.
+    WMFullResourcePlan resourcePlan = null;
+    if (!StringUtils.isEmpty(wmQueue)) {
+      try {
+        resourcePlan = sessionHive.getActiveResourcePlan();
+      } catch (HiveException e) {
+        if (!HiveConf.getBoolVar(getHiveConf(), ConfVars.HIVE_IN_TEST_SSL)) {
+          throw new RuntimeException(e);
+        } else {
+          resourcePlan = null; // Ignore errors in SSL tests where the connection is misconfigured.
+        }
       }
-    }
 
-    if (resourcePlan == null && HiveConf.getBoolVar(
-      getHiveConf(), ConfVars.HIVE_IN_TEST)) {
-      LOG.info("Creating a default resource plan for test");
-      resourcePlan = createTestResourcePlan();
+      if (resourcePlan == null && HiveConf.getBoolVar(
+          getHiveConf(), ConfVars.HIVE_IN_TEST)) {
+        LOG.info("Creating a default resource plan for test");
+        resourcePlan = createTestResourcePlan();
+      }
     }
     initAndStartTezSessionPoolManager(resourcePlan);
     initAndStartWorkloadManager(resourcePlan);
-  }
-
-  private void allowClientSessions() {
-    cliService.getSessionManager().allowSessions(true);
   }
 
   private void initAndStartTezSessionPoolManager(final WMFullResourcePlan resourcePlan) {
@@ -828,8 +828,7 @@ public class HiveServer2 extends CompositeService {
     // SessionState.get() return null during createTezDir
     try {
       // will be invoked anyway in TezTask. Doing it early to initialize triggers for non-pool tez session.
-      LOG.info("Initializing tez session pool manager. Active resource plan: {}",
-        resourcePlan == null || resourcePlan.getPlan() == null ? "null" : resourcePlan.getPlan().getName());
+      LOG.info("Initializing tez session pool manager");
       tezSessionPoolManager = TezSessionPoolManager.getInstance();
       HiveConf hiveConf = getHiveConf();
       if (hiveConf.getBoolVar(ConfVars.HIVE_SERVER2_TEZ_INITIALIZE_DEFAULT_SESSIONS)) {
@@ -847,8 +846,7 @@ public class HiveServer2 extends CompositeService {
   private void initAndStartWorkloadManager(final WMFullResourcePlan resourcePlan) {
     if (!StringUtils.isEmpty(wmQueue)) {
       // Initialize workload management.
-      LOG.info("Initializing workload management. Active resource plan: {}",
-        resourcePlan == null || resourcePlan.getPlan() == null ? "null" : resourcePlan.getPlan().getName());
+      LOG.info("Initializing workload management");
       try {
         wm = WorkloadManager.create(wmQueue, getHiveConf(), resourcePlan);
         wm.start();
@@ -857,25 +855,21 @@ public class HiveServer2 extends CompositeService {
         throw new ServiceException("Unable to instantiate and start Workload Manager", e);
       }
     } else {
-      LOG.info("Workload management is not enabled as {} config is not set",
-        ConfVars.HIVE_SERVER2_TEZ_INTERACTIVE_QUEUE.varname);
+      LOG.info("Workload management is not enabled.");
     }
   }
 
-  private void closeAndDisallowHiveSessions() {
+  private void closeHiveSessions() {
     LOG.info("Closing all open hive sessions.");
-    if (cliService == null) {
-      return;
-    }
-    cliService.getSessionManager().allowSessions(false);
-    // No sessions can be opened after the above call. Close the existing ones if any.
-    try {
-      for (HiveSession session : cliService.getSessionManager().getSessions()) {
-        cliService.getSessionManager().closeSession(session.getSessionHandle());
+    if (cliService != null && cliService.getSessionManager().getOpenSessionCount() > 0) {
+      try {
+        for (HiveSession session : cliService.getSessionManager().getSessions()) {
+          cliService.getSessionManager().closeSession(session.getSessionHandle());
+        }
+        LOG.info("Closed all open hive sessions");
+      } catch (HiveSQLException e) {
+        LOG.error("Unable to close all open sessions.", e);
       }
-      LOG.info("Closed all open hive sessions");
-    } catch (HiveSQLException e) {
-      LOG.error("Unable to close all open sessions.", e);
     }
   }
 
@@ -901,68 +895,11 @@ public class HiveServer2 extends CompositeService {
     }
   }
 
-  /**
-   * Decommission HiveServer2. As a consequence, SessionManager stops
-   * opening new sessions, OperationManager refuses running new queries and
-   * HiveServer2 deregisters itself from Zookeeper if service discovery is enabled,
-   * but the decommissioning has no effect on the current running queries.
-   */
-  public synchronized void decommission() {
-    LOG.info("Decommissioning HiveServer2");
-    // Remove this server instance from ZooKeeper if dynamic service discovery is set
-    if (zooKeeperHelper != null && !isDeregisteredWithZooKeeper()) {
-      try {
-        zooKeeperHelper.removeServerInstanceFromZooKeeper();
-      } catch (Exception e) {
-        LOG.error("Error removing znode for this HiveServer2 instance from ZooKeeper.", e);
-      }
-    }
-    super.decommission();
-  }
-
-  public synchronized void graceful_stop() {
-    try {
-      decommission();
-      // Need 30s for stop() to release server's resources
-      long maxTimeForWait = HiveConf.getTimeVar(getHiveConf(),
-          HiveConf.ConfVars.HIVE_SERVER2_GRACEFUL_STOP_TIMEOUT, TimeUnit.MILLISECONDS) - 30000;
-      long timeout = maxTimeForWait, startTime = System.currentTimeMillis();
-      try {
-        // The service should be started before when reaches here, as decommissioning would throw
-        // IllegalStateException otherwise, so both cliService and sessionManager should not be null.
-        while (timeout > 0 && !getCliService().getSessionManager().getOperations().isEmpty()) {
-          // For gracefully stopping, sleeping some time while looping does not bring much overhead,
-          // that is, at most 100ms are wasted for waiting for OperationManager to be done,
-          // and this code path will only be executed when HS2 is being terminated.
-          Thread.sleep(Math.min(100, timeout));
-          timeout = maxTimeForWait + startTime - System.currentTimeMillis();
-        }
-      } catch (InterruptedException e) {
-        LOG.warn("Interrupted while waiting for all live operations to be done");
-        Thread.currentThread().interrupt();
-      }
-      LOG.info("Spent {}ms waiting for live operations to be done, current live operations: {}"
-          , System.currentTimeMillis() - startTime
-          , getCliService().getSessionManager().getOperations().size());
-    } finally {
-      stop();
-    }
-  }
-
   @Override
   public synchronized void stop() {
     LOG.info("Shutting down HiveServer2");
     HiveConf hiveConf = this.getHiveConf();
     super.stop();
-    if (scheduledQueryService != null) {
-      try {
-        scheduledQueryService.close();
-      } catch (Exception e) {
-        LOG.error("Error stopping schq", e);
-      }
-    }
-    //Shutdown metric collection
-    MetricSink.getInstance().tearDown();
     if (hs2HARegistry != null) {
       hs2HARegistry.stop();
       shutdownExecutor(leaderActionsExecutorService);
@@ -989,9 +926,7 @@ public class HiveServer2 extends CompositeService {
     // Remove this server instance from ZooKeeper if dynamic service discovery is set
     if (serviceDiscovery && !activePassiveHA) {
       try {
-        if (zooKeeperHelper != null) {
-          zooKeeperHelper.removeServerInstanceFromZooKeeper();
-        }
+        removeServerInstanceFromZooKeeper();
       } catch (Exception e) {
         LOG.error("Error removing znode for this HiveServer2 instance from ZooKeeper.", e);
       }
@@ -999,14 +934,16 @@ public class HiveServer2 extends CompositeService {
 
     stopOrDisconnectTezSessions();
 
+    if (hiveConf != null && hiveConf.getVar(ConfVars.HIVE_EXECUTION_ENGINE).equals("spark")) {
+      try {
+        SparkSessionManagerImpl.getInstance().shutdown();
+      } catch(Exception ex) {
+        LOG.error("Spark session pool manager failed to stop during HiveServer2 shutdown.", ex);
+      }
+    }
+
     if (zKClientForPrivSync != null) {
       zKClientForPrivSync.close();
-    }
-    if (hiveConf != null && HiveSamlUtils
-        .isSamlAuthMode(hiveConf.getVar(ConfVars.HIVE_SERVER2_AUTHENTICATION))) {
-      // this is mostly for testing purposes to make sure that SAML client is
-      // reinitialized after a HS2 is restarted.
-      HiveSaml2Client.shutdown();
     }
   }
 
@@ -1041,20 +978,17 @@ public class HiveServer2 extends CompositeService {
     }
   }
 
-  public void startPrivilegeSynchronizer(HiveConf hiveConf) throws Exception {
+  public void startPrivilegeSynchonizer(HiveConf hiveConf) throws Exception {
 
-    if (!HiveConf.getBoolVar(hiveConf, ConfVars.HIVE_PRIVILEGE_SYNCHRONIZER)) {
-      return;
-    }
     PolicyProviderContainer policyContainer = new PolicyProviderContainer();
     HiveAuthorizer authorizer = SessionState.get().getAuthorizerV2();
     if (authorizer.getHivePolicyProvider() != null) {
       policyContainer.addAuthorizer(authorizer);
     }
-    if (MetastoreConf.getVar(hiveConf, MetastoreConf.ConfVars.PRE_EVENT_LISTENERS) != null &&
-        MetastoreConf.getVar(hiveConf, MetastoreConf.ConfVars.PRE_EVENT_LISTENERS).contains(
+    if (hiveConf.get(MetastoreConf.ConfVars.PRE_EVENT_LISTENERS.getVarname()) != null &&
+        hiveConf.get(MetastoreConf.ConfVars.PRE_EVENT_LISTENERS.getVarname()).contains(
         "org.apache.hadoop.hive.ql.security.authorization.AuthorizationPreEventListener") &&
-        MetastoreConf.getVar(hiveConf, MetastoreConf.ConfVars.HIVE_AUTHORIZATION_MANAGER)!= null) {
+        hiveConf.get(MetastoreConf.ConfVars.HIVE_AUTHORIZATION_MANAGER.getVarname())!= null) {
       List<HiveMetastoreAuthorizationProvider> providers = HiveUtils.getMetaStoreAuthorizeProviderManagers(
           hiveConf, HiveConf.ConfVars.HIVE_METASTORE_AUTHORIZATION_MANAGER, SessionState.get().getAuthenticator());
       for (HiveMetastoreAuthorizationProvider provider : providers) {
@@ -1065,21 +999,18 @@ public class HiveServer2 extends CompositeService {
     }
 
     if (policyContainer.size() > 0) {
-      setUpZooKeeperAuth(hiveConf);
-      zKClientForPrivSync = hiveConf.getZKConfig().startZookeeperClient(zooKeeperAclProvider, true);
+      zKClientForPrivSync = startZookeeperClient(hiveConf);
       String rootNamespace = hiveConf.getVar(HiveConf.ConfVars.HIVE_SERVER2_ZOOKEEPER_NAMESPACE);
       String path = ZooKeeperHiveHelper.ZOOKEEPER_PATH_SEPARATOR + rootNamespace
           + ZooKeeperHiveHelper.ZOOKEEPER_PATH_SEPARATOR + "leader";
-      LeaderLatch privilegeSynchronizerLatch = new LeaderLatch(zKClientForPrivSync, path);
-      privilegeSynchronizerLatch.start();
-      LOG.info("Find " + policyContainer.size() + " policy to synchronize, start PrivilegeSynchronizer");
-      Thread privilegeSynchronizerThread = new Thread(
-          new PrivilegeSynchronizer(privilegeSynchronizerLatch, policyContainer, hiveConf), "PrivilegeSynchronizer");
-      privilegeSynchronizerThread.setDaemon(true);
-      privilegeSynchronizerThread.start();
+      LeaderLatch privilegeSynchonizerLatch = new LeaderLatch(zKClientForPrivSync, path);
+      privilegeSynchonizerLatch.start();
+      Thread privilegeSynchonizerThread = new Thread(
+          new PrivilegeSynchonizer(privilegeSynchonizerLatch, policyContainer, hiveConf), "PrivilegeSynchonizer");
+      privilegeSynchonizerThread.start();
     } else {
       LOG.warn(
-          "No policy provider found, skip creating PrivilegeSynchronizer");
+          "No policy provider found, skip creating PrivilegeSynchonizer");
     }
   }
 
@@ -1113,6 +1044,9 @@ public class HiveServer2 extends CompositeService {
             "warned upon.", t);
         }
 
+        if (hiveConf.getVar(ConfVars.HIVE_EXECUTION_ENGINE).equals("spark")) {
+          SparkSessionManagerImpl.getInstance().setup(hiveConf);
+        }
         break;
       } catch (Throwable throwable) {
         if (server != null) {
@@ -1139,65 +1073,6 @@ public class HiveServer2 extends CompositeService {
     }
   }
 
-  private void maybeStartCompactorThreads(HiveConf hiveConf) throws Exception {
-    if (MetastoreConf.getVar(hiveConf, MetastoreConf.ConfVars.HIVE_METASTORE_RUNWORKER_IN).equals("hs2")) {
-      int numWorkers = MetastoreConf.getIntVar(hiveConf, MetastoreConf.ConfVars.COMPACTOR_WORKER_THREADS);
-      List<Map.Entry<String, String>> entries = hiveConf.getMatchingEntries(Constants.COMPACTION_POOLS_PATTERN);
-
-      StringBuilder sb = new StringBuilder(2048);
-      sb.append("This HS2 instance will act as Compactor with the following worker pool configuration:\n");
-      sb.append("Global pool size: ").append(numWorkers).append("\n");
-
-      LOG.info("Initializing the compaction pools with using the global worker limit: {} ", numWorkers);
-      while (numWorkers > 0 && entries.size() > 0) {
-        Map.Entry<String, String> entry = entries.remove(0);
-        String poolName = entry.getValue();
-        int poolWorkers = hiveConf.getInt(entry.getKey(), 0);
-
-        if (poolWorkers == 0) {
-          LOG.warn("Compaction pool ({}) configured with zero workers. Skipping pool initialization", poolName);
-          sb.append("Pool not initialized, 0 size: ").append(poolName).append("\n");
-          continue;
-        }
-        if (poolWorkers > numWorkers) {
-          LOG.warn("Global worker pool exhausted, compaction pool ({}) will be configured with less workers than the " +
-              "required number. ({} -> {})", poolName, poolWorkers, numWorkers);
-          poolWorkers = numWorkers;
-        }
-
-        LOG.info("Initializing compaction pool ({}) with {} workers.", poolName, poolWorkers);
-        for (int i = 0; i < poolWorkers; i++) {
-          Worker w = new Worker();
-          w.setPoolName(poolName);
-          CompactorThread.initializeAndStartThread(w, hiveConf);
-          sb.append("Worker - Name: ").append(w.getName()).append(", Pool: ").append(poolName)
-              .append(", Priority: ").append(w.getPriority()).append("\n");
-        }
-        numWorkers -= poolWorkers;
-      }
-
-      if (numWorkers == 0) {
-        LOG.warn("No default compaction pool configured, all non-labeled compaction requests will remain unprocessed!");
-        if (entries.size() > 0) {
-          for (Map.Entry<String, String> entry : entries) {
-            String poolName = entry.getValue();
-            LOG.warn("There are no available workers for the following compaction pool: {} ", poolName);
-            sb.append("Pool not initialized, no remaining free workers: ").append(poolName).append("\n");
-          }
-          sb.append("Pool not initialized, no remaining free workers: default\n");
-        }
-      } else {
-        LOG.info("Initializing default compaction pool with {} workers.", numWorkers);
-        for (int i = 0; i < numWorkers; i++) {
-          Worker w = new Worker();
-          CompactorThread.initializeAndStartThread(w, hiveConf);
-          sb.append("Worker - Name: ").append(w.getName()).append(", Pool: default, Priority: ").append(w.getPriority()).append("\n");
-        }
-      }
-      LOG.info(sb.toString());
-    }
-  }
-
   /**
    * Remove all znodes corresponding to the given version number from ZooKeeper
    *
@@ -1206,10 +1081,14 @@ public class HiveServer2 extends CompositeService {
    */
   static void deleteServerInstancesFromZooKeeper(String versionNumber) throws Exception {
     HiveConf hiveConf = new HiveConf();
-    setUpZooKeeperAuth(hiveConf);
-    CuratorFramework zooKeeperClient = hiveConf.getZKConfig().getNewZookeeperClient();
-    zooKeeperClient.start();
+    String zooKeeperEnsemble = ZooKeeperHiveHelper.getQuorumServers(hiveConf);
     String rootNamespace = hiveConf.getVar(HiveConf.ConfVars.HIVE_SERVER2_ZOOKEEPER_NAMESPACE);
+    int baseSleepTime = (int) hiveConf.getTimeVar(HiveConf.ConfVars.HIVE_ZOOKEEPER_CONNECTION_BASESLEEPTIME, TimeUnit.MILLISECONDS);
+    int maxRetries = hiveConf.getIntVar(HiveConf.ConfVars.HIVE_ZOOKEEPER_CONNECTION_MAX_RETRIES);
+    CuratorFramework zooKeeperClient =
+        CuratorFrameworkFactory.builder().connectString(zooKeeperEnsemble)
+            .retryPolicy(new ExponentialBackoffRetry(baseSleepTime, maxRetries)).build();
+    zooKeeperClient.start();
     List<String> znodePaths =
         zooKeeperClient.getChildren().forPath(
             ZooKeeperHiveHelper.ZOOKEEPER_PATH_SEPARATOR + rootNamespace);
@@ -1217,7 +1096,7 @@ public class HiveServer2 extends CompositeService {
     // Now for each path that is for the given versionNumber, delete the znode from ZooKeeper
     for (int i = 0; i < znodePaths.size(); i++) {
       String znodePath = znodePaths.get(i);
-      zkDeleteSignal = new CountDownLatch(1);
+      deleteSignal = new CountDownLatch(1);
       if (znodePath.contains("version=" + versionNumber + ";")) {
         String fullZnodePath =
             ZooKeeperHiveHelper.ZOOKEEPER_PATH_SEPARATOR + rootNamespace
@@ -1227,11 +1106,7 @@ public class HiveServer2 extends CompositeService {
         zooKeeperClient.delete().guaranteed().inBackground(new DeleteCallBack())
             .forPath(fullZnodePath);
         // Wait for the delete to complete
-        zkDeleteSignal.await();
-        final KeeperException.Code rc = HiveServer2.zkDeleteResultCode;
-        if (rc != KeeperException.Code.OK) {
-          throw KeeperException.create(rc);
-        }
+        deleteSignal.await();
         // Get the updated path list
         znodePathsUpdated =
             zooKeeperClient.getChildren().forPath(
@@ -1250,8 +1125,7 @@ public class HiveServer2 extends CompositeService {
     public void processResult(CuratorFramework zooKeeperClient, CuratorEvent event)
         throws Exception {
       if (event.getType() == CuratorEventType.DELETE) {
-        zkDeleteResultCode = KeeperException.Code.get(event.getResultCode());
-        zkDeleteSignal.countDown();
+        deleteSignal.countDown();
       }
     }
   }
@@ -1270,6 +1144,7 @@ public class HiveServer2 extends CompositeService {
 
       // Logger debug message from "oproc" after log4j initialize properly
       LOG.debug(oproc.getDebugMessage().toString());
+
       // Call the executor which will execute the appropriate command based on the parsed options
       oprocResponse.getServerOptionsExecutor().execute();
     } catch (LogInitializationException e) {
@@ -1322,22 +1197,6 @@ public class HiveServer2 extends CompositeService {
         .withLongOpt("failover")
         .withDescription("Manually failover Active HS2 instance to passive standby mode")
         .create());
-      // --graceful_stop
-      options.addOption(OptionBuilder
-        .hasArgs(1)
-        .isRequired(false)
-        .withArgName("pid")
-        .withLongOpt("graceful_stop")
-        .withDescription("Gracefully stopping HS2 instance of" +
-            " 'pid'(default: $HIVE_CONF_DIR/hiveserver2.pid) in 'timeout'(default:1800) seconds.")
-        .create());
-      // --getHiveConf <key>
-      options.addOption(OptionBuilder
-        .hasArg(true)
-        .withArgName("key")
-        .withLongOpt("getHiveConf")
-        .withDescription("Get the value of key from HiveConf")
-        .create());
       options.addOption(new Option("H", "help", false, "Print help information"));
     }
 
@@ -1350,17 +1209,11 @@ public class HiveServer2 extends CompositeService {
         for (String propKey : confProps.stringPropertyNames()) {
           // save logging message for log4j output latter after log4j initialize properly
           debugMessage.append("Setting " + propKey + "=" + confProps.getProperty(propKey) + ";\n");
-          if ("hive.log.file".equals(propKey) ||
-              "hive.log.dir".equals(propKey) ||
-              "hive.root.logger".equals(propKey)) {
-            throw new IllegalArgumentException("Logs will be split in two "
-                + "files if the commandline argument " + propKey + " is "
-                + "used. To prevent this use to HADOOP_CLIENT_OPTS -D"
-                + propKey + "=" + confProps.getProperty(propKey)
-                + " or use the set the value in the configuration file"
-                + " (see HIVE-19886)");
+          if (propKey.equalsIgnoreCase("hive.root.logger")) {
+            CommonCliOptions.splitAndSetLogger(propKey, confProps);
+          } else {
+            System.setProperty(propKey, confProps.getProperty(propKey));
           }
-          HiveConf.overrides.put(propKey, confProps.getProperty(propKey));
         }
 
         // Process --help
@@ -1384,21 +1237,6 @@ public class HiveServer2 extends CompositeService {
           return new ServerOptionsProcessorResponse(new FailoverHS2InstanceExecutor(
             commandLine.getOptionValue("failover")
           ));
-        }
-
-        // Process --getHiveConf
-        if (commandLine.hasOption("getHiveConf")) {
-          return new ServerOptionsProcessorResponse(() -> {
-            String key = commandLine.getOptionValue("getHiveConf");
-            HiveConf hiveConf = new HiveConf();
-            HiveConf.ConfVars confVars = HiveConf.getConfVars(key);
-            String value = hiveConf.get(key);
-            if (confVars != null && confVars.getValidator() instanceof Validator.TimeValidator) {
-              Validator.TimeValidator validator = (Validator.TimeValidator) confVars.getValidator();
-              value = HiveConf.getTimeVar(hiveConf, confVars, validator.getTimeUnit()) + "";
-            }
-            System.out.println(key + "=" + value);
-          });
         }
       } catch (ParseException e) {
         // Error out & exit - we were not able to parse the args successfully

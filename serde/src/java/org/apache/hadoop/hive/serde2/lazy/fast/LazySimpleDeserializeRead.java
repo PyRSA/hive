@@ -19,22 +19,19 @@
 package org.apache.hadoop.hive.serde2.lazy.fast;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.Base64;
 import java.util.List;
 
 import org.apache.hadoop.hive.common.type.Date;
-import org.apache.hadoop.hive.common.type.Timestamp;
-import org.apache.hadoop.hive.serde2.io.HiveDecimalWritable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.common.type.DataTypePhysicalVariation;
 import org.apache.hadoop.hive.common.type.HiveIntervalDayTime;
 import org.apache.hadoop.hive.common.type.HiveIntervalYearMonth;
 import org.apache.hadoop.hive.serde2.fast.DeserializeRead;
+import org.apache.hadoop.hive.serde2.lazy.LazyBinary;
 import org.apache.hadoop.hive.serde2.lazy.LazyByte;
 import org.apache.hadoop.hive.serde2.lazy.LazyInteger;
 import org.apache.hadoop.hive.serde2.lazy.LazyLong;
@@ -202,7 +199,6 @@ public final class LazySimpleDeserializeRead extends DeserializeRead {
   private final int[] escapeCounts;
   private final byte[] nullSequenceBytes;
   private final boolean isExtendedBooleanLiteral;
-  private final boolean isDecodeBinaryAsBase64;
 
   private final int fieldCount;
   private final Field[] fields;
@@ -346,14 +342,11 @@ public final class LazySimpleDeserializeRead extends DeserializeRead {
     }
     nullSequenceBytes = lazyParams.getNullSequence().getBytes();
     isExtendedBooleanLiteral = lazyParams.isExtendedBooleanLiteral();
-    isDecodeBinaryAsBase64 = lazyParams.isDecodeBinaryAsBase64();
     if (lazyParams.isLastColumnTakesRest()) {
       throw new RuntimeException("serialization.last.column.takes.rest not supported");
     }
 
-    List<String> timestampFormats = lazyParams.getTimestampFormats();
-    timestampParser = (timestampFormats == null) ?
-        new TimestampParser() : new TimestampParser(timestampFormats);
+    timestampParser = new TimestampParser();
 
     internalBufferLen = -1;
   }
@@ -784,13 +777,14 @@ public final class LazySimpleDeserializeRead extends DeserializeRead {
           return true;
         case BINARY:
           {
-            ByteBuffer bb = ByteBuffer.wrap(bytes, fieldStart, fieldLength);
-            // Base64 or raw value: Throws IllegalArgumentException on invalid decode
-            final ByteBuffer b64bb = isDecodeBinaryAsBase64 ? Base64.getDecoder().decode(bb) : bb;
-            currentBytes = new byte[b64bb.remaining()];
-            b64bb.get(currentBytes);
+            byte[] recv = new byte[fieldLength];
+            System.arraycopy(bytes, fieldStart, recv, 0, fieldLength);
+            byte[] decoded = LazyBinary.decodeIfNeeded(recv);
+            // use the original bytes in case decoding should fail
+            decoded = decoded.length > 0 ? decoded : recv;
+            currentBytes = decoded;
             currentBytesStart = 0;
-            currentBytesLength = currentBytes.length;
+            currentBytesLength = decoded.length;
           }
           return true;
         case DATE:
@@ -807,12 +801,16 @@ public final class LazySimpleDeserializeRead extends DeserializeRead {
               return false;
             }
             String s = new String(bytes, fieldStart, fieldLength, StandardCharsets.US_ASCII);
-            Timestamp ts = timestampParser.parseTimestamp(s);
-            if (ts == null) {
+            if (s.compareTo("NULL") == 0) {
               logExceptionMessage(bytes, fieldStart, fieldLength, "TIMESTAMP");
               return false;
             }
-            currentTimestampWritable.set(ts);
+            try {
+              currentTimestampWritable.set(timestampParser.parseTimestamp(s));
+            } catch (IllegalArgumentException e) {
+              logExceptionMessage(bytes, fieldStart, fieldLength, "TIMESTAMP");
+              return false;
+            }
           }
           return true;
         case INTERVAL_YEAR_MONTH:
@@ -855,7 +853,7 @@ public final class LazySimpleDeserializeRead extends DeserializeRead {
 
               decimalIsNull = !currentHiveDecimalWritable.mutateEnforcePrecisionScale(precision, scale);
               if (!decimalIsNull) {
-                if (HiveDecimalWritable.isPrecisionDecimal64(precision)) {
+                if (field.dataTypePhysicalVariation == DataTypePhysicalVariation.DECIMAL_64) {
                   currentDecimal64 = currentHiveDecimalWritable.serialize64(scale);
                 }
                 return true;
@@ -952,29 +950,7 @@ public final class LazySimpleDeserializeRead extends DeserializeRead {
     case LIST:
       {
         // Allow for empty string, etc.
-        final ListComplexTypeHelper listHelper = (ListComplexTypeHelper) complexTypeHelper;
-        final boolean isElementStringFamily;
-        final Field elementField = listHelper.elementField;
-        if (elementField.isPrimitive) {
-          switch (elementField.primitiveCategory) {
-            case STRING:
-            case VARCHAR:
-            case CHAR:
-              isElementStringFamily = true;
-              break;
-            default:
-              isElementStringFamily = false;
-              break;
-          }
-        } else {
-          isElementStringFamily = false;
-        }
-        final boolean isNext;
-        if (isElementStringFamily) {
-          isNext = (fieldPosition <= complexFieldEnd);
-        } else {
-          isNext = (fieldPosition < complexFieldEnd);
-        }
+        final boolean isNext = (fieldPosition <= complexFieldEnd);
         if (!isNext) {
           popComplexType();
         }

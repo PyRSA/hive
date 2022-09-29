@@ -120,18 +120,7 @@ public final class ObjectInspectorUtils {
    *
    */
   public enum NullValueOption {
-    MINVALUE(-1),
-    MAXVALUE(1);
-
-    private final int cmpReturnValue;
-
-    NullValueOption(int cmpReturnValue) {
-      this.cmpReturnValue = cmpReturnValue;
-    }
-
-    public int getCmpReturnValue() {
-      return cmpReturnValue;
-    }
+	MINVALUE, MAXVALUE
   }
 
   /**
@@ -485,12 +474,11 @@ public final class ObjectInspectorUtils {
     case UNION: {
       UnionObjectInspector uoi = (UnionObjectInspector)oi;
       List<ObjectInspector> objectInspectors = uoi.getObjectInspectors();
-      byte tag = uoi.getTag(o);
       Object object = copyToStandardObject(
               uoi.getField(o),
-              objectInspectors.get(tag),
+              objectInspectors.get(uoi.getTag(o)),
               objectInspectorOption);
-      result = new StandardUnionObjectInspector.StandardUnion(tag, object);
+      result = object;
       break;
     }
     default: {
@@ -631,7 +619,7 @@ public final class ObjectInspectorUtils {
   /**
    * Computes the bucket number to which the bucketFields belong to
    * @param bucketFields  the bucketed fields of the row
-   * @param bucketFieldInspectors  the ObjectInspectors for each of the bucketed fields
+   * @param bucketFieldInspectors  the ObjectInpsectors for each of the bucketed fields
    * @param totalBuckets the number of buckets in the table
    * @return the bucket number using Murmur hash
    */
@@ -642,7 +630,7 @@ public final class ObjectInspectorUtils {
   /**
    * Computes the bucket number to which the bucketFields belong to
    * @param bucketFields  the bucketed fields of the row
-   * @param bucketFieldInspectors  the ObjectInspectors for each of the bucketed fields
+   * @param bucketFieldInspectors  the ObjectInpsectors for each of the bucketed fields
    * @param totalBuckets the number of buckets in the table
    * @return the bucket number
    */
@@ -956,41 +944,6 @@ public final class ObjectInspectorUtils {
     return 0;
   }
 
-  public static int compare(Object[] o1, ObjectInspector[] oi1, Object[] o2,
-      ObjectInspector[] oi2, boolean[] columnSortOrderIsDesc, NullValueOption[] nullSortOrder) {
-    assert (o1.length == oi1.length);
-    assert (o2.length == oi2.length);
-    assert (o1.length == o2.length);
-    assert (o1.length == columnSortOrderIsDesc.length);
-    assert (o1.length == nullSortOrder.length);
-
-    for (int i = 0; i < o1.length; i++) {
-      int r = compareNull(o1[i], o2[i]);
-      if (r != 0) {
-        return nullSortOrder[i] == NullValueOption.MINVALUE ? -r : r;
-      }
-
-      if (columnSortOrderIsDesc[i]) {
-        r = compare(o2[i], oi2[i], o1[i], oi1[i]);
-      } else {
-        r = compare(o1[i], oi1[i], o2[i], oi2[i]);
-      }
-      if (r != 0) {
-        return r;
-      }
-    }
-    return 0;
-  }
-
-  public static int compareNull(Object o1, Object o2) {
-    if (o1 == null) {
-      return o2 == null ? 0 : 1;
-    } else if (o2 == null) {
-      return -1;
-    }
-    return 0;
-  }
-
   /**
    * Whether comparison is supported for this type.
    * Currently all types that references any map are not comparable.
@@ -1054,10 +1007,20 @@ public final class ObjectInspectorUtils {
       return oi1.getCategory().compareTo(oi2.getCategory());
     }
 
+    int nullCmpRtn = -1;
+    switch (nullValueOpt) {
+    case MAXVALUE:
+      nullCmpRtn = 1;
+      break;
+    case MINVALUE:
+      nullCmpRtn = -1;
+      break;
+    }
+
     if (o1 == null) {
-      return o2 == null ? 0 : nullValueOpt.getCmpReturnValue();
+      return o2 == null ? 0 : nullCmpRtn;
     } else if (o2 == null) {
-      return -nullValueOpt.getCmpReturnValue();
+      return -nullCmpRtn;
     }
 
     switch (oi1.getCategory()) {
@@ -1295,7 +1258,7 @@ public final class ObjectInspectorUtils {
           ObjectInspectorOptions.JAVA);
       return oi.getTypeName();
     } catch (Throwable e) {
-      LOG.info("Failed to get Type Name From Java Class", e);
+      LOG.info(StringUtils.stringifyException(e));
       return "unknown";
     }
   }

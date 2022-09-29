@@ -21,7 +21,6 @@ package org.apache.hive.service.auth;
 import java.security.PrivilegedExceptionAction;
 import java.security.SecureRandom;
 import java.util.Arrays;
-import java.util.Base64;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -30,6 +29,7 @@ import java.util.StringTokenizer;
 
 import javax.security.auth.Subject;
 
+import org.apache.commons.codec.binary.Base64;
 import org.apache.hadoop.hive.metastore.security.HadoopThriftAuthBridge;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.http.protocol.BasicHttpContext;
@@ -48,7 +48,6 @@ public final class HttpAuthUtils {
   public static final String WWW_AUTHENTICATE = "WWW-Authenticate";
   public static final String AUTHORIZATION = "Authorization";
   public static final String BASIC = "Basic";
-  public static final String BEARER = "Bearer";
   public static final String NEGOTIATE = "Negotiate";
   private static final Logger LOG = LoggerFactory.getLogger(HttpAuthUtils.class);
   private static final String COOKIE_ATTR_SEPARATOR = "&";
@@ -79,7 +78,7 @@ public final class HttpAuthUtils {
    * @param clientUserName Client User name.
    * @return An unsigned cookie token generated from input parameters.
    * The final cookie generated is of the following format :
-   * cu=&lt;username&gt;&amp;rn=&lt;randomNumber&gt;&amp;s=&lt;cookieSignature&gt;
+   * cu=<username>&rn=<randomNumber>&s=<cookieSignature>
    */
   public static String createCookieToken(String clientUserName) {
     StringBuilder sb = new StringBuilder();
@@ -143,11 +142,13 @@ public final class HttpAuthUtils {
     public static final String SERVER_HTTP_URL = "SERVER_HTTP_URL";
     private final String serverPrincipal;
     private final String serverHttpUrl;
+    private final Base64 base64codec;
     private final HttpContext httpContext;
 
     public HttpKerberosClientAction(String serverPrincipal, String serverHttpUrl) {
       this.serverPrincipal = serverPrincipal;
       this.serverHttpUrl = serverHttpUrl;
+      base64codec = new Base64(0);
       httpContext = new BasicHttpContext();
       httpContext.setAttribute(SERVER_HTTP_URL, serverHttpUrl);
     }
@@ -171,7 +172,7 @@ public final class HttpAuthUtils {
       byte[] outToken = gssContext.initSecContext(inToken, 0, inToken.length);
       gssContext.dispose();
       // Base64 encoded and stringified token for server
-      return Base64.getEncoder().encodeToString(outToken);
+      return new String(base64codec.encode(outToken));
     }
   }
 }

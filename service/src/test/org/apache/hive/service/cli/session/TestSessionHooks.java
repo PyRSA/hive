@@ -23,7 +23,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.junit.Assert;
+import junit.framework.Assert;
 import junit.framework.TestCase;
 
 import org.apache.hadoop.hive.conf.HiveConf;
@@ -36,10 +36,7 @@ import org.apache.hive.service.cli.thrift.ThriftCLIServiceClient;
 import org.junit.Before;
 import org.junit.Test;
 
-/**
- * TestSessionHooks.
- */
-public class TestSessionHooks {
+public class TestSessionHooks extends TestCase {
 
   private static String sessionUserName = "user1";
   private EmbeddedThriftBinaryCLIService service;
@@ -59,9 +56,10 @@ public class TestSessionHooks {
     }
   }
 
+  @Override
   @Before
   public void setUp() throws Exception {
-
+    super.setUp();
     SessionHookTest.runCount.set(0);
     System.setProperty(ConfVars.HIVE_SERVER2_SESSION_HOOK.varname,
         TestSessionHooks.SessionHookTest.class.getName());

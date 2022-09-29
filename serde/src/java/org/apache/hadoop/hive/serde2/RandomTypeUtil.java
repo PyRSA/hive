@@ -20,7 +20,6 @@ package org.apache.hadoop.hive.serde2;
 import org.apache.hadoop.hive.common.type.Date;
 import org.apache.hadoop.hive.common.type.HiveDecimal;
 import org.apache.hadoop.hive.common.type.Timestamp;
-import org.apache.hive.common.util.DateParser;
 
 import java.text.DateFormat;
 import java.text.ParseException;
@@ -58,35 +57,6 @@ public class RandomTypeUtil {
     return bytes;
   }
 
-  public static String getRandUnicodeString(Random r) {
-    return getRandUnicodeString(r, r.nextInt(10));
-  }
-
-  // Skip lower ASCII to avoid punctuation that might mess up serialization, etc...
-  private static int MIN_RANDOM_CODEPOINT = 256;
-  private static int RANGE_RANDOM_CODEPOINT = Character.MAX_CODE_POINT + 1 - MIN_RANDOM_CODEPOINT;
-
-  public static String getRandUnicodeString(Random r, int length) {
-    StringBuilder sb = new StringBuilder();
-    for (int i = 0; i < length; i++) {
-      char ch;
-      while (true) {
-        int codePoint = MIN_RANDOM_CODEPOINT + r.nextInt(RANGE_RANDOM_CODEPOINT);
-        if (!Character.isDefined(codePoint) ||
-            Character.getType(codePoint) == Character.PRIVATE_USE) {
-          continue;
-        }
-        ch = (char) codePoint;
-        if (Character.isSurrogate(ch)) {
-          continue;
-        }
-        break;
-      }
-      sb.append(ch);
-    }
-    return sb.toString();
-  }
-
   private static final String DECIMAL_CHARS = "0123456789";
 
   public static HiveDecimal getRandHiveDecimal(Random r) {
@@ -122,7 +92,8 @@ public class RandomTypeUtil {
         Integer.valueOf(1800 + r.nextInt(500)),  // year
         Integer.valueOf(1 + r.nextInt(12)),      // month
         Integer.valueOf(1 + r.nextInt(28)));     // day
-    return DateParser.parseDate(dateStr);
+    Date dateVal = Date.valueOf(dateStr);
+    return dateVal;
   }
 
   /**
@@ -131,7 +102,7 @@ public class RandomTypeUtil {
 
   public static final long NANOSECONDS_PER_SECOND = TimeUnit.SECONDS.toNanos(1);
   public static final long MILLISECONDS_PER_SECOND = TimeUnit.SECONDS.toMillis(1);
-  public static final long NANOSECONDS_PER_MILLISECOND = TimeUnit.MILLISECONDS.toNanos(1);
+  public static final long NANOSECONDS_PER_MILLISSECOND = TimeUnit.MILLISECONDS.toNanos(1);
 
   private static final ThreadLocal<DateFormat> DATE_FORMAT =
       new ThreadLocal<DateFormat>() {
@@ -172,12 +143,12 @@ public class RandomTypeUtil {
     case 2:
       // Limit to milliseconds only...
       optionalNanos = String.format(".%09d",
-          Integer.valueOf(r.nextInt((int) MILLISECONDS_PER_SECOND)) * NANOSECONDS_PER_MILLISECOND);
+          Integer.valueOf(r.nextInt((int) MILLISECONDS_PER_SECOND)) * NANOSECONDS_PER_MILLISSECOND);
       break;
     case 3:
       // Limit to below milliseconds only...
       optionalNanos = String.format(".%09d",
-          Integer.valueOf(r.nextInt((int) NANOSECONDS_PER_MILLISECOND)));
+          Integer.valueOf(r.nextInt((int) NANOSECONDS_PER_MILLISSECOND)));
       break;
     }
     String timestampStr = String.format("%04d-%02d-%02d %02d:%02d:%02d%s",

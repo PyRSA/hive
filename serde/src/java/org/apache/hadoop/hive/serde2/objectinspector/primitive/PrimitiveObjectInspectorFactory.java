@@ -101,10 +101,8 @@ public final class PrimitiveObjectInspectorFactory {
       new WritableHiveDecimalObjectInspector(TypeInfoFactory.decimalTypeInfo);
 
   // Map from PrimitiveTypeInfo to AbstractPrimitiveWritableObjectInspector.
-  private static ConcurrentHashMap<PrimitiveTypeInfo, AbstractPrimitiveWritableObjectInspector>
-      cachedPrimitiveWritableInspectorCache =
-      new ConcurrentHashMap<>();
-
+  private static ConcurrentHashMap<PrimitiveTypeInfo, AbstractPrimitiveWritableObjectInspector> cachedPrimitiveWritableInspectorCache =
+      new ConcurrentHashMap<PrimitiveTypeInfo, AbstractPrimitiveWritableObjectInspector>();
   static {
     cachedPrimitiveWritableInspectorCache.put(TypeInfoFactory.getPrimitiveTypeInfo(serdeConstants.BOOLEAN_TYPE_NAME),
         writableBooleanObjectInspector);
@@ -130,8 +128,7 @@ public final class PrimitiveObjectInspectorFactory {
         writableDateObjectInspector);
     cachedPrimitiveWritableInspectorCache.put(TypeInfoFactory.getPrimitiveTypeInfo(serdeConstants.TIMESTAMP_TYPE_NAME),
         writableTimestampObjectInspector);
-    cachedPrimitiveWritableInspectorCache.put(TypeInfoFactory.timestampLocalTZTypeInfo,
-        writableTimestampTZObjectInspector);
+    cachedPrimitiveWritableInspectorCache.put(TypeInfoFactory.timestampLocalTZTypeInfo, writableTimestampTZObjectInspector);
     cachedPrimitiveWritableInspectorCache.put(TypeInfoFactory.getPrimitiveTypeInfo(serdeConstants.INTERVAL_YEAR_MONTH_TYPE_NAME),
         writableHiveIntervalYearMonthObjectInspector);
     cachedPrimitiveWritableInspectorCache.put(TypeInfoFactory.getPrimitiveTypeInfo(serdeConstants.INTERVAL_DAY_TIME_TYPE_NAME),
@@ -141,10 +138,8 @@ public final class PrimitiveObjectInspectorFactory {
     cachedPrimitiveWritableInspectorCache.put(TypeInfoFactory.decimalTypeInfo, writableHiveDecimalObjectInspector);
   }
 
-  private static Map<PrimitiveCategory, AbstractPrimitiveWritableObjectInspector>
-      primitiveCategoryToWritableOI =
-      new EnumMap<>(PrimitiveCategory.class);
-
+  private static Map<PrimitiveCategory, AbstractPrimitiveWritableObjectInspector> primitiveCategoryToWritableOI =
+      new EnumMap<PrimitiveCategory, AbstractPrimitiveWritableObjectInspector>(PrimitiveCategory.class);
   static {
     primitiveCategoryToWritableOI.put(PrimitiveCategory.BOOLEAN, writableBooleanObjectInspector);
     primitiveCategoryToWritableOI.put(PrimitiveCategory.BYTE, writableByteObjectInspector);
@@ -160,8 +155,7 @@ public final class PrimitiveObjectInspectorFactory {
     primitiveCategoryToWritableOI.put(PrimitiveCategory.DATE, writableDateObjectInspector);
     primitiveCategoryToWritableOI.put(PrimitiveCategory.TIMESTAMP, writableTimestampObjectInspector);
     primitiveCategoryToWritableOI.put(PrimitiveCategory.TIMESTAMPLOCALTZ, writableTimestampTZObjectInspector);
-    primitiveCategoryToWritableOI.put(PrimitiveCategory.INTERVAL_YEAR_MONTH,
-        writableHiveIntervalYearMonthObjectInspector);
+    primitiveCategoryToWritableOI.put(PrimitiveCategory.INTERVAL_YEAR_MONTH, writableHiveIntervalYearMonthObjectInspector);
     primitiveCategoryToWritableOI.put(PrimitiveCategory.INTERVAL_DAY_TIME, writableHiveIntervalDayTimeObjectInspector);
     primitiveCategoryToWritableOI.put(PrimitiveCategory.BINARY, writableBinaryObjectInspector);
     primitiveCategoryToWritableOI.put(PrimitiveCategory.DECIMAL, writableHiveDecimalObjectInspector);
@@ -206,12 +200,12 @@ public final class PrimitiveObjectInspectorFactory {
 
   // Map from PrimitiveTypeInfo to AbstractPrimitiveJavaObjectInspector.
   private static ConcurrentHashMap<PrimitiveTypeInfo, AbstractPrimitiveJavaObjectInspector> cachedPrimitiveJavaInspectorCache =
-      new ConcurrentHashMap<>();
+      new ConcurrentHashMap<PrimitiveTypeInfo, AbstractPrimitiveJavaObjectInspector>();
   static {
-    cachedPrimitiveJavaInspectorCache.put(TypeInfoFactory.getPrimitiveTypeInfo(serdeConstants.TINYINT_TYPE_NAME),
-        javaByteObjectInspector);
     cachedPrimitiveJavaInspectorCache.put(TypeInfoFactory.getPrimitiveTypeInfo(serdeConstants.BOOLEAN_TYPE_NAME),
         javaBooleanObjectInspector);
+    cachedPrimitiveJavaInspectorCache.put(TypeInfoFactory.getPrimitiveTypeInfo(serdeConstants.TINYINT_TYPE_NAME),
+        javaByteObjectInspector);
     cachedPrimitiveJavaInspectorCache.put(TypeInfoFactory.getPrimitiveTypeInfo(serdeConstants.SMALLINT_TYPE_NAME),
         javaShortObjectInspector);
     cachedPrimitiveJavaInspectorCache.put(TypeInfoFactory.getPrimitiveTypeInfo(serdeConstants.INT_TYPE_NAME),
@@ -243,10 +237,10 @@ public final class PrimitiveObjectInspectorFactory {
   }
 
   private static Map<PrimitiveCategory, AbstractPrimitiveJavaObjectInspector> primitiveCategoryToJavaOI =
-      new EnumMap<>(PrimitiveCategory.class);
+      new EnumMap<PrimitiveCategory, AbstractPrimitiveJavaObjectInspector>(PrimitiveCategory.class);
   static {
-    primitiveCategoryToJavaOI.put(PrimitiveCategory.BYTE, javaByteObjectInspector);
     primitiveCategoryToJavaOI.put(PrimitiveCategory.BOOLEAN, javaBooleanObjectInspector);
+    primitiveCategoryToJavaOI.put(PrimitiveCategory.BYTE, javaByteObjectInspector);
     primitiveCategoryToJavaOI.put(PrimitiveCategory.SHORT, javaShortObjectInspector);
     primitiveCategoryToJavaOI.put(PrimitiveCategory.INT, javaIntObjectInspector);
     primitiveCategoryToJavaOI.put(PrimitiveCategory.LONG, javaLongObjectInspector);
@@ -268,7 +262,7 @@ public final class PrimitiveObjectInspectorFactory {
   /**
    * Returns the PrimitiveWritableObjectInspector for the PrimitiveCategory.
    *
-   * @param primitiveCategory primitive category input to be looked up.
+   * @param primitiveCategory
    */
   public static AbstractPrimitiveWritableObjectInspector getPrimitiveWritableObjectInspector(
       PrimitiveCategory primitiveCategory) {
@@ -299,16 +293,16 @@ public final class PrimitiveObjectInspectorFactory {
       result = new WritableHiveCharObjectInspector((CharTypeInfo) typeInfo);
       break;
     case VARCHAR:
-      result = new WritableHiveVarcharObjectInspector((VarcharTypeInfo) typeInfo);
+      result = new WritableHiveVarcharObjectInspector((VarcharTypeInfo)typeInfo);
       break;
     case TIMESTAMPLOCALTZ:
-      result = new WritableTimestampLocalTZObjectInspector((TimestampLocalTZTypeInfo) typeInfo);
+      result = new WritableTimestampLocalTZObjectInspector((TimestampLocalTZTypeInfo)typeInfo);
       break;
     case DECIMAL:
-      result = new WritableHiveDecimalObjectInspector((DecimalTypeInfo) typeInfo);
+      result = new WritableHiveDecimalObjectInspector((DecimalTypeInfo)typeInfo);
       break;
     default:
-      throw new RuntimeException("Failed to create object inspector for " + typeInfo);
+      throw new RuntimeException("Failed to create object inspector for " + typeInfo );
     }
 
     AbstractPrimitiveWritableObjectInspector prev =
@@ -323,8 +317,8 @@ public final class PrimitiveObjectInspectorFactory {
    * Returns a PrimitiveWritableObjectInspector which implements ConstantObjectInspector
    * for the PrimitiveCategory.
    *
-   * @param typeInfo target of the output constant.
-   * @param value input constant value.
+   * @param typeInfo
+   * @param value
    */
   public static ConstantObjectInspector getPrimitiveWritableConstantObjectInspector(
       PrimitiveTypeInfo typeInfo, Object value) {
@@ -376,7 +370,7 @@ public final class PrimitiveObjectInspectorFactory {
   /**
    * Returns the PrimitiveJavaObjectInspector for the PrimitiveCategory.
    *
-   * @param primitiveCategory input to be looked up.
+   * @param primitiveCategory
    */
   public static AbstractPrimitiveJavaObjectInspector getPrimitiveJavaObjectInspector(
       PrimitiveCategory primitiveCategory) {

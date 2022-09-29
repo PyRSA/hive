@@ -39,12 +39,6 @@ public interface Service {
     /** started and not stopped */
     STARTED,
 
-    /**
-     *  Telling the service not to run new operations from front users,
-     *  but existing queries can still be finished normally
-     */
-    DECOMMISSIONING,
-
     /** stopped. No further state transitions are permitted */
     STOPPED
   }
@@ -55,7 +49,7 @@ public interface Service {
    * The transition must be from {@link STATE#NOTINITED} to {@link STATE#INITED} unless the
    * operation failed and an exception was raised.
    *
-   * @param conf
+   * @param config
    *          the configuration of the service
    */
   void init(HiveConf conf);
@@ -68,15 +62,6 @@ public interface Service {
    * operation failed and an exception was raised.
    */
   void start();
-
-  /**
-   * Imply the service not to run new requests from client.
-   *
-   * The transition should be from {@link STATE#STARTED} to {@link STATE#DECOMMISSIONING}
-   */
-  default void decommission() {
-    // no op
-  }
 
   /**
    * Stop the service.

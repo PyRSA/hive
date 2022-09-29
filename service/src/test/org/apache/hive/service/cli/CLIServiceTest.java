@@ -21,6 +21,7 @@ package org.apache.hive.service.cli;
 import static org.junit.Assert.*;
 
 import java.io.ByteArrayInputStream;
+import java.io.Serializable;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -39,12 +40,10 @@ import org.apache.hadoop.hive.ql.parse.ASTNode;
 import org.apache.hadoop.hive.ql.parse.HiveSemanticAnalyzerHook;
 import org.apache.hadoop.hive.ql.parse.HiveSemanticAnalyzerHookContext;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
+import org.codehaus.jackson.map.ObjectMapper;
+import org.codehaus.jackson.type.TypeReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.plan.api.StageType;
 import org.apache.hadoop.hive.ql.session.SessionState;
@@ -241,12 +240,11 @@ public abstract class CLIServiceTest {
      * to give a runtime time error.
      * Also check that the sqlState and errorCode should be set
      */
-    // TODO: this is brittle.. anything that touches this path during compile will break this test
     queryString = "CREATE TABLE NON_EXISTING_TAB (ID STRING) location 'invalid://localhost:10000/a/b/c'";
     opStatus = runAsyncAndWait(sessionHandle, queryString, confOverlay, OperationState.ERROR, longPollingTimeout);
     // sqlState, errorCode should be set
     assertEquals(opStatus.getOperationException().getSQLState(), "08S01");
-    assertEquals(opStatus.getOperationException().getErrorCode(), 40000);
+    assertEquals(opStatus.getOperationException().getErrorCode(), 1);
     /**
      * Execute an async query with default config
      */
@@ -367,7 +365,7 @@ public abstract class CLIServiceTest {
 
     @Override
     public void postAnalyze(HiveSemanticAnalyzerHookContext context,
-      List<Task<?>> rootTasks) throws SemanticException {
+      List<Task<? extends Serializable>> rootTasks) throws SemanticException {
     }
   }
 
@@ -383,7 +381,7 @@ public abstract class CLIServiceTest {
 
     int THREAD_COUNT = 3;
     @SuppressWarnings("unchecked")
-    FutureTask<Void>[] tasks = new FutureTask[THREAD_COUNT];
+    FutureTask<Void>[] tasks = (FutureTask<Void>[])new FutureTask[THREAD_COUNT];
     long longPollingTimeoutMs = 10 * 60 * 1000; // Larger than max compile duration used in test
 
     // 1st query acquires the lock and takes 20 secs to compile
@@ -537,7 +535,7 @@ public abstract class CLIServiceTest {
     long longPollingTimeDelta;
     OperationStatus opStatus = null;
     OperationState state = null;
-    int count = 0;
+    int count = 0;    
     long start = System.currentTimeMillis();
     while (true) {
       // Break if iteration times out

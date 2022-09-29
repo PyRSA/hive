@@ -24,19 +24,18 @@ import javax.security.sasl.SaslException;
 
 import org.apache.hadoop.hive.metastore.security.HadoopThriftAuthBridge;
 import org.apache.hadoop.hive.metastore.security.HadoopThriftAuthBridge.Server;
-import org.apache.hadoop.security.SecurityUtil;
+import org.apache.hive.service.cli.thrift.ThriftCLIService;
 import org.apache.hive.service.rpc.thrift.TCLIService;
 import org.apache.hive.service.rpc.thrift.TCLIService.Iface;
 import org.apache.thrift.TProcessor;
 import org.apache.thrift.TProcessorFactory;
 import org.apache.thrift.transport.TSaslClientTransport;
 import org.apache.thrift.transport.TTransport;
-import org.apache.thrift.transport.TTransportException;
 
 public final class KerberosSaslHelper {
 
   public static TProcessorFactory getKerberosProcessorFactory(Server saslServer,
-      TCLIService.Iface service) {
+    ThriftCLIService service) {
     return new CLIServiceProcessorFactory(saslServer, service);
   }
 
@@ -50,7 +49,7 @@ public final class KerberosSaslHelper {
       }
 
       if (assumeSubject) {
-        return createSubjectAssumedTransport(principal, host, underlyingTransport, saslProps);
+        return createSubjectAssumedTransport(principal, underlyingTransport, saslProps);
       } else {
         HadoopThriftAuthBridge.Client authBridge =
           HadoopThriftAuthBridge.getBridge().createClientWithConf("kerberos");
@@ -62,30 +61,16 @@ public final class KerberosSaslHelper {
     }
   }
 
-  /**
-   * Helper to wrap the {@code underlyingTransport} into an assumed kerberos principal.
-   * The function is used for kerberos based authentication, where {@code kerberosAuthType}
-   * is set to {@code fromSubject}. If also performs a substitution of {@code _HOST} to the
-   * local host name, if required.
-   *
-   * @param principal The kerberos principal to assume
-   * @param host Host, used to replace the {@code _HOST} with
-   * @param underlyingTransport The I/O transport to wrap
-   * @param saslProps SASL property map
-   * @return The wrapped transport
-   * @throws IOException
-   */
-  public static TTransport createSubjectAssumedTransport(String principal, String host,
+  public static TTransport createSubjectAssumedTransport(String principal,
     TTransport underlyingTransport, Map<String, String> saslProps) throws IOException {
-    String resolvedPrincipal = SecurityUtil.getServerPrincipal(principal, host);
-    String[] names = resolvedPrincipal.split("[/@]");
+    String[] names = principal.split("[/@]");
     try {
       TTransport saslTransport =
         new TSaslClientTransport("GSSAPI", null, names[0], names[1], saslProps, null,
           underlyingTransport);
       return new TSubjectAssumingTransport(saslTransport);
-    } catch (SaslException | TTransportException se) {
-      throw new IOException("Could not instantiate transport", se);
+    } catch (SaslException se) {
+      throw new IOException("Could not instantiate SASL transport", se);
     }
   }
 
@@ -108,10 +93,10 @@ public final class KerberosSaslHelper {
 
   private static class CLIServiceProcessorFactory extends TProcessorFactory {
 
-    private final TCLIService.Iface service;
+    private final ThriftCLIService service;
     private final Server saslServer;
 
-    public CLIServiceProcessorFactory(Server saslServer, TCLIService.Iface service) {
+    public CLIServiceProcessorFactory(Server saslServer, ThriftCLIService service) {
       super(null);
       this.service = service;
       this.saslServer = saslServer;

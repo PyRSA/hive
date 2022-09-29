@@ -19,7 +19,6 @@
 package org.apache.hive.service.cli;
 
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.conf.HiveServer2TransportMode;
 import org.apache.hive.service.Service;
 import org.apache.hive.service.auth.HiveAuthConstants;
 import org.apache.hive.service.cli.session.HiveSession;
@@ -56,7 +55,7 @@ public class TestRetryingThriftCLIServiceClient {
     hiveConf.setIntVar(HiveConf.ConfVars.HIVE_SERVER2_THRIFT_PORT, 15000);
     hiveConf.setBoolVar(HiveConf.ConfVars.HIVE_SERVER2_ENABLE_DOAS, false);
     hiveConf.setVar(HiveConf.ConfVars.HIVE_SERVER2_AUTHENTICATION, HiveAuthConstants.AuthTypes.NONE.toString());
-    hiveConf.setVar(HiveConf.ConfVars.HIVE_SERVER2_TRANSPORT_MODE, HiveServer2TransportMode.binary.toString());
+    hiveConf.setVar(HiveConf.ConfVars.HIVE_SERVER2_TRANSPORT_MODE, "binary");
     hiveConf.setIntVar(HiveConf.ConfVars.HIVE_SERVER2_THRIFT_CLIENT_RETRY_LIMIT, 3);
     hiveConf.setIntVar(HiveConf.ConfVars.HIVE_SERVER2_THRIFT_CLIENT_CONNECTION_RETRY_LIMIT, 3);
     hiveConf.setIntVar(HiveConf.ConfVars.HIVE_SERVER2_ASYNC_EXEC_THREADS, 10);
@@ -127,20 +126,9 @@ public class TestRetryingThriftCLIServiceClient {
       assertTrue(sqlExc.getCause() instanceof TTransportException);
       assertTrue(sqlExc.getMessage().contains("3"));
     }
+
     // Reset port setting
     hiveConf.setIntVar(HiveConf.ConfVars.HIVE_SERVER2_THRIFT_PORT, 15000);
-
-    hiveConf.setVar(HiveConf.ConfVars.HIVE_SERVER2_THRIFT_BIND_HOST, "10.17.207.11");
-    try {
-      RetryingThriftCLIServiceClientTest.newRetryingCLIServiceClient(hiveConf);
-      fail("Expected to throw exception for invalid host");
-    } catch (HiveSQLException sqlExc) {
-      assertTrue(sqlExc.getCause() instanceof TTransportException);
-      assertTrue(sqlExc.getMessage().contains("3"));
-    }
-    // Reset host setting
-    hiveConf.setVar(HiveConf.ConfVars.HIVE_SERVER2_THRIFT_BIND_HOST, "127.0.0.1");
-
     // Create client
     RetryingThriftCLIServiceClient.CLIServiceClientWrapper cliServiceClient
       = RetryingThriftCLIServiceClientTest.newRetryingCLIServiceClient(hiveConf);
@@ -156,10 +144,9 @@ public class TestRetryingThriftCLIServiceClient {
       cliServiceClient.openSession("anonymous", "anonymous");
     } catch (HiveSQLException exc) {
       exc.printStackTrace();
-      if(exc.getCause() instanceof TException){
-        assertEquals(1, RetryingThriftCLIServiceClientTest.handlerInst.callCount);
-        assertEquals(3, RetryingThriftCLIServiceClientTest.handlerInst.connectCount);
-      }
+      assertTrue(exc.getCause() instanceof TException);
+      assertEquals(1, RetryingThriftCLIServiceClientTest.handlerInst.callCount);
+      assertEquals(3, RetryingThriftCLIServiceClientTest.handlerInst.connectCount);
     } finally {
       cliServiceClient.closeTransport();
     }
@@ -196,7 +183,7 @@ public class TestRetryingThriftCLIServiceClient {
         }
       }
       if (service == null) {
-        service = new CLIService(server, true);
+        service = new CLIService(server);
       }
       RetryingThriftCLIServiceClient.CLIServiceClientWrapper client
         = RetryingThriftCLIServiceClientTest.newRetryingCLIServiceClient(hiveConf);

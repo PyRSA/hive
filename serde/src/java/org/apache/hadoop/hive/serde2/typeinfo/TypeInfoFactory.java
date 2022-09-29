@@ -174,11 +174,13 @@ public final class TypeInfoFactory {
   }
 
   public static CharTypeInfo getCharTypeInfo(int length) {
-    return new CharTypeInfo(length);
+    String fullName = BaseCharTypeInfo.getQualifiedName(serdeConstants.CHAR_TYPE_NAME, length);
+    return (CharTypeInfo) getPrimitiveTypeInfo(fullName);
   }
 
   public static VarcharTypeInfo getVarcharTypeInfo(int length) {
-    return new VarcharTypeInfo(length);
+    String fullName = BaseCharTypeInfo.getQualifiedName(serdeConstants.VARCHAR_TYPE_NAME, length);
+    return (VarcharTypeInfo) getPrimitiveTypeInfo(fullName);
   }
 
   public static DecimalTypeInfo getDecimalTypeInfo(int precision, int scale) {

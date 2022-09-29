@@ -483,8 +483,8 @@ public class VerifyFast {
     case STRUCT:
       {
         StructTypeInfo structTypeInfo = (StructTypeInfo) typeInfo;
-        List<TypeInfo> fieldTypeInfos = structTypeInfo.getAllStructFieldTypeInfos();
-        List<Object> fieldValues = (List<Object>) object;
+        ArrayList<TypeInfo> fieldTypeInfos = structTypeInfo.getAllStructFieldTypeInfos();
+        ArrayList<Object> fieldValues = (ArrayList<Object>) object;
         final int size = fieldValues.size();
         serializeWrite.beginStruct(fieldValues);
         boolean isFirst = true;
@@ -599,6 +599,8 @@ public class VerifyFast {
     return getComplexField(deserializeRead, typeInfo);
   }
 
+  static int fake = 0;
+
   private static Object getComplexField(DeserializeRead deserializeRead,
       TypeInfo typeInfo) throws IOException {
     switch (typeInfo.getCategory()) {
@@ -651,7 +653,7 @@ public class VerifyFast {
     case STRUCT:
       {
         StructTypeInfo structTypeInfo = (StructTypeInfo) typeInfo;
-        List<TypeInfo> fieldTypeInfos = structTypeInfo.getAllStructFieldTypeInfos();
+        ArrayList<TypeInfo> fieldTypeInfos = structTypeInfo.getAllStructFieldTypeInfos();
         final int size = fieldTypeInfos.size();
         ArrayList<Object> fieldValues = new ArrayList<Object>();
         Object fieldObj;

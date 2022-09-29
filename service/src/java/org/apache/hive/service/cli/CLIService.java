@@ -19,7 +19,6 @@
 package org.apache.hive.service.cli;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
@@ -73,19 +72,16 @@ public class CLIService extends CompositeService implements ICLIService {
   // The HiveServer2 instance running this service
   private final HiveServer2 hiveServer2;
   private int defaultFetchRows;
-  // This is necessary for tests and embedded mode, where HS2 init is not executed.
-  private boolean allowSessionsInitial;
 
-  public CLIService(HiveServer2 hiveServer2, boolean allowSessions) {
+  public CLIService(HiveServer2 hiveServer2) {
     super(CLIService.class.getSimpleName());
     this.hiveServer2 = hiveServer2;
-    this.allowSessionsInitial = allowSessions;
   }
 
   @Override
   public synchronized void init(HiveConf hiveConf) {
     setHiveConf(hiveConf);
-    sessionManager = new SessionManager(hiveServer2, allowSessionsInitial);
+    sessionManager = new SessionManager(hiveServer2);
     defaultFetchRows = hiveConf.getIntVar(ConfVars.HIVE_SERVER2_THRIFT_RESULTSET_DEFAULT_FETCH_SIZE);
     addService(sessionManager);
     //  If the hadoop cluster is secure, do a kerberos login for the service from the keytab
@@ -437,33 +433,6 @@ public class CLIService extends CompositeService implements ICLIService {
   }
 
   /* (non-Javadoc)
-   * @see org.apache.hive.service.cli.ICLIService#uploadData(org.apache.hive.service.cli.SessionHandle)
-   */
-  @Override
-  public OperationHandle uploadData(
-      SessionHandle sessionHandle,
-      ByteBuffer values,
-      String tableName,
-      String path) throws HiveSQLException {
-    LOG.info(sessionHandle + ": uploadData()");
-    return sessionManager.getSession(sessionHandle).uploadData(values, tableName, path);
-  }
-
-  /* (non-Javadoc)
-   * @see org.apache.hive.service.cli.ICLIService#downloadData(org.apache.hive.service.cli.SessionHandle)
-   */
-  @Override
-  public OperationHandle downloadData(
-      SessionHandle sessionHandle,
-      String tableName,
-      String query,
-      String format,
-      Map<String, String> options) throws HiveSQLException {
-    LOG.info(sessionHandle + ": downloadData()");
-    return sessionManager.getSession(sessionHandle).downloadData(tableName, query, format, options);
-  }
-
-  /* (non-Javadoc)
    * @see org.apache.hive.service.cli.ICLIService#getOperationStatus(org.apache.hive.service.cli.OperationHandle)
    */
   @Override
@@ -481,7 +450,7 @@ public class CLIService extends CompositeService implements ICLIService {
           HiveConf.ConfVars.HIVE_SERVER2_LONG_POLLING_TIMEOUT, TimeUnit.MILLISECONDS);
 
       final long elapsed = System.currentTimeMillis() - operation.getBeginTime();
-      // A step function to increase the polling timeout by 500 ms every 10 sec,
+      // A step function to increase the polling timeout by 500 ms every 10 sec, 
       // starting from 500 ms up to HIVE_SERVER2_LONG_POLLING_TIMEOUT
       final long timeout = Math.min(maxTimeout, (elapsed / TimeUnit.SECONDS.toMillis(10) + 1) * 500);
 
@@ -505,8 +474,6 @@ public class CLIService extends CompositeService implements ICLIService {
     }
     OperationStatus opStatus = operation.getStatus();
     LOG.debug(opHandle + ": getOperationStatus()");
-    long numModifiedRows = operation.getNumModifiedRows();
-    opStatus.setNumModifiedRows(numModifiedRows);
     opStatus.setJobProgressUpdate(progressUpdateLog(getProgressUpdate, operation, conf));
     return opStatus;
   }
@@ -522,19 +489,18 @@ public class CLIService extends CompositeService implements ICLIService {
         || !OperationType.EXECUTE_STATEMENT.equals(operation.getType())) {
       return new JobProgressUpdate(ProgressMonitor.NULL);
     }
-
+    
     SessionState sessionState = operation.getParentSession().getSessionState();
     long startTime = System.nanoTime();
     int timeOutMs = 8;
-    boolean terminated = operation.isDone();
     try {
-      while ((sessionState.getProgressMonitor() == null) && !terminated) {
+      while (sessionState.getProgressMonitor() == null && !operation.isDone()) {
         long remainingMs = (PROGRESS_MAX_WAIT_NS - (System.nanoTime() - startTime)) / 1000000l;
         if (remainingMs <= 0) {
           LOG.debug("timed out and hence returning progress log as NULL");
           return new JobProgressUpdate(ProgressMonitor.NULL);
         }
-        terminated = operation.waitToTerminate(Math.min(remainingMs, timeOutMs));
+        Thread.sleep(Math.min(remainingMs, timeOutMs));
         timeOutMs <<= 1;
       }
     } catch (InterruptedException e) {
@@ -598,7 +564,8 @@ public class CLIService extends CompositeService implements ICLIService {
   }
 
   // obtain delegation token for the give user from metastore
-  public String getDelegationTokenFromMetaStore(String owner)
+  // TODO: why is this synchronized?
+  public synchronized String getDelegationTokenFromMetaStore(String owner)
       throws HiveSQLException, UnsupportedOperationException, LoginException, IOException {
     HiveConf hiveConf = getHiveConf();
     if (!hiveConf.getBoolVar(HiveConf.ConfVars.METASTORE_USE_THRIFT_SASL) ||
@@ -652,7 +619,7 @@ public class CLIService extends CompositeService implements ICLIService {
   public String getQueryId(TOperationHandle opHandle) throws HiveSQLException {
     Operation operation = sessionManager.getOperationManager().getOperation(
         new OperationHandle(opHandle));
-    final String queryId = operation.getQueryId();
+    final String queryId = operation.getParentSession().getHiveConf().getVar(ConfVars.HIVEQUERYID);
     LOG.debug(opHandle + ": getQueryId() " + queryId);
     return queryId;
   }

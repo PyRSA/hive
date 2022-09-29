@@ -23,18 +23,14 @@ import java.io.IOException;
 
 import javax.servlet.http.HttpServletResponse;
 
+import org.junit.Test;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import junit.framework.TestCase;
 
-import org.junit.Test;
-
-/**
- * TestJdbcJarDownloadServlet.
- *
- */
-public class TestJdbcJarDownloadServlet {
+public class TestJdbcJarDownloadServlet extends TestCase {
   
   @Test
   public void testNoFileFound() throws IOException {

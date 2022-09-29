@@ -12,35 +12,28 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 -->
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
     <groupId>org.apache.hive</groupId>
     <artifactId>hive</artifactId>
-    <version>4.0.0-alpha-2-SNAPSHOT</version>
+    <version>3.1.2</version>
     <relativePath>../pom.xml</relativePath>
   </parent>
+
   <artifactId>hive-service</artifactId>
   <packaging>jar</packaging>
   <name>Hive Service</name>
+
   <properties>
     <hive.path.to.root>..</hive.path.to.root>
-    <nimbus-jose-jwt.version>9.20</nimbus-jose-jwt.version>
   </properties>
+
   <dependencies>
-    <!-- dependencies are always listed in sorted order by groupId, artifactId -->
+    <!-- dependencies are always listed in sorted order by groupId, artifectId -->
     <!-- intra-project -->
-    <dependency>
-      <groupId>org.apache.hive</groupId>
-      <artifactId>hive-common</artifactId>
-      <version>${project.version}</version>
-      <exclusions>
-        <exclusion>
-          <groupId>org.eclipse.jetty.aggregate</groupId>
-          <artifactId>jetty-all</artifactId>
-        </exclusion>
-      </exclusions>
-    </dependency>
     <dependency>
       <groupId>org.apache.hive</groupId>
       <artifactId>hive-exec</artifactId>
@@ -65,58 +58,58 @@
           <groupId>javax.servlet</groupId>
           <artifactId>servlet-api</artifactId>
         </exclusion>
+        <exclusion>
+          <groupId>org.mortbay.jetty</groupId>
+          <artifactId>servlet-api-2.5</artifactId>
+        </exclusion>
       </exclusions>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.hive</groupId>
-      <artifactId>hive-hplsql</artifactId>
-      <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>javax.servlet.jsp</groupId>
       <artifactId>javax.servlet.jsp-api</artifactId>
       <version>${javax-servlet-jsp.version}</version>
     </dependency>
+
     <!-- inter-project -->
-    <dependency>
-      <groupId>com.nimbusds</groupId>
-      <artifactId>nimbus-jose-jwt</artifactId>
-      <version>${nimbus-jose-jwt.version}</version>
-    </dependency>
     <dependency>
       <groupId>commons-codec</groupId>
       <artifactId>commons-codec</artifactId>
+      <version>${commons-codec.version}</version>
     </dependency>
     <dependency>
       <groupId>commons-cli</groupId>
       <artifactId>commons-cli</artifactId>
+      <version>${commons-cli.version}</version>
     </dependency>
     <dependency>
       <groupId>net.sf.jpam</groupId>
       <artifactId>jpam</artifactId>
       <version>${jpam.version}</version>
-      <exclusions>
-        <exclusion>
-          <groupId>org.slf4j</groupId>
-          <artifactId>slf4j-log4j12</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>commons-logging</groupId>
-          <artifactId>commons-logging</artifactId>
-        </exclusion>
-      </exclusions>
-    </dependency>
+        <exclusions>
+          <exclusion>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-log4j12</artifactId>
+          </exclusion>
+          <exclusion>
+            <groupId>commmons-logging</groupId>
+            <artifactId>commons-logging</artifactId>
+          </exclusion>
+        </exclusions>
+   </dependency>
     <dependency>
       <groupId>org.eclipse.jetty</groupId>
       <artifactId>jetty-server</artifactId>
+      <version>${jetty.version}</version>
     </dependency>
     <dependency>
       <groupId>org.eclipse.jetty</groupId>
       <artifactId>jetty-servlet</artifactId>
+      <version>${jetty.version}</version>
     </dependency>
     <dependency>
       <groupId>org.eclipse.jetty</groupId>
       <artifactId>jetty-runner</artifactId>
+      <version>${jetty.version}</version>
       <exclusions>
         <exclusion>
           <groupId>org.mortbay.jasper</groupId>
@@ -128,35 +121,38 @@
       <groupId>javax.servlet</groupId>
       <artifactId>javax.servlet-api</artifactId>
     </dependency>
+    <!-- used by thrift generated code -->
+    <dependency>
+      <groupId>commons-lang</groupId>
+      <artifactId>commons-lang</artifactId>
+      <version>${commons-lang.version}</version>
+    </dependency>
     <dependency>
       <groupId>org.apache.thrift</groupId>
       <artifactId>libfb303</artifactId>
+      <version>${libfb303.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.thrift</groupId>
       <artifactId>libthrift</artifactId>
+      <version>${libthrift.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.curator</groupId>
       <artifactId>curator-framework</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.curator</groupId>
-      <artifactId>curator-client</artifactId>
+      <version>${curator.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.curator</groupId>
       <artifactId>curator-recipes</artifactId>
+      <version>${curator.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-common</artifactId>
+      <version>${hadoop.version}</version>
       <optional>true</optional>
       <exclusions>
-        <exclusion>
-          <groupId>commons-beanutils</groupId>
-          <artifactId>commons-beanutils</artifactId>
-        </exclusion>
         <exclusion>
           <groupId>commons-collections</groupId>
           <artifactId>commons-collections</artifactId>
@@ -170,30 +166,27 @@
           <artifactId>jsp-api</artifactId>
         </exclusion>
         <exclusion>
+          <groupId>org.mortbay.jetty</groupId>
+          <artifactId>jetty</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>org.mortbay.jetty</groupId>
+          <artifactId>jetty-util</artifactId>
+        </exclusion>
+        <exclusion>
           <groupId>org.slf4j</groupId>
           <artifactId>slf4j-log4j12</artifactId>
         </exclusion>
         <exclusion>
-          <groupId>commons-logging</groupId>
+          <groupId>commmons-logging</groupId>
           <artifactId>commons-logging</artifactId>
         </exclusion>
       </exclusions>
     </dependency>
     <dependency>
-      <groupId>org.pac4j</groupId>
-      <artifactId>pac4j-saml-opensamlv3</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.bouncycastle</groupId>
-      <artifactId>bcprov-jdk15on</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.santuario</groupId>
-      <artifactId>xmlsec</artifactId>
-    </dependency>
-    <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-mapreduce-client-core</artifactId>
+      <version>${hadoop.version}</version>
       <optional>true</optional>
       <exclusions>
         <exclusion>
@@ -201,11 +194,15 @@
           <artifactId>servlet-api</artifactId>
         </exclusion>
         <exclusion>
+          <groupId>org.mortbay.jetty</groupId>
+          <artifactId>jetty-util</artifactId>
+        </exclusion>
+        <exclusion>
           <groupId>org.slf4j</groupId>
           <artifactId>slf4j-log4j12</artifactId>
         </exclusion>
         <exclusion>
-          <groupId>commons-logging</groupId>
+          <groupId>commmons-logging</groupId>
           <artifactId>commons-logging</artifactId>
         </exclusion>
       </exclusions>
@@ -213,8 +210,10 @@
     <dependency>
       <groupId>org.jamon</groupId>
       <artifactId>jamon-runtime</artifactId>
+      <version>${jamon-runtime.version}</version>
     </dependency>
-    <!-- intra-project -->
+
+      <!-- intra-project -->
     <dependency>
       <groupId>org.apache.hive</groupId>
       <artifactId>hive-exec</artifactId>
@@ -222,119 +221,98 @@
       <scope>test</scope>
       <classifier>tests</classifier>
     </dependency>
+      <dependency>
+        <groupId>org.apache.hive</groupId>
+        <artifactId>hive-common</artifactId>
+        <version>${project.version}</version>
+        <scope>test</scope>
+        <type>test-jar</type>
+      </dependency>
     <dependency>
       <groupId>org.apache.hive</groupId>
-      <artifactId>hive-common</artifactId>
+      <artifactId>hive-standalone-metastore</artifactId>
       <version>${project.version}</version>
-      <scope>test</scope>
-      <classifier>tests</classifier>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.hive</groupId>
-      <artifactId>hive-standalone-metastore-common</artifactId>
-      <version>${standalone-metastore.version}</version>
-      <classifier>tests</classifier>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.hive</groupId>
-      <artifactId>hive-standalone-metastore-server</artifactId>
-      <version>${standalone-metastore.version}</version>
-      <classifier>tests</classifier>
+      <type>test-jar</type>
       <scope>test</scope>
     </dependency>
     <!-- test inter-project -->
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter-engine</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.junit.vintage</groupId>
-      <artifactId>junit-vintage-engine</artifactId>
+      <version>${junit.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.apache.tez</groupId>
       <artifactId>tez-api</artifactId>
+      <version>${tez.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.apache.tez</groupId>
       <artifactId>tez-runtime-library</artifactId>
+      <version>${tez.version}</version>
       <scope>test</scope>
-      <exclusions>
-        <exclusion>
-          <groupId>org.slf4j</groupId>
-          <artifactId>slf4j-log4j12</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>commons-logging</groupId>
-          <artifactId>commons-logging</artifactId>
-        </exclusion>
+        <exclusions>
+          <exclusion>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-log4j12</artifactId>
+          </exclusion>
+          <exclusion>
+            <groupId>commmons-logging</groupId>
+            <artifactId>commons-logging</artifactId>
+          </exclusion>
       </exclusions>
     </dependency>
     <dependency>
       <groupId>org.apache.tez</groupId>
       <artifactId>tez-dag</artifactId>
+      <version>${tez.version}</version>
       <scope>test</scope>
-      <exclusions>
-        <exclusion>
-          <groupId>org.slf4j</groupId>
-          <artifactId>slf4j-log4j12</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>commons-logging</groupId>
-          <artifactId>commons-logging</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>org.apache.hadoop</groupId>
-          <artifactId>hadoop-yarn-server-web-proxy</artifactId>
-        </exclusion>
+        <exclusions>
+             <exclusion>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-log4j12</artifactId>
+          </exclusion>
+          <exclusion>
+            <groupId>commmons-logging</groupId>
+            <artifactId>commons-logging</artifactId>
+          </exclusion>
+          <exclusion>
+            <groupId>org.apache.hadoop</groupId>
+            <artifactId>hadoop-yarn-server-web-proxy</artifactId>
+          </exclusion>
       </exclusions>
     </dependency>
+    <dependency>
+      <groupId>org.mockito</groupId>
+      <artifactId>mockito-all</artifactId>
+      <version>${mockito-all.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.apache.directory.client.ldap</groupId>
+      <artifactId>ldap-client-api</artifactId>
+      <version>${apache-directory-clientapi.version}</version>
+      <scope>test</scope>
+    </dependency>
+
     <dependency>
       <groupId>org.apache.directory.server</groupId>
       <artifactId>apacheds-server-integ</artifactId>
       <version>${apache-directory-server.version}</version>
       <scope>test</scope>
     </dependency>
+
     <dependency>
       <groupId>org.apache.directory.server</groupId>
       <artifactId>apacheds-test-framework</artifactId>
       <version>${apache-directory-server.version}</version>
       <scope>test</scope>
     </dependency>
-    <dependency>
-      <groupId>org.powermock</groupId>
-      <artifactId>powermock-module-junit4</artifactId>
-      <version>${powermock.version}</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.powermock</groupId>
-      <artifactId>powermock-api-mockito2</artifactId>
-      <version>${powermock.version}</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.hadoop</groupId>
-      <artifactId>hadoop-mapreduce-client-jobclient</artifactId>
-      <version>${hadoop.version}</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.hadoop</groupId>
-      <artifactId>hadoop-hdfs</artifactId>
-      <version>${hadoop.version}</version>
-      <scope>test</scope>
-    </dependency>
   </dependencies>
+
   <build>
     <sourceDirectory>${basedir}/src/java</sourceDirectory>
     <testSourceDirectory>${basedir}/src/test</testSourceDirectory>
@@ -375,9 +353,12 @@
             <phase>generate-sources</phase>
             <configuration>
               <target>
-                <property name="build.webapps" location="${project.build.directory}/hive-webapps"/>
-                <property name="src.webapps" location="${basedir}/src/resources/hive-webapps"/>
-                <property name="generated.sources" location="${project.build.directory}/generated-sources"/>
+                <property name="build.webapps"
+                  location="${project.build.directory}/hive-webapps"/>
+                <property name="src.webapps"
+                  location="${basedir}/src/resources/hive-webapps"/>
+                <property name="generated.sources"
+                  location="${project.build.directory}/generated-sources"/>
                 <mkdir dir="${build.webapps}"/>
                 <copy todir="${build.webapps}">
                   <fileset dir="${src.webapps}">
@@ -385,9 +366,13 @@
                     <exclude name="**/.*"/>
                   </fileset>
                 </copy>
-                <taskdef classname="org.apache.jasper.JspC" name="jspcompiler" classpathref="maven.compile.classpath"/>
+                <taskdef classname="org.apache.jasper.JspC"
+                  name="jspcompiler" classpathref="maven.compile.classpath"/>
                 <mkdir dir="${build.webapps}/hiveserver2/WEB-INF"/>
-                <jspcompiler uriroot="${src.webapps}/hiveserver2" outputdir="${generated.sources}/java" package="org.apache.hive.generated.hiveserver2" webxml="${build.webapps}/hiveserver2/WEB-INF/web.xml"/>
+                <jspcompiler uriroot="${src.webapps}/hiveserver2"
+                  outputdir="${generated.sources}/java"
+                  package="org.apache.hive.generated.hiveserver2"
+                  webxml="${build.webapps}/hiveserver2/WEB-INF/web.xml"/>
               </target>
             </configuration>
             <goals>
@@ -396,48 +381,48 @@
           </execution>
         </executions>
       </plugin>
-      <plugin>
-        <groupId>org.jamon</groupId>
-        <artifactId>jamon-maven-plugin</artifactId>
-        <executions>
-          <execution>
-            <phase>generate-sources</phase>
-            <goals>
-              <goal>translate</goal>
-            </goals>
+        <plugin>
+            <groupId>org.jamon</groupId>
+            <artifactId>jamon-maven-plugin</artifactId>
+            <executions>
+                <execution>
+                    <phase>generate-sources</phase>
+                    <goals>
+                        <goal>translate</goal>
+                    </goals>
+                    <configuration>
+                        <templateSourceDir>src/jamon</templateSourceDir>
+                        <templateOutputDir>target/generated-jamon</templateOutputDir>
+                    </configuration>
+                </execution>
+            </executions>
+        </plugin>
+        <!-- General plugins -->
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-eclipse-plugin</artifactId>
             <configuration>
-              <templateSourceDir>src/jamon</templateSourceDir>
-              <templateOutputDir>target/generated-jamon</templateOutputDir>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
-      <!-- General plugins -->
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-eclipse-plugin</artifactId>
-        <configuration>
-          <additionalProjectnatures>
-            <projectnature>org.jamon.project.jamonnature</projectnature>
-          </additionalProjectnatures>
-          <buildcommands>
-            <buildcommand>org.jamon.project.templateBuilder</buildcommand>
-            <buildcommand>org.eclipse.jdt.core.javabuilder</buildcommand>
-            <buildcommand>org.jamon.project.markerUpdater</buildcommand>
-          </buildcommands>
-          <additionalConfig>
-            <file>
-              <name>.settings/org.jamon.prefs</name>
-              <content># now
+                <additionalProjectnatures>
+                    <projectnature>org.jamon.project.jamonnature</projectnature>
+                </additionalProjectnatures>
+                <buildcommands>
+                    <buildcommand>org.jamon.project.templateBuilder</buildcommand>
+                    <buildcommand>org.eclipse.jdt.core.javabuilder</buildcommand>
+                    <buildcommand>org.jamon.project.markerUpdater</buildcommand>
+                </buildcommands>
+                <additionalConfig>
+                    <file>
+                        <name>.settings/org.jamon.prefs</name>
+                        <content># now
                             eclipse.preferences.version=1
                             templateSourceDir=src/main/jamon
                             templateOutputDir=target/generated-jamon
                         </content>
-            </file>
-          </additionalConfig>
-        </configuration>
-      </plugin>
-      <plugin>
+                    </file>
+                </additionalConfig>
+            </configuration>
+        </plugin>
+        <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
         <executions>

@@ -36,9 +36,9 @@ import com.google.common.collect.Multimap;
 /**
  * ClassicTableTypeMapping.
  * Classic table type mapping :
- *  Managed Table ==&gt; Table
- *  External Table ==&gt; Table
- *  Virtual View ==&gt; View
+ *  Managed Table ==> Table
+ *  External Table ==> Table
+ *  Virtual View ==> View
  */
 public class ClassicTableTypeMapping implements TableTypeMapping {
 

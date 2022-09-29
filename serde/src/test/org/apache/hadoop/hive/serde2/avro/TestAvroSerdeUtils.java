@@ -48,7 +48,7 @@ public class TestAvroSerdeUtils {
       "    {\"name\":\"mayBeNull\", \"type\":[\"string\", \"null\"]}\n" +
       "  ]\n" +
       "}";
-  // Same union, order reversed
+  // Same union, order reveresed
   private final String NULLABLE_UNION2 = "{\n" +
     "  \"type\": \"record\", \n" +
     "  \"name\": \"nullTest\",\n" +
@@ -151,7 +151,7 @@ public class TestAvroSerdeUtils {
   }
 
   @Test
-  public void determineSchemaTriesToOpenUrl() throws AvroSerdeException, IOException {
+  public void detemineSchemaTriesToOpenUrl() throws AvroSerdeException, IOException {
     Configuration conf = new Configuration();
     Properties props = new Properties();
     props.put(AvroTableProperties.SCHEMA_URL.getPropName(), "not:///a.real.url");

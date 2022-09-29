@@ -30,17 +30,11 @@ import org.apache.hadoop.hive.common.type.Timestamp;
 import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector.PrimitiveCategory;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorUtils.PrimitiveGrouping;
-import org.apache.hadoop.hive.serde2.typeinfo.DecimalTypeInfo;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
 import org.junit.Test;
 
-/**
- * PrimitiveObjectInspectorUtils Test.
- */
-public class TestPrimitiveObjectInspectorUtils {
+import junit.framework.TestCase;
+
+public class TestPrimitiveObjectInspectorUtils extends TestCase {
 
   @Test
   public void testGetPrimitiveGrouping() {
@@ -248,18 +242,5 @@ public class TestPrimitiveObjectInspectorUtils {
       byte[] b1 = ("asd"+trueStr).getBytes();
       assertTrue(trueStr, PrimitiveObjectInspectorUtils.parseBoolean(b1, 3, trueStr.length()));
     }
-  }
-
-@Test public void testDecimalToString() {
-    HiveDecimal dec1 = HiveDecimal.create("0.0");
-    PrimitiveObjectInspector decOI_7_0 =
-        PrimitiveObjectInspectorFactory.getPrimitiveJavaObjectInspector(new DecimalTypeInfo(7, 0));
-    PrimitiveObjectInspector decOI_7_1 =
-        PrimitiveObjectInspectorFactory.getPrimitiveJavaObjectInspector(new DecimalTypeInfo(7, 1));
-    PrimitiveObjectInspector decOI_7_3 =
-        PrimitiveObjectInspectorFactory.getPrimitiveJavaObjectInspector(new DecimalTypeInfo(7, 3));
-    assertEquals("0", PrimitiveObjectInspectorUtils.getString(dec1, decOI_7_0));
-    assertEquals("0.0", PrimitiveObjectInspectorUtils.getString(dec1, decOI_7_1));
-    assertEquals("0.000", PrimitiveObjectInspectorUtils.getString(dec1, decOI_7_3));
   }
 }
