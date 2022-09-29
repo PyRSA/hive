@@ -44,6 +44,8 @@ import org.apache.hive.hcatalog.common.HCatException;
 import org.apache.hive.hcatalog.data.DefaultHCatRecord;
 import org.apache.hive.hcatalog.data.schema.HCatFieldSchema;
 import org.apache.hive.hcatalog.data.schema.HCatSchema;
+import org.apache.pig.ExecType;
+import org.apache.pig.PigServer;
 import org.junit.Test;
 
 public class TestPassProperties {
@@ -53,6 +55,7 @@ public class TestPassProperties {
   private static final String INPUT_FILE_NAME = TEST_DATA_DIR + "/input.data";
 
   private static IDriver driver;
+  private static PigServer server;
   private static String[] input;
   private static HiveConf hiveConf;
 
@@ -78,6 +81,7 @@ public class TestPassProperties {
       input[i] = i + "," + col1 + "," + col2;
     }
     HcatTestUtils.createTestDataFile(INPUT_FILE_NAME, input);
+    server = new PigServer(ExecType.LOCAL);
   }
 
   @Test
@@ -85,7 +89,8 @@ public class TestPassProperties {
     Initialize();
     String createTable = "CREATE TABLE bad_props_table(a0 int, a1 String, a2 String) STORED AS SEQUENCEFILE";
     driver.run("drop table bad_props_table");
-    driver.run(createTable);
+    int retCode1 = driver.run(createTable).getResponseCode();
+    assertTrue(retCode1 == 0);
 
     boolean caughtException = false;
     try {

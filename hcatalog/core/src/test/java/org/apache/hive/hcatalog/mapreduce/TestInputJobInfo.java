@@ -20,7 +20,7 @@ package org.apache.hive.hcatalog.mapreduce;
 
 import java.util.Properties;
 
-import org.junit.Assert;
+import junit.framework.Assert;
 
 import org.junit.Test;
 

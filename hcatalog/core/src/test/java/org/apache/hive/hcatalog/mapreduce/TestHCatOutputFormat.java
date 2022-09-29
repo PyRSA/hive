@@ -26,7 +26,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.google.common.collect.Lists;
-
+import junit.framework.TestCase;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
@@ -49,17 +49,8 @@ import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import org.apache.hive.hcatalog.data.schema.HCatSchema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertEquals;
-import org.junit.Before;
-import org.junit.After;
-import org.junit.Test;
 
-/**
- * TestHCatOutputFormat.
- */
-public class TestHCatOutputFormat {
+public class TestHCatOutputFormat extends TestCase {
 
   private static final Logger LOG = LoggerFactory.getLogger(TestHCatOutputFormat.class);
   private HiveMetaStoreClient client;
@@ -68,9 +59,9 @@ public class TestHCatOutputFormat {
   private static final String dbName = "hcatOutputFormatTestDB";
   private static final String tblName = "hcatOutputFormatTestTable";
 
-  @Before
-  public void setUp() throws Exception {
-
+  @Override
+  protected void setUp() throws Exception {
+    super.setUp();
     hiveConf = new HiveConf(this.getClass());
 
     try {
@@ -83,10 +74,10 @@ public class TestHCatOutputFormat {
     }
   }
 
-  @After
-  public void tearDown() throws Exception {
+  @Override
+  protected void tearDown() throws Exception {
     try {
-
+      super.tearDown();
       client.dropTable(dbName, tblName);
       client.dropDatabase(dbName);
 
@@ -145,7 +136,6 @@ public class TestHCatOutputFormat {
 
   }
 
-  @Test
   public void testSetOutput() throws Exception {
     Configuration conf = new Configuration();
     Job job = Job.getInstance(conf, "test outputformat");
@@ -185,7 +175,6 @@ public class TestHCatOutputFormat {
     assertTrue(part.getSd().getLocation().contains("p1"));
   }
 
-  @Test
   public void testGetTableSchema() throws Exception {
 
     Configuration conf = new Configuration();

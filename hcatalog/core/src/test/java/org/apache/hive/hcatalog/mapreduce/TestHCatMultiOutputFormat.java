@@ -32,7 +32,6 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FileUtil;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
-import org.apache.hadoop.hdfs.DFSConfigKeys;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.HiveMetaStoreClient;
 import org.apache.hadoop.hive.metastore.MetaStoreTestUtils;
@@ -42,6 +41,7 @@ import org.apache.hadoop.hive.metastore.api.SerDeInfo;
 import org.apache.hadoop.hive.metastore.api.StorageDescriptor;
 import org.apache.hadoop.hive.metastore.api.Table;
 import org.apache.hadoop.hive.metastore.conf.MetastoreConf;
+import org.apache.hadoop.hive.ql.CompilationOpContext;
 import org.apache.hadoop.hive.ql.QueryState;
 import org.apache.hadoop.hive.ql.exec.FetchTask;
 import org.apache.hadoop.hive.ql.exec.Utilities;
@@ -89,6 +89,9 @@ public class TestHCatMultiOutputFormat {
   private static Configuration mrConf;
   private static HiveConf hiveConf;
   private static File workDir;
+
+  private static int msPort;
+  private static Thread t;
 
   static {
     schemaMap.put(tableNames[0], new HCatSchema(ColumnHolder.hCattest1Cols));
@@ -159,7 +162,7 @@ public class TestHCatMultiOutputFormat {
     metastoreConf.setVar(HiveConf.ConfVars.METASTOREWAREHOUSE, warehousedir.toString());
 
     // Run hive metastore server
-    MetaStoreTestUtils.startMetaStoreWithRetry(metastoreConf);
+    msPort = MetaStoreTestUtils.startMetaStoreWithRetry(metastoreConf);
     // Read the warehouse dir, which can be changed so multiple MetaStore tests could be run on
     // the same server
     warehousedir = new Path(MetastoreConf.getVar(metastoreConf, MetastoreConf.ConfVars.WAREHOUSE));
@@ -175,14 +178,15 @@ public class TestHCatMultiOutputFormat {
       new JobConf(conf));
     mrConf = mrCluster.createJobConf();
 
-    initializeSetup(metastoreConf);
+    initializeSetup();
 
     warehousedir.getFileSystem(conf).mkdirs(warehousedir);
   }
 
-  private static void initializeSetup(HiveConf metastoreConf) throws Exception {
+  private static void initializeSetup() throws Exception {
 
-    hiveConf = new HiveConf(metastoreConf, TestHCatMultiOutputFormat.class);
+    hiveConf = new HiveConf(mrConf, TestHCatMultiOutputFormat.class);
+    hiveConf.setVar(HiveConf.ConfVars.METASTOREURIS, "thrift://localhost:" + msPort);
     hiveConf.setIntVar(HiveConf.ConfVars.METASTORETHRIFTCONNECTIONRETRIES, 3);
     hiveConf.setIntVar(HiveConf.ConfVars.METASTORETHRIFTFAILURERETRIES, 3);
     hiveConf.set(HiveConf.ConfVars.SEMANTIC_ANALYZER_HOOK.varname,
@@ -192,12 +196,6 @@ public class TestHCatMultiOutputFormat {
     hiveConf.set(HiveConf.ConfVars.HIVE_SUPPORT_CONCURRENCY.varname, "false");
     System.setProperty(HiveConf.ConfVars.PREEXECHOOKS.varname, " ");
     System.setProperty(HiveConf.ConfVars.POSTEXECHOOKS.varname, " ");
-    System.setProperty(HiveConf.ConfVars.METASTOREWAREHOUSE.varname,
-        MetastoreConf.getVar(hiveConf, MetastoreConf.ConfVars.WAREHOUSE));
-    System.setProperty(HiveConf.ConfVars.METASTORECONNECTURLKEY.varname,
-        MetastoreConf.getVar(hiveConf, MetastoreConf.ConfVars.CONNECT_URL_KEY));
-    System.setProperty(HiveConf.ConfVars.METASTOREURIS.varname,
-        MetastoreConf.getVar(hiveConf, MetastoreConf.ConfVars.THRIFT_URIS));
 
     hiveConf.set(HiveConf.ConfVars.METASTOREWAREHOUSE.varname, warehousedir.toString());
     try {
@@ -280,10 +278,6 @@ public class TestHCatMultiOutputFormat {
     infoList.add(OutputJobInfo.create("default", tableNames[1], partitionValues));
     infoList.add(OutputJobInfo.create("default", tableNames[2], partitionValues));
 
-    // There are tests that check file permissions (which are manually set)
-    // Disable NN ACLS so that the manual permissions are observed
-    hiveConf.setBoolean(DFSConfigKeys.DFS_NAMENODE_ACLS_ENABLED_KEY, false);
-
     Job job = new Job(hiveConf, "SampleJob");
 
     job.setMapperClass(MyMapper.class);
@@ -320,18 +314,18 @@ public class TestHCatMultiOutputFormat {
 
     // Check permisssion on partition dirs and files created
     for (int i = 0; i < tableNames.length; i++) {
-      final Path partitionFile = new Path(warehousedir + "/" + tableNames[i] + "/ds=1/cluster=ag/part-m-00000");
-
-      final FileSystem fs = partitionFile.getFileSystem(mrConf);
-
-      Assert.assertEquals("File permissions of table " + tableNames[i] + " is not correct [" + partitionFile + "]",
-          new FsPermission(tablePerms[i]), fs.getFileStatus(partitionFile).getPermission());
-      Assert.assertEquals(
-          "File permissions of table " + tableNames[i] + " is not correct [" + partitionFile + "]",
-          new FsPermission(tablePerms[i]), fs.getFileStatus(partitionFile).getPermission());
-      Assert.assertEquals(
-          "File permissions of table " + tableNames[i] + " is not correct [" +  partitionFile.getParent() + "]",
-          new FsPermission(tablePerms[i]), fs.getFileStatus(partitionFile.getParent()).getPermission());
+      Path partitionFile = new Path(warehousedir + "/" + tableNames[i]
+        + "/ds=1/cluster=ag/part-m-00000");
+      FileSystem fs = partitionFile.getFileSystem(mrConf);
+      Assert.assertEquals("File permissions of table " + tableNames[i] + " is not correct",
+        fs.getFileStatus(partitionFile).getPermission(),
+        new FsPermission(tablePerms[i]));
+      Assert.assertEquals("File permissions of table " + tableNames[i] + " is not correct",
+        fs.getFileStatus(partitionFile.getParent()).getPermission(),
+        new FsPermission(tablePerms[i]));
+      Assert.assertEquals("File permissions of table " + tableNames[i] + " is not correct",
+        fs.getFileStatus(partitionFile.getParent().getParent()).getPermission(),
+        new FsPermission(tablePerms[i]));
 
     }
     LOG.info("File permissions verified");
@@ -390,10 +384,7 @@ public class TestHCatMultiOutputFormat {
     }
     FetchTask task = new FetchTask();
     task.setWork(work);
-    conf.set("_hive.hdfs.session.path", "path");
-    conf.set("_hive.local.session.path", "path");
-    task.initialize(queryState, null, null, new org.apache.hadoop.hive.ql.Context(conf));
-    task.execute();
+    task.initialize(queryState, null, null, new CompilationOpContext());
     task.fetch(temp);
     for (String str : temp) {
       results.add(str.replace("\t", ","));

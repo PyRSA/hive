@@ -37,7 +37,7 @@ import javax.security.auth.login.LoginException;
 
 import com.google.common.collect.Maps;
 import org.apache.commons.codec.binary.Base64;
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
@@ -300,11 +300,11 @@ public class HCatUtil {
    * Test if the first FsAction is more permissive than the second. This is
    * useful in cases where we want to ensure that a file owner has more
    * permissions than the group they belong to, for eg. More completely(but
-   * potentially more cryptically) owner-r &gt;= group-r &gt;= world-r : bitwise
-   * and-masked with 0444 =&gt; 444 &gt;= 440 &gt;= 400 &gt;= 000 owner-w &gt;= group-w &gt;=
-   * world-w : bitwise and-masked with &amp;0222 =&gt; 222 &gt;= 220 &gt;= 200 &gt;= 000
-   * owner-x &gt;= group-x &gt;= world-x : bitwise and-masked with &amp;0111 =&gt; 111 &gt;=
-   * 110 &gt;= 100 &gt;= 000
+   * potentially more cryptically) owner-r >= group-r >= world-r : bitwise
+   * and-masked with 0444 => 444 >= 440 >= 400 >= 000 owner-w >= group-w >=
+   * world-w : bitwise and-masked with &0222 => 222 >= 220 >= 200 >= 000
+   * owner-x >= group-x >= world-x : bitwise and-masked with &0111 => 111 >=
+   * 110 >= 100 >= 000
    *
    * @return true if first FsAction is more permissive than the second, false
    *         if not.
@@ -462,17 +462,12 @@ public class HCatUtil {
 
     Map<String, String> jobProperties = new HashMap<String, String>();
     try {
+      tableDesc.getJobProperties().put(
+        HCatConstants.HCAT_KEY_JOB_INFO,
+        HCatUtil.serialize(inputJobInfo));
 
-      Map<String, String> properties = tableDesc.getJobProperties();
-      LinkedList<InputJobInfo> inputJobInfos = (LinkedList<InputJobInfo>) HCatUtil.deserialize(
-              properties.get(HCatConstants.HCAT_KEY_JOB_INFO));
-      if (inputJobInfos == null) {
-        inputJobInfos = new LinkedList<>();
-      }
-      inputJobInfos.add(inputJobInfo);
-      properties.put(HCatConstants.HCAT_KEY_JOB_INFO, HCatUtil.serialize(inputJobInfos));
-
-      storageHandler.configureInputJobProperties(tableDesc, jobProperties);
+      storageHandler.configureInputJobProperties(tableDesc,
+        jobProperties);
 
     } catch (IOException e) {
       throw new IllegalStateException(
@@ -579,9 +574,9 @@ public class HCatUtil {
 
   /**
    * Get or create a hive client depending on whether it exits in cache or not.
-   * @deprecated : use {@link #getHiveMetastoreClient(HiveConf)} instead.
+   * @Deprecated : use {@link #getHiveMetastoreClient(HiveConf)} instead.
    * This was deprecated in Hive 1.2, slated for removal in two versions
-   * (i.e. 1.2 &amp; 1.3(projected) will have it, but it will be removed after that)
+   * (i.e. 1.2 & 1.3(projected) will have it, but it will be removed after that)
    * @param hiveConf The hive configuration
    * @return the client
    * @throws MetaException When HiveMetaStoreClient couldn't be created
@@ -762,35 +757,4 @@ public class HCatUtil {
       throw new IllegalArgumentException(msg);
     }
   }
-
-  public static void putInputJobInfoToConf(InputJobInfo inputJobInfo, Configuration conf)
-   throws IOException {
-
-    LinkedList<InputJobInfo> inputJobInfos = (LinkedList<InputJobInfo>) HCatUtil.deserialize(
-            conf.get(HCatConstants.HCAT_KEY_JOB_INFO));
-
-    if (inputJobInfos == null) {
-      inputJobInfos = new LinkedList<>();
-    }
-    inputJobInfos.add(inputJobInfo);
-    conf.set(HCatConstants.HCAT_KEY_JOB_INFO, HCatUtil.serialize(inputJobInfos));
-  }
-
-  public static LinkedList<InputJobInfo> getInputJobInfosFromConf(Configuration conf)
-          throws IOException {
-    LinkedList<InputJobInfo> inputJobInfos = (LinkedList<InputJobInfo>) HCatUtil.deserialize(
-            conf.get(HCatConstants.HCAT_KEY_JOB_INFO));
-    return inputJobInfos;
-  }
-
-  public static InputJobInfo getLastInputJobInfosFromConf(Configuration conf)
-          throws IOException {
-    LinkedList<InputJobInfo> inputJobInfos = getInputJobInfosFromConf(conf);
-    if (inputJobInfos == null || inputJobInfos.isEmpty()) {
-      return null;
-    } else {
-      return getInputJobInfosFromConf(conf).getLast();
-    }
-  }
-
 }

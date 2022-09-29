@@ -63,7 +63,7 @@ import org.apache.hive.hcatalog.data.HCatRecord;
 import org.apache.hive.hcatalog.data.schema.HCatFieldSchema;
 import org.apache.hive.hcatalog.data.schema.HCatSchema;
 
-import org.junit.Assert;
+import junit.framework.Assert;
 
 import org.junit.After;
 import org.junit.Assume;
@@ -160,10 +160,8 @@ public abstract class HCatMapReduceTest extends HCatBaseTest {
       client.dropTable(databaseName, tableName);
       // in case of external table, drop the table contents as well
       if (isTableExternal() && (externalTableLocation != null)) {
-        Path extPath = new Path(externalTableLocation);
-        FileSystem fileSystem = extPath.getFileSystem(new HiveConf());
-        if (fileSystem.exists(extPath)) {
-          fileSystem.delete(extPath, true);
+        if (fs.exists(new Path(externalTableLocation))) {
+          fs.delete(new Path(externalTableLocation), true);
         }
       }
     } catch (Exception e) {

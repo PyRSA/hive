@@ -24,7 +24,7 @@ import java.io.UnsupportedEncodingException;
 import java.util.List;
 import java.util.Properties;
 
-
+import junit.framework.TestCase;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -33,6 +33,7 @@ import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.io.RCFile;
 import org.apache.hadoop.hive.ql.io.RCFileOutputFormat;
 import org.apache.hadoop.hive.serde.serdeConstants;
+import org.apache.hadoop.hive.serde2.SerDeUtils;
 import org.apache.hadoop.hive.serde2.columnar.BytesRefArrayWritable;
 import org.apache.hadoop.hive.serde2.columnar.BytesRefWritable;
 import org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe;
@@ -48,14 +49,12 @@ import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import org.apache.hadoop.mapreduce.TaskAttemptID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import static org.junit.Assert.assertEquals;
-import org.junit.Test;
 
 /**
  * TestRCFile.
  *
  */
-public class TestRCFileMapReduceInputFormat {
+public class TestRCFileMapReduceInputFormat extends TestCase {
 
   private static final Logger LOG = LoggerFactory.getLogger(TestRCFileMapReduceInputFormat.class);
 
@@ -79,7 +78,7 @@ public class TestRCFileMapReduceInputFormat {
       serDe = new ColumnarSerDe();
       // Create the SerDe
       tbl = createProperties();
-      serDe.initialize(conf, tbl, null);
+      SerDeUtils.initializeSerDe(serDe, conf, tbl, null);
     } catch (Exception e) {
     }
   }
@@ -174,7 +173,6 @@ public class TestRCFileMapReduceInputFormat {
   }
 
 
-  @Test
   public void testSynAndSplit() throws IOException, InterruptedException {
     splitBeforeSync();
     splitRightBeforeSync();
