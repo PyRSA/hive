@@ -31,7 +31,6 @@ import java.util.Properties;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hive.service.cli.HiveSQLException;
 import org.apache.hive.service.rpc.thrift.TStatus;
 import org.apache.hive.service.rpc.thrift.TStatusCode;
@@ -65,14 +64,10 @@ public class Utils {
 
   private static final String URI_HIVE_PREFIX = "hive2:";
 
-  // This value is set to true by the setServiceUnavailableRetryStrategy() when the server returns 401.
-  // This value is used only when cookie is sent for authorization. In case the cookie is expired,
-  // client will send the actual credentials in the next connection request.
-  // If credentials are sent in the first request it self, then no need to retry.
+  // This value is set to true by the setServiceUnavailableRetryStrategy() when the server returns 401
   static final String HIVE_SERVER2_RETRY_KEY = "hive.server2.retryserver";
-  static final String HIVE_SERVER2_SENT_CREDENTIALS = "hive.server2.sentCredentials";
-  static final String HIVE_SERVER2_CONST_TRUE = "true";
-  static final String HIVE_SERVER2_CONST_FALSE = "false";
+  static final String HIVE_SERVER2_RETRY_TRUE = "true";
+  static final String HIVE_SERVER2_RETRY_FALSE = "false";
 
   public static class JdbcConnectionParams {
     // Note on client side parameter naming convention:
@@ -85,8 +80,7 @@ public class Utils {
     // Client param names:
 
     // Retry setting
-    public static final String RETRIES = "retries";
-    public static final String RETRY_INTERVAL = "retryInterval";
+    static final String RETRIES = "retries";
 
     public static final String AUTH_TYPE = "auth";
     // We're deprecating this variable's name.
@@ -99,30 +93,11 @@ public class Utils {
     public static final String AUTH_PASSWD = "password";
     public static final String AUTH_KERBEROS_AUTH_TYPE = "kerberosAuthType";
     public static final String AUTH_KERBEROS_AUTH_TYPE_FROM_SUBJECT = "fromSubject";
-    public static final String AUTH_TYPE_JWT = "jwt";
-    public static final String AUTH_TYPE_JWT_KEY = "jwt";
-    public static final String AUTH_JWT_ENV = "JWT";
-    // JdbcConnection param which specifies if we need to use a browser to do
-    // authentication.
-    // JdbcConnectionParam which specifies if the authMode is done via a browser
-    public static final String AUTH_SSO_BROWSER_MODE = "browser";
-    public static final String AUTH_SSO_TOKEN_MODE = "token";
-    // connection parameter used to specify a port number to listen on in case of
-    // browser mode.
-    public static final String AUTH_BROWSER_RESPONSE_PORT = "browserResponsePort";
-    // connection parameter used to specify the timeout in seconds for the browser mode
-    public static final String AUTH_BROWSER_RESPONSE_TIMEOUT_SECS = "browserResponseTimeout";
-    // connection parameter to optionally disable the SSL validation done when using
-    // browser based authentication. Useful mostly for testing/dev purposes.
-    // By default, SSL validation is done unless this parameter is set to true.
-    public static final String AUTH_BROWSER_DISABLE_SSL_VALIDATION = "browserDisableSslCheck";
     public static final String ANONYMOUS_USER = "anonymous";
     public static final String ANONYMOUS_PASSWD = "anonymous";
     public static final String USE_SSL = "ssl";
     public static final String SSL_TRUST_STORE = "sslTrustStore";
     public static final String SSL_TRUST_STORE_PASSWORD = "trustStorePassword";
-    public static final String SSL_TRUST_STORE_TYPE = "trustStoreType";
-    public static final String SSL_TRUST_MANAGER_FACTORY_ALGORITHM = "trustManagerFactoryAlgorithm";
     // We're deprecating the name and placement of this in the parsed map (from hive conf vars to
     // hive session vars).
     static final String TRANSPORT_MODE_DEPRECATED = "hive.server2.transport.mode";
@@ -139,12 +114,7 @@ public class Utils {
     // Use ZooKeeper for indirection while using dynamic service discovery
     public static final String SERVICE_DISCOVERY_MODE_ZOOKEEPER = "zooKeeper";
     public static final String SERVICE_DISCOVERY_MODE_ZOOKEEPER_HA = "zooKeeperHA";
-    public static final String ZOOKEEPER_NAMESPACE = "zooKeeperNamespace";
-    public static final String ZOOKEEPER_SSL_ENABLE = "zooKeeperSSLEnable";
-    public static final String ZOOKEEPER_KEYSTORE_LOCATION = "zooKeeperKeystoreLocation";
-    public static final String ZOOKEEPER_KEYSTORE_PASSWORD= "zooKeeperKeystorePassword";
-    public static final String ZOOKEEPER_TRUSTSTORE_LOCATION  = "zooKeeperTruststoreLocation";
-    public static final String ZOOKEEPER_TRUSTSTORE_PASSWORD = "zooKeeperTruststorePassword";
+    static final String ZOOKEEPER_NAMESPACE = "zooKeeperNamespace";
     // Default namespace value on ZooKeeper.
     // This value is used if the param "zooKeeperNamespace" is not specified in the JDBC Uri.
     static final String ZOOKEEPER_DEFAULT_NAMESPACE = "hiveserver2";
@@ -162,9 +132,6 @@ public class Utils {
     static final String WM_POOL = "wmPool";
     // Cookie prefix
     static final String HTTP_COOKIE_PREFIX = "http.cookie.";
-    // Create external purge table by default
-    static final String CREATE_TABLE_AS_EXTERNAL = "hiveCreateAsExternalLegacy";
-    public static final String SOCKET_TIMEOUT = "socketTimeout";
 
     // We support ways to specify application name modeled after some existing DBs, since
     // there's no standard approach.
@@ -184,8 +151,12 @@ public class Utils {
     static final String SUNJSSE_ALGORITHM_STRING = "SunJSSE";
    // --------------- End 2 way ssl options ----------------------------
 
+    // Non-configurable params:
+    // Currently supports JKS keystore format
+    static final String SSL_TRUST_STORE_TYPE = "JKS";
+
     private static final String HIVE_VAR_PREFIX = "hivevar:";
-    public static final String HIVE_CONF_PREFIX = "hiveconf:";
+    private static final String HIVE_CONF_PREFIX = "hiveconf:";
     private String host = null;
     private int port = 0;
     private String jdbcUriString;
@@ -196,17 +167,8 @@ public class Utils {
     private boolean isEmbeddedMode = false;
     private String suppliedURLAuthority;
     private String zooKeeperEnsemble = null;
-    private boolean zooKeeperSslEnabled = false;
-    private String zookeeperKeyStoreLocation = "";
-    private String zookeeperKeyStorePassword = "";
-    private String zookeeperTrustStoreLocation = "";
-    private String zookeeperTrustStorePassword = "";
     private String currentHostZnodePath;
     private final List<String> rejectedHostZnodePaths = new ArrayList<String>();
-
-    // HiveConf parameters
-    public static final String HIVE_DEFAULT_NULLS_LAST_KEY =
-        HIVE_CONF_PREFIX + HiveConf.ConfVars.HIVE_DEFAULT_NULLS_LAST.varname;
 
     public JdbcConnectionParams() {
     }
@@ -222,12 +184,6 @@ public class Utils {
       this.isEmbeddedMode = params.isEmbeddedMode;
       this.suppliedURLAuthority = params.suppliedURLAuthority;
       this.zooKeeperEnsemble = params.zooKeeperEnsemble;
-      this.zooKeeperSslEnabled = params.zooKeeperSslEnabled;
-      this.zookeeperKeyStoreLocation = params.zookeeperKeyStoreLocation;
-      this.zookeeperKeyStorePassword = params.zookeeperKeyStorePassword;
-      this.zookeeperTrustStoreLocation = params.zookeeperTrustStoreLocation;
-      this.zookeeperTrustStorePassword = params.zookeeperTrustStorePassword;
-
       this.currentHostZnodePath = params.currentHostZnodePath;
       this.rejectedHostZnodePaths.addAll(rejectedHostZnodePaths);
     }
@@ -270,25 +226,6 @@ public class Utils {
 
     public String getZooKeeperEnsemble() {
       return zooKeeperEnsemble;
-    }
-    public boolean isZooKeeperSslEnabled() {
-      return zooKeeperSslEnabled;
-    }
-
-    public String getZookeeperKeyStoreLocation() {
-      return zookeeperKeyStoreLocation;
-    }
-
-    public String getZookeeperKeyStorePassword() {
-      return zookeeperKeyStorePassword;
-    }
-
-    public String getZookeeperTrustStoreLocation() {
-      return zookeeperTrustStoreLocation;
-    }
-
-    public String getZookeeperTrustStorePassword() {
-      return zookeeperTrustStorePassword;
     }
 
     public List<String> getRejectedHostZnodePaths() {
@@ -339,26 +276,6 @@ public class Utils {
       this.zooKeeperEnsemble = zooKeeperEnsemble;
     }
 
-    public void setZooKeeperSslEnabled(boolean zooKeeperSslEnabled) {
-      this.zooKeeperSslEnabled = zooKeeperSslEnabled;
-    }
-
-    public void setZookeeperKeyStoreLocation(String zookeeperKeyStoreLocation) {
-      this.zookeeperKeyStoreLocation = zookeeperKeyStoreLocation;
-    }
-
-    public void setZookeeperKeyStorePassword(String zookeeperKeyStorePassword) {
-      this.zookeeperKeyStorePassword = zookeeperKeyStorePassword;
-    }
-
-    public void setZookeeperTrustStoreLocation(String zookeeperTrustStoreLocation) {
-      this.zookeeperTrustStoreLocation = zookeeperTrustStoreLocation;
-    }
-
-    public void setZookeeperTrustStorePassword(String zookeeperTrustStorePassword) {
-      this.zookeeperTrustStorePassword = zookeeperTrustStorePassword;
-    }
-
     public void setCurrentHostZnodePath(String currentHostZnodePath) {
       this.currentHostZnodePath = currentHostZnodePath;
     }
@@ -390,8 +307,8 @@ public class Utils {
   /**
    * Parse JDBC connection URL
    * The new format of the URL is:
-   * jdbc:hive2://&lt;host1&gt;:&lt;port1&gt;,&lt;host2&gt;:&lt;port2&gt;/dbName;sess_var_list?hive_conf_list#hive_var_list
-   * where the optional sess, conf and var lists are semicolon separated &lt;key&gt;=&lt;val&gt; pairs.
+   * jdbc:hive2://<host1>:<port1>,<host2>:<port2>/dbName;sess_var_list?hive_conf_list#hive_var_list
+   * where the optional sess, conf and var lists are semicolon separated <key>=<val> pairs.
    * For utilizing dynamic service discovery with HiveServer2 multiple comma separated host:port pairs can
    * be specified as shown above.
    * The JDBC driver resolves the list of uris and picks a specific server instance to connect to.
@@ -537,17 +454,6 @@ public class Utils {
       }
     }
 
-    if (!connParams.getSessionVars().containsKey(JdbcConnectionParams.AUTH_PASSWD)) {
-      if (info.containsKey(JdbcConnectionParams.AUTH_USER)) {
-        connParams.getSessionVars().put(JdbcConnectionParams.AUTH_USER,
-                info.getProperty(JdbcConnectionParams.AUTH_USER));
-      }
-      if (info.containsKey(JdbcConnectionParams.AUTH_PASSWD)) {
-        connParams.getSessionVars().put(JdbcConnectionParams.AUTH_PASSWD,
-                info.getProperty(JdbcConnectionParams.AUTH_PASSWD));
-      }
-    }
-
     if (info.containsKey(JdbcConnectionParams.AUTH_TYPE)) {
       connParams.getSessionVars().put(JdbcConnectionParams.AUTH_TYPE,
           info.getProperty(JdbcConnectionParams.AUTH_TYPE));
@@ -567,7 +473,6 @@ public class Utils {
         uri = uri.replace(dummyAuthorityString, authorityStr);
         // Set ZooKeeper ensemble in connParams for later use
         connParams.setZooKeeperEnsemble(authorityStr);
-        ZooKeeperHiveClientHelper.setZkSSLParams(connParams);
       } else {
         URI jdbcBaseURI = URI.create(URI_HIVE_PREFIX + "//" + authorityStr);
         // Check to prevent unintentional use of embedded mode. A missing "/"
@@ -659,6 +564,7 @@ public class Utils {
    * host:port pairs.
    *
    * @param uri
+   * @param connParams
    * @return
    * @throws JdbcUriParseException
    */
@@ -676,7 +582,8 @@ public class Utils {
      */
     int fromIndex = Utils.URL_PREFIX.length();
     int toIndex = -1;
-    for (String toIndexChar : Arrays.asList("/", "?", "#")) {
+    ArrayList<String> toIndexChars = new ArrayList<String>(Arrays.asList("/", "?", "#"));
+    for (String toIndexChar : toIndexChars) {
       toIndex = uri.indexOf(toIndexChar, fromIndex);
       if (toIndex > 0) {
         break;

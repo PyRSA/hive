@@ -24,6 +24,20 @@ import org.slf4j.LoggerFactory;
 public interface InPlaceUpdateStream {
   void update(TProgressUpdateResp response);
 
+  InPlaceUpdateStream NO_OP = new InPlaceUpdateStream() {
+    private final EventNotifier eventNotifier = new EventNotifier();
+    @Override
+    public void update(TProgressUpdateResp response) {
+
+    }
+
+    @Override
+    public EventNotifier getEventNotifier() {
+      return eventNotifier;
+    }
+
+  };
+
   EventNotifier getEventNotifier();
 
   class EventNotifier {
