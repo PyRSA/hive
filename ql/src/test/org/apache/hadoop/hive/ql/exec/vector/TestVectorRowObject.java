@@ -23,14 +23,12 @@ import java.util.Random;
 
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 
-
-import static org.junit.Assert.fail;
-import org.junit.Test;
+import junit.framework.TestCase;
 
 /**
  * Unit test for the vectorized conversion to and from row object[].
  */
-public class TestVectorRowObject {
+public class TestVectorRowObject extends TestCase {
 
   void examineBatch(VectorizedRowBatch batch, VectorExtractRow vectorExtractRow,
               Object[][] randomRows, int firstRandomRowIndex ) {
@@ -60,8 +58,7 @@ public class TestVectorRowObject {
 
     VectorRandomRowSource source = new VectorRandomRowSource();
 
-    source.init(r, VectorRandomRowSource.SupportedTypes.ALL, 4,
-        /* allowNulls */ true, /* isUnicodeOk */ true);
+    source.init(r, VectorRandomRowSource.SupportedTypes.ALL, 4);
 
     VectorizedRowBatchCtx batchContext = new VectorizedRowBatchCtx();
     batchContext.init(source.rowStructObjectInspector(), emptyScratchTypeNames);
@@ -100,7 +97,6 @@ public class TestVectorRowObject {
     }
   }
 
-  @Test
   public void testVectorRowObject() throws Throwable {
 
     try {

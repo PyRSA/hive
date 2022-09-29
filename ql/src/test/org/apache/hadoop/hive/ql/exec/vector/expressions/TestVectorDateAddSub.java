@@ -25,6 +25,8 @@ import java.util.List;
 import java.util.Random;
 
 import org.apache.hadoop.hive.common.type.DataTypePhysicalVariation;
+import org.apache.hadoop.hive.common.type.HiveChar;
+import org.apache.hadoop.hive.common.type.HiveVarchar;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.exec.ExprNodeEvaluator;
 import org.apache.hadoop.hive.ql.exec.ExprNodeEvaluatorFactory;
@@ -36,7 +38,6 @@ import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatchCtx;
 import org.apache.hadoop.hive.ql.exec.vector.VectorRandomRowSource.GenerationSpec;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorExpression;
-import org.apache.hadoop.hive.ql.exec.vector.udf.VectorUDFAdaptor;
 import org.apache.hadoop.hive.ql.plan.ExprNodeColumnDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeConstantDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
@@ -44,20 +45,25 @@ import org.apache.hadoop.hive.ql.plan.ExprNodeGenericFuncDesc;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDF;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFDateAdd;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFDateSub;
+import org.apache.hadoop.hive.serde2.io.HiveCharWritable;
 import org.apache.hadoop.hive.serde2.io.HiveDecimalWritable;
+import org.apache.hadoop.hive.serde2.io.HiveVarcharWritable;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorUtils;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorUtils.ObjectInspectorCopyOption;
 import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector.PrimitiveCategory;
+import org.apache.hadoop.hive.serde2.typeinfo.CharTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.DecimalTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.PrimitiveTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoUtils;
+import org.apache.hadoop.hive.serde2.typeinfo.VarcharTypeInfo;
 import org.apache.hadoop.hive.serde2.io.ShortWritable;
 import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.LongWritable;
 
-import org.junit.Assert;
+import junit.framework.Assert;
 
 import org.junit.Test;
 
@@ -174,7 +180,7 @@ public class TestVectorDateAddSub {
         new ArrayList<DataTypePhysicalVariation>();
 
     List<String> columns = new ArrayList<String>();
-    int columnNum = 1;
+    int columnNum = 0;
     ExprNodeDesc col1Expr;
     if (columnScalarMode == ColumnScalarMode.COLUMN_COLUMN ||
         columnScalarMode == ColumnScalarMode.COLUMN_SCALAR) {
@@ -235,8 +241,7 @@ public class TestVectorDateAddSub {
     VectorRandomRowSource rowSource = new VectorRandomRowSource();
 
     rowSource.initGenerationSpecSchema(
-        random, generationSpecList, /* maxComplexDepth */ 0,
-        /* allowNull */ true, /* isUnicodeOk */ true,
+        random, generationSpecList, /* maxComplexDepth */ 0, /* allowNull */ true,
         explicitDataTypePhysicalVariationList);
 
     Object[][] randomRows = rowSource.randomRows(100000);
@@ -247,8 +252,8 @@ public class TestVectorDateAddSub {
       // Fixup numbers to limit the range to 0 ... N-1.
       for (int i = 0; i < randomRows.length; i++) {
         Object[] row = randomRows[i];
-        if (row[columnNum - 2] != null) {
-          row[columnNum - 2] =
+        if (row[columnNum - 1] != null) {
+          row[columnNum - 1] =
               smallerRange(
                   random, integerPrimitiveCategory, /* wantWritable */ true);
         }
@@ -365,7 +370,6 @@ public class TestVectorDateAddSub {
       Object[][] randomRows, ColumnScalarMode columnScalarMode,
       ObjectInspector rowInspector, Object[] resultObjects) throws Exception {
 
-    /*
     System.out.println(
         "*DEBUG* dateTimeStringTypeInfo " + dateTimeStringTypeInfo.toString() +
         " integerTypeInfo " + integerTypeInfo +
@@ -373,7 +377,6 @@ public class TestVectorDateAddSub {
         " dateAddSubTestMode ROW_MODE" +
         " columnScalarMode " + columnScalarMode +
         " exprDesc " + exprDesc.toString());
-    */
 
     HiveConf hiveConf = new HiveConf();
     ExprNodeEvaluator evaluator =
@@ -441,16 +444,7 @@ public class TestVectorDateAddSub {
             Arrays.asList(dataTypePhysicalVariations),
             hiveConf);
     VectorExpression vectorExpression = vectorizationContext.getVectorExpression(exprDesc);
-    vectorExpression.transientInit(hiveConf);
-
-    if (dateAddSubTestMode == DateAddSubTestMode.VECTOR_EXPRESSION &&
-        vectorExpression instanceof VectorUDFAdaptor) {
-      System.out.println(
-          "*NO NATIVE VECTOR EXPRESSION* dateTimeStringTypeInfo " + dateTimeStringTypeInfo.toString() +
-          " dateAddSubTestMode " + dateAddSubTestMode +
-          " columnScalarMode " + columnScalarMode +
-          " vectorExpression " + vectorExpression.toString());
-    }
+    vectorExpression.transientInit();
 
     VectorizedRowBatch batch = batchContext.createVectorizedRowBatch();
 
@@ -458,9 +452,6 @@ public class TestVectorDateAddSub {
     resultVectorExtractRow.init(new TypeInfo[] { TypeInfoFactory.dateTypeInfo }, new int[] { columns.size() });
     Object[] scrqtchRow = new Object[1];
 
-    // System.out.println("*VECTOR EXPRESSION* " + vectorExpression.getClass().getSimpleName());
-
-    /*
     System.out.println(
         "*DEBUG* dateTimeStringTypeInfo " + dateTimeStringTypeInfo.toString() +
         " integerTypeInfo " + integerTypeInfo +
@@ -468,7 +459,6 @@ public class TestVectorDateAddSub {
         " dateAddSubTestMode " + dateAddSubTestMode +
         " columnScalarMode " + columnScalarMode +
         " vectorExpression " + vectorExpression.toString());
-    */
 
     batchSource.resetBatchIteration();
     int rowIndex = 0;

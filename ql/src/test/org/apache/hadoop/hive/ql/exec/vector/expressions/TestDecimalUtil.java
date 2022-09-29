@@ -18,7 +18,7 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.expressions;
 
-import org.junit.Assert;
+import junit.framework.Assert;
 
 import org.apache.hadoop.hive.common.type.HiveDecimal;
 import org.apache.hadoop.hive.ql.exec.vector.DecimalColumnVector;

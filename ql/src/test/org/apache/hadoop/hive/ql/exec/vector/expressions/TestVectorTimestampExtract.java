@@ -18,8 +18,7 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.expressions;
 
-import org.junit.Assert;
-
+import junit.framework.Assert;
 import org.apache.hadoop.hive.common.type.DataTypePhysicalVariation;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.exec.ExprNodeEvaluator;
@@ -28,7 +27,6 @@ import org.apache.hadoop.hive.ql.exec.vector.VectorExtractRow;
 import org.apache.hadoop.hive.ql.exec.vector.VectorRandomBatchSource;
 import org.apache.hadoop.hive.ql.exec.vector.VectorRandomRowSource;
 import org.apache.hadoop.hive.ql.exec.vector.VectorRandomRowSource.GenerationSpec;
-import org.apache.hadoop.hive.ql.exec.vector.udf.VectorUDFAdaptor;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizationContext;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatchCtx;
@@ -118,7 +116,7 @@ public class TestVectorTimestampExtract {
         new ArrayList<DataTypePhysicalVariation>();
 
     List<String> columns = new ArrayList<String>();
-    int columnNum = 1;
+    int columnNum = 0;
     ExprNodeDesc col1Expr;
     if (!isStringFamily) {
       generationSpecList.add(
@@ -137,8 +135,7 @@ public class TestVectorTimestampExtract {
     VectorRandomRowSource rowSource = new VectorRandomRowSource();
 
     rowSource.initGenerationSpecSchema(
-        random, generationSpecList, /* maxComplexDepth */ 0,
-        /* allowNull */ true, /* isUnicodeOk */ true,
+        random, generationSpecList, /* maxComplexDepth */ 0, /* allowNull */ true,
         explicitDataTypePhysicalVariationList);
 
     List<ExprNodeDesc> children = new ArrayList<ExprNodeDesc>();
@@ -286,12 +283,10 @@ public class TestVectorTimestampExtract {
       Object[][] randomRows, ObjectInspector rowInspector, Object[] resultObjects)
           throws Exception {
 
-    /*
     System.out.println(
         "*DEBUG* dateTimeStringTypeInfo " + dateTimeStringTypeInfo.toString() +
         " timestampExtractTestMode ROW_MODE" +
         " exprDesc " + exprDesc.toString());
-    */
 
     HiveConf hiveConf = new HiveConf();
     ExprNodeEvaluator evaluator =
@@ -395,24 +390,12 @@ public class TestVectorTimestampExtract {
             Arrays.asList(dataTypePhysicalVariations),
             hiveConf);
     VectorExpression vectorExpression = vectorizationContext.getVectorExpression(exprDesc);
-    vectorExpression.transientInit(hiveConf);
+    vectorExpression.transientInit();
 
-    if (timestampExtractTestMode == TimestampExtractTestMode.VECTOR_EXPRESSION &&
-        vectorExpression instanceof VectorUDFAdaptor) {
-      System.out.println(
-          "*NO NATIVE VECTOR EXPRESSION* dateTimeStringTypeInfo " + dateTimeStringTypeInfo.toString() +
-          " timestampExtractTestMode " + timestampExtractTestMode +
-          " vectorExpression " + vectorExpression.toString());
-    }
-
-    // System.out.println("*VECTOR EXPRESSION* " + vectorExpression.getClass().getSimpleName());
-
-    /*
     System.out.println(
         "*DEBUG* dateTimeStringTypeInfo " + dateTimeStringTypeInfo.toString() +
         " timestampExtractTestMode " + timestampExtractTestMode +
         " vectorExpression " + vectorExpression.getClass().getSimpleName());
-    */
 
     VectorRandomRowSource rowSource = batchSource.getRowSource();
     VectorizedRowBatchCtx batchContext =

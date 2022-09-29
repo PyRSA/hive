@@ -18,11 +18,12 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.expressions;
 
+import org.apache.commons.lang.ArrayUtils;
 import org.apache.hadoop.hive.ql.exec.vector.BytesColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
-import org.apache.hadoop.hive.ql.exec.vector.MapColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorExpressionDescriptor;
 
+import java.util.Arrays;
 
 /**
  * Returns value of Map.
@@ -59,25 +60,14 @@ public class VectorUDFMapIndexStringCol extends VectorUDFMapIndexBaseCol {
   }
 
   @Override
-  public int findInMap(ColumnVector indexColumnVector, int indexBatchIndex,
-      MapColumnVector mapColumnVector, int mapBatchIndex) {
-    final int offset = (int) mapColumnVector.offsets[mapBatchIndex];
-    final int count = (int) mapColumnVector.lengths[mapBatchIndex];
-    BytesColumnVector keyColVector = (BytesColumnVector) mapColumnVector.keys;
-    byte[][] keyVector = keyColVector.vector;
-    int[] keyStart = keyColVector.start;
-    int[] keyLength = keyColVector.length;
-    BytesColumnVector indexColVector = (BytesColumnVector) indexColumnVector;
-    byte[] indexBytes = indexColVector.vector[indexBatchIndex];
-    int indexStart = indexColVector.start[indexBatchIndex];
-    int indexLength = indexColVector.length[indexBatchIndex];
-    for (int i = 0; i < count; i++) {
-      final int keyOffset = offset + i;
-      if (StringExpr.equal(indexBytes, indexStart, indexLength,
-          keyVector[keyOffset], keyStart[keyOffset], keyLength[keyOffset])) {
-        return offset + i;
-      }
-    }
-    return -1;
+  protected Object getKeyByIndex(ColumnVector cv, int index) {
+    BytesColumnVector bytesCV = (BytesColumnVector) cv;
+    return ArrayUtils.subarray(bytesCV.vector[index], bytesCV.start[index],
+        bytesCV.start[index] + bytesCV.length[index]);
+  }
+
+  @Override
+  protected boolean compareKeyInternal(Object columnKey, Object otherKey) {
+    return Arrays.equals((byte[])columnKey, (byte[]) otherKey);
   }
 }

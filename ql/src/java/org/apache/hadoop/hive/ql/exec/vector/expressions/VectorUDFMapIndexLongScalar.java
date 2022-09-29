@@ -18,8 +18,8 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.expressions;
 
+import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
-import org.apache.hadoop.hive.ql.exec.vector.MapColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorExpressionDescriptor;
 
 /**
@@ -27,8 +27,6 @@ import org.apache.hadoop.hive.ql.exec.vector.VectorExpressionDescriptor;
  * Extends {@link VectorUDFMapIndexBaseScalar}
  */
 public class VectorUDFMapIndexLongScalar extends VectorUDFMapIndexBaseScalar {
-
-  private static final long serialVersionUID = 1L;
 
   private long key;
 
@@ -61,15 +59,12 @@ public class VectorUDFMapIndexLongScalar extends VectorUDFMapIndexBaseScalar {
   }
 
   @Override
-  public int findScalarInMap(MapColumnVector mapColumnVector, int mapBatchIndex) {
-    final int offset = (int) mapColumnVector.offsets[mapBatchIndex];
-    final int count = (int) mapColumnVector.lengths[mapBatchIndex];
-    long[] keys = ((LongColumnVector) mapColumnVector.keys).vector;
-    for (int i = 0; i < count; i++) {
-      if (key == keys[offset + i]) {
-        return offset + i;
-      }
-    }
-    return -1;
+  protected Object getKeyByIndex(ColumnVector cv, int index) {
+    return ((LongColumnVector) cv).vector[index];
+  }
+
+  @Override
+  public Object getCurrentKey(int index) {
+    return key;
   }
 }

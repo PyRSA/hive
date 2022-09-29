@@ -28,8 +28,6 @@ import org.apache.hadoop.hive.ql.exec.mapjoin.MapJoinMemoryExhaustionError;
 import org.apache.hadoop.hive.ql.exec.vector.mapjoin.fast.CheckFastHashTable.VerifyFastBytesHashMap;
 import org.apache.hadoop.hive.ql.exec.vector.mapjoin.hashtable.VectorMapJoinHashMapResult;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
-
-import org.junit.Ignore;
 import org.junit.Test;
 
 /*
@@ -192,7 +190,7 @@ public class TestVectorMapJoinFastBytesHashMap extends CommonFastHashTable {
 
     VerifyFastBytesHashMap verifyTable = new VerifyFastBytesHashMap();
 
-    for (int i = 0; i < 6; ++i) {
+    for (int i = 0; i < 18; ++i) {
       byte[] key;
       while (true) {
         key = new byte[random.nextInt(MAX_KEY_LENGTH)];
@@ -301,7 +299,6 @@ public class TestVectorMapJoinFastBytesHashMap extends CommonFastHashTable {
     addAndVerifyMultipleKeyMultipleValue(keyCount, map, verifyTable);
   }
 
-  @Ignore
   @Test
   public void testOutOfBounds() throws Exception {
     random = new Random(42662);

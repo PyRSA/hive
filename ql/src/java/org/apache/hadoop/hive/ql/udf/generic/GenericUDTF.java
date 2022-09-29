@@ -44,7 +44,7 @@ public abstract class GenericUDTF {
    * Additionally setup GenericUDTF with MapredContext before initializing.
    * This is only called in runtime of MapRedTask.
    *
-   * @param mapredContext context
+   * @param context context
    */
   public void configure(MapredContext mapredContext) {
   }

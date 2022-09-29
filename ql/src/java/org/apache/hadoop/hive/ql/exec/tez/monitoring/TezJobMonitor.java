@@ -40,7 +40,6 @@ import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.ql.Context;
 import org.apache.hadoop.hive.ql.exec.Utilities;
 import org.apache.hadoop.hive.ql.exec.tez.TezSessionPoolManager;
-import org.apache.hadoop.hive.ql.exec.tez.Utils;
 import org.apache.hadoop.hive.ql.log.PerfLogger;
 import org.apache.hadoop.hive.ql.plan.BaseWork;
 import org.apache.hadoop.hive.ql.session.SessionState;
@@ -113,11 +112,9 @@ public class TezJobMonitor {
   private final Context context;
   private long executionStartTime = 0;
   private final RenderStrategy.UpdateFunction updateFunction;
-  // compile time tez counters
-  private final TezCounters counters;
 
   public TezJobMonitor(List<BaseWork> topSortedWorks, final DAGClient dagClient, HiveConf conf, DAG dag,
-    Context ctx, final TezCounters counters) {
+                       Context ctx) {
     this.topSortedWorks = topSortedWorks;
     this.dagClient = dagClient;
     this.hiveConf = conf;
@@ -125,7 +122,6 @@ public class TezJobMonitor {
     this.context = ctx;
     console = SessionState.getConsole();
     updateFunction = updateFunction();
-    this.counters = counters;
   }
 
   private RenderStrategy.UpdateFunction updateFunction() {
@@ -155,8 +151,8 @@ public class TezJobMonitor {
     synchronized (shutdownList) {
       shutdownList.add(dagClient);
     }
-    perfLogger.perfLogBegin(CLASS_NAME, PerfLogger.TEZ_RUN_DAG);
-    perfLogger.perfLogBegin(CLASS_NAME, PerfLogger.TEZ_SUBMIT_TO_RUNNING);
+    perfLogger.PerfLogBegin(CLASS_NAME, PerfLogger.TEZ_RUN_DAG);
+    perfLogger.PerfLogBegin(CLASS_NAME, PerfLogger.TEZ_SUBMIT_TO_RUNNING);
     DAGStatus.State lastState = null;
     boolean running = false;
 
@@ -170,31 +166,22 @@ public class TezJobMonitor {
           context.checkHeartbeaterLockException();
         }
 
-        wmContext = context.getWmContext();
-        EnumSet<StatusGetOpts> opts = null;
-        if (wmContext != null) {
-          Set<String> desiredCounters = wmContext.getSubscribedCounters();
-          if (desiredCounters != null && !desiredCounters.isEmpty()) {
-            opts = EnumSet.of(StatusGetOpts.GET_COUNTERS);
-          }
-        }
-
-        status = dagClient.getDAGStatus(opts, checkInterval);
-
+        status = dagClient.getDAGStatus(EnumSet.of(StatusGetOpts.GET_COUNTERS), checkInterval);
+        TezCounters dagCounters = status.getDAGCounters();
         vertexProgressMap = status.getVertexProgress();
+        wmContext = context.getWmContext();
         List<String> vertexNames = vertexProgressMap.keySet()
           .stream()
           .map(k -> k.replaceAll(" ", "_"))
           .collect(Collectors.toList());
-        if (wmContext != null) {
+        if (dagCounters != null && wmContext != null) {
           Set<String> desiredCounters = wmContext.getSubscribedCounters();
-          TezCounters dagCounters = status.getDAGCounters();
-          // if initial counters exists, merge it with dag counters to get aggregated view
-          TezCounters mergedCounters = counters == null ? dagCounters : Utils.mergeTezCounters(dagCounters, counters);
-          if (mergedCounters != null && desiredCounters != null && !desiredCounters.isEmpty()) {
-            Map<String, Long> currentCounters = getCounterValues(mergedCounters, vertexNames, vertexProgressMap,
+          if (desiredCounters != null && !desiredCounters.isEmpty()) {
+            Map<String, Long> currentCounters = getCounterValues(dagCounters, vertexNames, vertexProgressMap,
               desiredCounters, done);
-            LOG.debug("Requested DAG status. checkInterval: {}. currentCounters: {}", checkInterval, currentCounters);
+            if (LOG.isDebugEnabled()) {
+              LOG.debug("Requested DAG status. checkInterval: {}. currentCounters: {}", checkInterval, currentCounters);
+            }
             wmContext.setCurrentCounters(currentCounters);
           }
         }
@@ -216,7 +203,7 @@ public class TezJobMonitor {
               break;
             case RUNNING:
               if (!running) {
-                perfLogger.perfLogEnd(CLASS_NAME, PerfLogger.TEZ_SUBMIT_TO_RUNNING);
+                perfLogger.PerfLogEnd(CLASS_NAME, PerfLogger.TEZ_SUBMIT_TO_RUNNING);
                 console.printInfo("Status: Running (" + dagClient.getExecutionContext() + ")\n");
                 this.executionStartTime = System.currentTimeMillis();
                 running = true;
@@ -306,7 +293,7 @@ public class TezJobMonitor {
       }
     }
 
-    perfLogger.perfLogEnd(CLASS_NAME, PerfLogger.TEZ_RUN_DAG);
+    perfLogger.PerfLogEnd(CLASS_NAME, PerfLogger.TEZ_RUN_DAG);
     printSummary(success, vertexProgressMap);
     return rc;
   }
@@ -435,7 +422,6 @@ public class TezJobMonitor {
 
       double duration = (System.currentTimeMillis() - this.executionStartTime) / 1000.0;
       console.printInfo("Status: DAG finished successfully in " + String.format("%.2f seconds", duration));
-      console.printInfo("DAG ID: " + this.dagClient.getDagIdentifierString());
       console.printInfo("");
 
       new QueryExecutionBreakdownSummary(perfLogger).print(console);
@@ -490,10 +476,6 @@ public class TezJobMonitor {
                                          String counterName) {
     TezCounter tezCounter = vertexCounters.getGroup(groupNamePattern).findCounter(counterName);
     return (tezCounter == null) ? 0 : tezCounter.getValue();
-  }
-
-  public HiveConf getHiveConf() {
-    return hiveConf;
   }
 
   public String getDiagnostics() {

@@ -28,9 +28,6 @@ public class MsSqlDatabaseAccessor extends GenericJdbcDatabaseAccessor {
     if (offset == 0) {
       return addLimitToQuery(sql, limit);
     } else {
-      if (limit == -1) {
-        return sql;
-      }
       // Order by is not necessary, but MS SQL require it to use FETCH
       return sql + " ORDER BY 1 OFFSET " + offset + " ROWS FETCH NEXT " + limit + " ROWS ONLY";
     }
@@ -38,9 +35,7 @@ public class MsSqlDatabaseAccessor extends GenericJdbcDatabaseAccessor {
 
   @Override
   protected String addLimitToQuery(String sql, int limit) {
-    if (limit == -1) {
-      return sql;
-    }
     return sql + " {LIMIT " + limit + "}";
   }
+
 }

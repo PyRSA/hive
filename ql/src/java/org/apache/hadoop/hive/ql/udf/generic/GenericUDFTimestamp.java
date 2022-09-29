@@ -17,52 +17,43 @@
  */
 package org.apache.hadoop.hive.ql.udf.generic;
 
-import org.apache.hadoop.hive.conf.HiveConf;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.ql.exec.Description;
 import org.apache.hadoop.hive.ql.exec.UDFArgumentException;
+import org.apache.hadoop.hive.ql.exec.UDFArgumentLengthException;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedExpressions;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.CastDateToTimestamp;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.CastDecimalToTimestamp;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.CastDoubleToTimestamp;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.CastLongToTimestamp;
-import org.apache.hadoop.hive.ql.exec.vector.expressions.CastStringToTimestamp;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.session.SessionState;
+import org.apache.hadoop.hive.ql.session.SessionState.LogHelper;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
-import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorConverters;
 import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
-import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector.PrimitiveCategory;
-import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorConverter;
+import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorConverter.TimestampConverter;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
-import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorUtils;
-import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorUtils.PrimitiveGrouping;
-
-import static org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorUtils.PrimitiveGrouping.BOOLEAN_GROUP;
-import static org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorUtils.PrimitiveGrouping.DATE_GROUP;
-import static org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorUtils.PrimitiveGrouping.NUMERIC_GROUP;
-import static org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorUtils.PrimitiveGrouping.STRING_GROUP;
-import static org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorUtils.PrimitiveGrouping.VOID_GROUP;
 
 /**
  *
  * GenericUDFTimestamp
  *
  * Example usage:
- * ... CAST(&lt;Timestamp string&gt; as TIMESTAMP) ...
+ * ... CAST(<Timestamp string> as TIMESTAMP) ...
  *
  * Creates a TimestampWritableV2 object using PrimitiveObjectInspectorConverter
  *
  */
 @Description(name = "timestamp",
-             value = "cast(date as timestamp) - Returns timestamp")
-@VectorizedExpressions({ CastLongToTimestamp.class, CastDateToTimestamp.class, CastDoubleToTimestamp.class,
-                           CastDecimalToTimestamp.class, CastStringToTimestamp.class })
+value = "cast(date as timestamp) - Returns timestamp")
+@VectorizedExpressions({CastLongToTimestamp.class, CastDateToTimestamp.class,
+  CastDoubleToTimestamp.class, CastDecimalToTimestamp.class})
 public class GenericUDFTimestamp extends GenericUDF {
 
-  private final transient ObjectInspectorConverters.Converter[] tsConvertors =
-      new ObjectInspectorConverters.Converter[1];
-  private final transient PrimitiveCategory[] tsInputTypes = new PrimitiveCategory[1];
+  private transient PrimitiveObjectInspector argumentOI;
+  private transient TimestampConverter tc;
   /*
    * Integer value was interpreted to timestamp inconsistently in milliseconds comparing
    * to float/double in seconds. Since the issue exists for a long time and some users may
@@ -71,44 +62,52 @@ public class GenericUDFTimestamp extends GenericUDF {
    * otherwise, it's interpreted as timestamp in seconds.
    */
   private boolean intToTimestampInSeconds = false;
-  private boolean strict = true;
 
   @Override
   public ObjectInspector initialize(ObjectInspector[] arguments) throws UDFArgumentException {
-    checkArgsSize(arguments, 1, 1);
-    checkArgPrimitive(arguments, 0);
-    checkArgGroups(arguments, 0, tsInputTypes, STRING_GROUP, DATE_GROUP, NUMERIC_GROUP, VOID_GROUP, BOOLEAN_GROUP);
-
-    strict = SessionState.get() != null ? SessionState.get().getConf()
-        .getBoolVar(ConfVars.HIVE_STRICT_TIMESTAMP_CONVERSION) : new HiveConf()
-        .getBoolVar(ConfVars.HIVE_STRICT_TIMESTAMP_CONVERSION);
-    intToTimestampInSeconds = SessionState.get() != null ? SessionState.get().getConf()
-        .getBoolVar(ConfVars.HIVE_INT_TIMESTAMP_CONVERSION_IN_SECONDS) : new HiveConf()
-        .getBoolVar(ConfVars.HIVE_INT_TIMESTAMP_CONVERSION_IN_SECONDS);
-
-    if (strict) {
-      if (PrimitiveObjectInspectorUtils.getPrimitiveGrouping(tsInputTypes[0]) == PrimitiveGrouping.NUMERIC_GROUP) {
-        throw new UDFArgumentException(
-            "Casting NUMERIC types to TIMESTAMP is prohibited (" + ConfVars.HIVE_STRICT_TIMESTAMP_CONVERSION + ")");
-      }
+    if (arguments.length < 1) {
+      throw new UDFArgumentLengthException(
+          "The function TIMESTAMP requires at least one argument, got "
+          + arguments.length);
     }
 
-    obtainTimestampConverter(arguments, 0, tsInputTypes, tsConvertors);
+    SessionState ss = SessionState.get();
+    if (ss != null) {
+      intToTimestampInSeconds = ss.getConf().getBoolVar(ConfVars.HIVE_INT_TIMESTAMP_CONVERSION_IN_SECONDS);
+    }
+
+    try {
+      argumentOI = (PrimitiveObjectInspector) arguments[0];
+    } catch (ClassCastException e) {
+      throw new UDFArgumentException(
+          "The function TIMESTAMP takes only primitive types");
+    }
+
+    tc = new TimestampConverter(argumentOI,
+        PrimitiveObjectInspectorFactory.writableTimestampObjectInspector);
+    tc.setIntToTimestampInSeconds(intToTimestampInSeconds);
+
     return PrimitiveObjectInspectorFactory.writableTimestampObjectInspector;
   }
 
   @Override
   public Object evaluate(DeferredObject[] arguments) throws HiveException {
-    PrimitiveObjectInspectorConverter.TimestampConverter ts =
-        (PrimitiveObjectInspectorConverter.TimestampConverter) tsConvertors[0];
-    ts.setIntToTimestampInSeconds(intToTimestampInSeconds);
-    return ts.convert(arguments[0].get());
+    Object o0 = arguments[0].get();
+    if (o0 == null) {
+      return null;
+    }
+
+    return tc.convert(o0);
   }
 
   @Override
   public String getDisplayString(String[] children) {
     assert (children.length == 1);
-    return "CAST( " + children[0] + " AS TIMESTAMP)";
+    StringBuilder sb = new StringBuilder();
+    sb.append("CAST( ");
+    sb.append(children[0]);
+    sb.append(" AS TIMESTAMP)");
+    return sb.toString();
   }
 
   public boolean isIntToTimestampInSeconds() {

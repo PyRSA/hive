@@ -40,11 +40,9 @@ import java.util.NavigableMap;
 import java.util.TreeMap;
 
 /**
- * Planner rule that removes UDF sq_count_check from a plan if
- *  1) either group by keys in a subquery are constant and there is no windowing or grouping sets
- *  2) OR there are no group by keys but only aggregate
- *  Both of the above case will produce at most one row, therefore it is safe to remove sq_count_check
- *    which was introduced earlier in the plan to ensure that this condition is met at run time
+ * Planner rule that removes UDF sq_count_check from a
+ * plan if group by keys in a subquery are constant
+ * and there is no windowing or grouping sets
  */
 public class HiveRemoveSqCountCheck extends RelOptRule {
 
@@ -75,7 +73,9 @@ public class HiveRemoveSqCountCheck extends RelOptRule {
     if(filter instanceof HiveFilter) {
       HiveFilter hiveFilter = (HiveFilter)filter;
       // check if it has sq_count_check
-      return isSqlCountCheck(hiveFilter);
+      if(isSqlCountCheck(hiveFilter)) {
+        return true;
+      }
     }
     return false;
   }
@@ -84,22 +84,38 @@ public class HiveRemoveSqCountCheck extends RelOptRule {
     // look at hivesubqueryremoverule to see how is this filter created
     if(filter.getCondition() instanceof RexCall) {
       final RexCall condition = (RexCall)filter.getCondition();
-      return condition.getOperator().getName().equals("sq_count_check");
+      if(condition.getKind() == SqlKind.LESS_THAN_OR_EQUAL) {
+        final List<RexNode> operands = condition.getOperands();
+        if(operands.get(0) instanceof RexCall) {
+          final RexCall op = (RexCall)operands.get(0);
+          if(op.getOperator().getName().equals("sq_count_check")) {
+            return true;
+          }
+        }
+      }
     }
     return false;
   }
 
-  private boolean isAggregateWithoutGbyKeys(final Aggregate agg) {
-    return agg.getGroupCount() == 0;
-  }
 
-  private boolean isAggWithConstantGbyKeys(final Aggregate aggregate, RelOptRuleCall call) {
+  @Override public void onMatch(RelOptRuleCall call) {
+    final Join topJoin= call.rel(0);
+    final Join join = call.rel(2);
+    final Aggregate aggregate = call.rel(6);
+
+    // in presence of grouping sets we can't remove sq_count_check
+    if(aggregate.indicator) {
+      return;
+    }
+
+    final int groupCount = aggregate.getGroupCount();
+
     final RexBuilder rexBuilder = aggregate.getCluster().getRexBuilder();
     final RelMetadataQuery mq = call.getMetadataQuery();
     final RelOptPredicateList predicates =
         mq.getPulledUpPredicates(aggregate.getInput());
     if (predicates == null) {
-      return false;
+      return;
     }
     final NavigableMap<Integer, RexNode> map = new TreeMap<>();
     for (int key : aggregate.getGroupSet()) {
@@ -112,30 +128,15 @@ public class HiveRemoveSqCountCheck extends RelOptRule {
 
     // None of the group expressions are constant. Nothing to do.
     if (map.isEmpty()) {
-      return false;
-    }
-
-    final int groupCount = aggregate.getGroupCount();
-    if (groupCount == map.size()) {
-      return true;
-    }
-    return false;
-  }
-
-  @Override public void onMatch(RelOptRuleCall call) {
-    final Join topJoin= call.rel(0);
-    final Join join = call.rel(2);
-    final Aggregate aggregate = call.rel(6);
-
-    // in presence of grouping sets we can't remove sq_count_check
-    if(aggregate.indicator) {
       return;
     }
-    if(isAggregateWithoutGbyKeys(aggregate) || isAggWithConstantGbyKeys(aggregate, call)) {
+
+    if (groupCount == map.size()) {
       // join(left, join.getRight)
       RelNode newJoin = HiveJoin.getJoin(topJoin.getCluster(), join.getLeft(),  topJoin.getRight(),
           topJoin.getCondition(), topJoin.getJoinType());
       call.transformTo(newJoin);
     }
   }
+
 }

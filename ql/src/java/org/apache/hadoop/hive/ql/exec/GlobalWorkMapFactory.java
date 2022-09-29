@@ -100,7 +100,8 @@ public class GlobalWorkMapFactory {
 
   public Map<Path, BaseWork> get(Configuration conf) {
     if (LlapProxy.isDaemon()
-        || (SessionState.get() != null && SessionState.get().isHiveServerQuery())) {
+        || (SessionState.get() != null && SessionState.get().isHiveServerQuery())
+        || HiveConf.getVar(conf, ConfVars.HIVE_EXECUTION_ENGINE).equals("spark")) {
       if (threadLocalWorkMap == null) {
         threadLocalWorkMap = new ThreadLocal<Map<Path, BaseWork>>() {
           @Override

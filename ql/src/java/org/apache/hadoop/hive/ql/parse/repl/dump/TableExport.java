@@ -22,10 +22,8 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.common.FileUtils;
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.metastore.TableType;
 import org.apache.hadoop.hive.metastore.api.NoSuchObjectException;
 import org.apache.hadoop.hive.ql.ErrorMsg;
-import org.apache.hadoop.hive.ql.exec.repl.util.FileList;
 import org.apache.hadoop.hive.ql.hooks.ReadEntity;
 import org.apache.hadoop.hive.ql.hooks.WriteEntity;
 import org.apache.hadoop.hive.ql.metadata.Hive;
@@ -34,7 +32,6 @@ import org.apache.hadoop.hive.ql.metadata.Partition;
 import org.apache.hadoop.hive.ql.metadata.PartitionIterable;
 import org.apache.hadoop.hive.ql.parse.BaseSemanticAnalyzer.TableSpec;
 import org.apache.hadoop.hive.ql.parse.EximUtil;
-import org.apache.hadoop.hive.ql.parse.EximUtil.DataCopyPath;
 import org.apache.hadoop.hive.ql.parse.ReplicationSpec;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
 import org.apache.hadoop.hive.ql.parse.repl.dump.io.FileOperations;
@@ -75,20 +72,9 @@ public class TableExport {
         ? null
         : tableSpec;
     this.replicationSpec = replicationSpec;
-    if (this.tableSpec != null && this.tableSpec.tableHandle!=null) {
-      //If table is view or if should dump metadata only flag used by DAS is set to true
-      //enable isMetadataOnly
-      if (this.tableSpec.tableHandle.isView() || Utils.shouldDumpMetaDataOnly(conf)) {
-        this.tableSpec.tableHandle.setStatsStateLikeNewTable();
-        this.replicationSpec.setIsMetadataOnly(true);
-      }
-      //If table is view or if should dump metadata only for external table flag is set to true
-      //enable isMetadataOnlyForExternalTable
-      if (this.tableSpec.tableHandle.isView()
-              || Utils.shouldDumpMetaDataOnlyForExternalTables(this.tableSpec.tableHandle, conf)) {
-        this.tableSpec.tableHandle.setStatsStateLikeNewTable();
-        this.replicationSpec.setMetadataOnlyForExternalTables(true);
-      }
+    if (conf.getBoolVar(HiveConf.ConfVars.REPL_DUMP_METADATA_ONLY) || (this.tableSpec != null
+        && this.tableSpec.tableHandle.isView())) {
+      this.replicationSpec.setIsMetadataOnly(true);
     }
     this.db = db;
     this.distCpDoAsUser = distCpDoAsUser;
@@ -97,19 +83,19 @@ public class TableExport {
     this.mmCtx = mmCtx;
   }
 
-  public void write(boolean isExportTask, FileList fileList, boolean dataCopyAtLoad) throws SemanticException {
+  public boolean write() throws SemanticException {
     if (tableSpec == null) {
       writeMetaData(null);
+      return true;
     } else if (shouldExport()) {
       PartitionIterable withPartitions = getPartitions();
       writeMetaData(withPartitions);
-      if (!replicationSpec.isMetadataOnly()
-              && !(replicationSpec.isRepl() && tableSpec.tableHandle.getTableType().equals(TableType.EXTERNAL_TABLE))) {
-        writeData(withPartitions, isExportTask, fileList, dataCopyAtLoad);
+      if (!replicationSpec.isMetadataOnly()) {
+        writeData(withPartitions);
       }
-    } else if (isExportTask) {
-      throw new SemanticException(ErrorMsg.INCOMPATIBLE_SCHEMA.getMsg());
+      return true;
     }
+    return false;
   }
 
   private PartitionIterable getPartitions() throws SemanticException {
@@ -117,12 +103,11 @@ public class TableExport {
       if (tableSpec != null && tableSpec.tableHandle != null && tableSpec.tableHandle.isPartitioned()) {
         if (tableSpec.specType == TableSpec.SpecType.TABLE_ONLY) {
           // TABLE-ONLY, fetch partitions if regular export, don't if metadata-only
-          //For metadata only external tables, we still need the partition info
           if (replicationSpec.isMetadataOnly()) {
             return null;
           } else {
             return new PartitionIterable(db, tableSpec.tableHandle, null, conf.getIntVar(
-                HiveConf.ConfVars.METASTORE_BATCH_RETRIEVE_MAX), true);
+                HiveConf.ConfVars.METASTORE_BATCH_RETRIEVE_MAX));
           }
         } else {
           // PARTITIONS specified - partitions inside tableSpec
@@ -160,25 +145,21 @@ public class TableExport {
     }
   }
 
-  private void writeData(PartitionIterable partitions, boolean isExportTask, FileList fileList, boolean dataCopyAtLoad)
-          throws SemanticException {
+  private void writeData(PartitionIterable partitions) throws SemanticException {
     try {
       if (tableSpec.tableHandle.isPartitioned()) {
         if (partitions == null) {
           throw new IllegalStateException("partitions cannot be null for partitionTable :"
-              + tableSpec.getTableName().getTable());
+              + tableSpec.tableName);
         }
-        new PartitionExport(paths, partitions, distCpDoAsUser, conf, mmCtx).write(replicationSpec, isExportTask,
-                fileList, dataCopyAtLoad);
+        new PartitionExport(paths, partitions, distCpDoAsUser, conf, mmCtx).write(replicationSpec);
       } else {
         List<Path> dataPathList = Utils.getDataPathList(tableSpec.tableHandle.getDataLocation(),
                 replicationSpec, conf);
-        if (!(isExportTask || dataCopyAtLoad)) {
-          fileList.add(new DataCopyPath(replicationSpec, tableSpec.tableHandle.getDataLocation(),
-                  paths.dataExportDir()).convertToString());
-        }
+
+        // this is the data copy
         new FileOperations(dataPathList, paths.dataExportDir(), distCpDoAsUser, conf, mmCtx)
-                .export(isExportTask, (dataCopyAtLoad));
+            .export(replicationSpec);
       }
     } catch (Exception e) {
       throw new SemanticException(e.getMessage(), e);
@@ -186,8 +167,7 @@ public class TableExport {
   }
 
   private boolean shouldExport() {
-    return Utils.shouldReplicate(replicationSpec, tableSpec.tableHandle,
-            false, null, null, conf);
+    return Utils.shouldReplicate(replicationSpec, tableSpec.tableHandle, conf);
   }
 
   /**
@@ -197,29 +177,22 @@ public class TableExport {
   public static class Paths {
     private final String astRepresentationForErrorMsg;
     private final HiveConf conf;
-    //metadataExportRootDir and dataExportRootDir variable access should not be done and use
-    // metadataExportRootDir() and dataExportRootDir() instead.
-    private final Path metadataExportRootDir;
-    private final Path dataExportRootDir;
+    //variable access should not be done and use exportRootDir() instead.
+    private final Path _exportRootDir;
     private final FileSystem exportFileSystem;
-    private boolean writeData, metadataExportRootDirCreated = false, dataExportRootDirCreated = false;
+    private boolean writeData, exportRootDirCreated = false;
 
-    public Paths(String astRepresentationForErrorMsg, Path dbMetadataRoot, Path dbDataRoot,
-                 String tblName, HiveConf conf,
+    public Paths(String astRepresentationForErrorMsg, Path dbRoot, String tblName, HiveConf conf,
         boolean shouldWriteData) throws SemanticException {
       this.astRepresentationForErrorMsg = astRepresentationForErrorMsg;
       this.conf = conf;
       this.writeData = shouldWriteData;
-      Path tableRootForMetadataDump = new Path(dbMetadataRoot, tblName);
-      Path tableRootForDataDump = new Path(dbDataRoot, tblName);
-      URI metadataExportRootDirUri = EximUtil.getValidatedURI(conf, tableRootForMetadataDump.toUri().toString());
-      validateTargetDir(metadataExportRootDirUri);
-      URI dataExportRootDirUri = EximUtil.getValidatedURI(conf, tableRootForDataDump.toUri().toString());
-      validateTargetDataDir(dataExportRootDirUri);
-      this.metadataExportRootDir = new Path(metadataExportRootDirUri);
-      this.dataExportRootDir = new Path(dataExportRootDirUri);
+      Path tableRoot = new Path(dbRoot, tblName);
+      URI exportRootDir = EximUtil.getValidatedURI(conf, tableRoot.toUri().toString());
+      validateTargetDir(exportRootDir);
+      this._exportRootDir = new Path(exportRootDir);
       try {
-        this.exportFileSystem = this.metadataExportRootDir.getFileSystem(conf);
+        this.exportFileSystem = this._exportRootDir.getFileSystem(conf);
       } catch (IOException e) {
         throw new SemanticException(e);
       }
@@ -229,62 +202,37 @@ public class TableExport {
         boolean shouldWriteData) throws SemanticException {
       this.astRepresentationForErrorMsg = astRepresentationForErrorMsg;
       this.conf = conf;
-      this.metadataExportRootDir = new Path(EximUtil.getValidatedURI(conf, path));
-      this.dataExportRootDir = new Path(new Path(EximUtil.getValidatedURI(conf, path)), EximUtil.DATA_PATH_NAME);
+      this._exportRootDir = new Path(EximUtil.getValidatedURI(conf, path));
       this.writeData = shouldWriteData;
       try {
-        this.exportFileSystem = metadataExportRootDir.getFileSystem(conf);
+        this.exportFileSystem = _exportRootDir.getFileSystem(conf);
       } catch (IOException e) {
         throw new SemanticException(e);
       }
     }
 
-    Path partitionMetadataExportDir(String partitionName) throws SemanticException {
-      return exportDir(new Path(metadataExportRootDir(), partitionName));
-    }
-
-    Path partitionDataExportDir(String partitionName) throws SemanticException {
-      return exportDir(new Path(dataExportRootDir(), partitionName));
+    Path partitionExportDir(String partitionName) throws SemanticException {
+      return exportDir(new Path(exportRootDir(), partitionName));
     }
 
     /**
-     * Access to the {@link #metadataExportRootDir} should only be done via this method
+     * Access to the {@link #_exportRootDir} should only be done via this method
      * since the creation of the directory is delayed until we figure out if we want
      * to write something or not. This is specifically important to prevent empty non-native
      * directories being created in repl dump.
      */
-    public Path metadataExportRootDir() throws SemanticException {
-      if (!metadataExportRootDirCreated) {
+    public Path exportRootDir() throws SemanticException {
+      if (!exportRootDirCreated) {
         try {
-          if (!exportFileSystem.exists(this.metadataExportRootDir) && writeData) {
-            exportFileSystem.mkdirs(this.metadataExportRootDir);
+          if (!exportFileSystem.exists(this._exportRootDir) && writeData) {
+            exportFileSystem.mkdirs(this._exportRootDir);
           }
-          metadataExportRootDirCreated = true;
+          exportRootDirCreated = true;
         } catch (IOException e) {
           throw new SemanticException(e);
         }
       }
-      return metadataExportRootDir;
-    }
-
-    /**
-     * Access to the {@link #dataExportRootDir} should only be done via this method
-     * since the creation of the directory is delayed until we figure out if we want
-     * to write something or not. This is specifically important to prevent empty non-native
-     * directories being created in repl dump.
-     */
-    public Path dataExportRootDir() throws SemanticException {
-      if (!dataExportRootDirCreated) {
-        try {
-          if (!exportFileSystem.exists(this.dataExportRootDir) && writeData) {
-            exportFileSystem.mkdirs(this.dataExportRootDir);
-          }
-          dataExportRootDirCreated = true;
-        } catch (IOException e) {
-          throw new SemanticException(e);
-        }
-      }
-      return dataExportRootDir;
+      return _exportRootDir;
     }
 
     private Path exportDir(Path exportDir) throws SemanticException {
@@ -300,7 +248,7 @@ public class TableExport {
     }
 
     private Path metaDataExportFile() throws SemanticException {
-      return new Path(metadataExportRootDir(), EximUtil.METADATA_NAME);
+      return new Path(exportRootDir(), EximUtil.METADATA_NAME);
     }
 
     /**
@@ -308,7 +256,7 @@ public class TableExport {
      * Partition's data export directory is created within the export semantics of partition.
      */
     private Path dataExportDir() throws SemanticException {
-      return exportDir(dataExportRootDir());
+      return exportDir(new Path(exportRootDir(), EximUtil.DATA_PATH_NAME));
     }
 
     /**
@@ -341,30 +289,6 @@ public class TableExport {
         throw new SemanticException(astRepresentationForErrorMsg, e);
       }
     }
-
-    /**
-     * this level of validation might not be required as the root directory in which we dump will
-     * be different for each run hence possibility of it having data is not there.
-     */
-    private void validateTargetDataDir(URI rootDirExportFile) throws SemanticException {
-      try {
-        FileSystem fs = FileSystem.get(rootDirExportFile, conf);
-        Path toPath = new Path(rootDirExportFile.getScheme(), rootDirExportFile.getAuthority(),
-                rootDirExportFile.getPath());
-        try {
-          FileStatus tgt = fs.getFileStatus(toPath);
-          // target exists
-          if (!tgt.isDirectory()) {
-            throw new SemanticException(
-                    astRepresentationForErrorMsg + ": " + "Target is not a directory : "
-                            + rootDirExportFile);
-          }
-        } catch (FileNotFoundException ignored) {
-        }
-      } catch (IOException e) {
-        throw new SemanticException(astRepresentationForErrorMsg, e);
-      }
-    }
   }
 
   public static class AuthEntities {
@@ -381,7 +305,7 @@ public class TableExport {
     AuthEntities authEntities = new AuthEntities();
     try {
       // Return if metadata-only
-      if (replicationSpec.isMetadataOnly() || replicationSpec.isMetadataOnlyForExternalTables()) {
+      if (replicationSpec.isMetadataOnly()) {
         return authEntities;
       }
       PartitionIterable partitions = getPartitions();
@@ -389,7 +313,7 @@ public class TableExport {
         if (tableSpec.tableHandle.isPartitioned()) {
           if (partitions == null) {
             throw new IllegalStateException("partitions cannot be null for partitionTable :"
-                + tableSpec.getTableName().getTable());
+                + tableSpec.tableName);
           }
           for (Partition partition : partitions) {
             authEntities.inputs.add(new ReadEntity(partition));
@@ -398,7 +322,7 @@ public class TableExport {
           authEntities.inputs.add(new ReadEntity(tableSpec.tableHandle));
         }
       }
-      authEntities.outputs.add(toWriteEntity(paths.metadataExportRootDir(), conf));
+      authEntities.outputs.add(toWriteEntity(paths.exportRootDir(), conf));
     } catch (Exception e) {
       throw new SemanticException(e);
     }

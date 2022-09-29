@@ -30,7 +30,6 @@ import org.apache.hadoop.hive.serde2.io.DateWritableV2;
 import org.apache.hadoop.hive.serde2.io.TimestampWritableV2;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Text;
-import org.apache.hive.common.util.DateParser;
 
 /**
  * UDFDayOfWeek.
@@ -64,14 +63,16 @@ public class UDFDayOfWeek extends UDF {
    *         string.
    */
   public IntWritable evaluate(Text dateString) {
-    if (dateString != null) {
-      Date date = DateParser.parseDate(dateString.toString());
-      if (date != null) {
-        result.set(date.getDayOfWeek());
-        return result;
-      }
+    if (dateString == null) {
+      return null;
     }
-    return null;
+    try {
+      Date date = Date.valueOf(dateString.toString());
+      result.set(date.getDayOfWeek());
+      return result;
+    } catch (IllegalArgumentException e) {
+      return null;
+    }
   }
 
   public IntWritable evaluate(DateWritableV2 d) {

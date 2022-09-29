@@ -17,7 +17,7 @@
  */
 package org.apache.hadoop.hive.ql.udf.generic;
 
-
+import junit.framework.TestCase;
 
 import org.apache.hadoop.hive.common.type.Date;
 import org.apache.hadoop.hive.ql.exec.UDFArgumentException;
@@ -33,16 +33,9 @@ import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectIn
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertEquals;
-import org.junit.Test;
 
-/**
- * TestGenericUDFLeast.
- */
-public class TestGenericUDFLeast {
+public class TestGenericUDFLeast extends TestCase {
 
-  @Test
   public void testOneArg() throws HiveException {
     @SuppressWarnings("resource")
     GenericUDFLeast udf = new GenericUDFLeast();
@@ -58,7 +51,6 @@ public class TestGenericUDFLeast {
     assertNotNull("least() test ", ex);
   }
 
-  @Test
   public void testVoids() throws HiveException {
     GenericUDFGreatest udf = new GenericUDFGreatest();
     ObjectInspector valueOI1 = PrimitiveObjectInspectorFactory.writableVoidObjectInspector;
@@ -69,7 +61,6 @@ public class TestGenericUDFLeast {
     runAndVerify(new Object[] { null, 1, "test"}, null, udf);
   }
 
-  @Test
   public void testLeastTypes() throws HiveException {
     GenericUDFGreatest udf = new GenericUDFGreatest();
     ObjectInspector valueOI1 = PrimitiveObjectInspectorFactory.writableIntObjectInspector;
@@ -81,7 +72,6 @@ public class TestGenericUDFLeast {
     runAndVerify(new Object[] { 1, 11.1, Date.valueOf("2015-03-20"), "test"}, "test", udf);  //string comparisons
   }
 
-  @Test
   public void testLeastStr() throws HiveException {
     GenericUDFLeast udf = new GenericUDFLeast();
     ObjectInspector[] arguments = new ObjectInspector[3];
@@ -110,7 +100,6 @@ public class TestGenericUDFLeast {
     runAndVerify(new String[] { null, null, null }, null, udf);
   }
 
-  @Test
   public void testLeastInt() throws HiveException {
     GenericUDFLeast udf = new GenericUDFLeast();
     ObjectInspector[] arguments = new ObjectInspector[3];
@@ -133,7 +122,6 @@ public class TestGenericUDFLeast {
     runAndVerify(new Integer[] { null, null, null }, null, udf);
   }
 
-  @Test
   public void testLeastDouble() throws HiveException {
     GenericUDFLeast udf = new GenericUDFLeast();
     ObjectInspector[] arguments = new ObjectInspector[3];
@@ -156,7 +144,6 @@ public class TestGenericUDFLeast {
     runAndVerify(new Double[] { null, null, null }, null, udf);
   }
 
-  @Test
   public void testLeastDate() throws HiveException {
     GenericUDFLeast udf = new GenericUDFLeast();
     ObjectInspector[] arguments = new ObjectInspector[3];
@@ -179,7 +166,6 @@ public class TestGenericUDFLeast {
     runAndVerify(new Date[] { null, null, null }, null, udf);
   }
 
-  @Test
   public void testLeastIntTypes() throws HiveException {
     GenericUDFLeast udf = new GenericUDFLeast();
     ObjectInspector[] arguments = new ObjectInspector[4];

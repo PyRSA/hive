@@ -17,7 +17,7 @@
  */
 package org.apache.hadoop.hive.ql.io.arrow;
 
-import org.apache.arrow.memory.ArrowBuf;
+import io.netty.buffer.ArrowBuf;
 import org.apache.arrow.vector.BigIntVector;
 import org.apache.arrow.vector.BitVector;
 import org.apache.arrow.vector.DateDayVector;
@@ -104,7 +104,7 @@ class Deserializer {
     final VectorSchemaRoot vectorSchemaRoot = arrowWrapperWritable.getVectorSchemaRoot();
     final List<FieldVector> fieldVectors = vectorSchemaRoot.getFieldVectors();
     final int fieldCount = fieldVectors.size();
-    final int rowCount = vectorSchemaRoot.getFieldVectors().get(0).getValueCount();
+    final int rowCount = vectorSchemaRoot.getRowCount();
     vectorizedRowBatch.ensureSize(rowCount);
 
     if (rows == null || rows.length < rowCount ) {
@@ -129,10 +129,6 @@ class Deserializer {
   }
 
   private void read(FieldVector arrowVector, ColumnVector hiveVector, TypeInfo typeInfo) {
-    // make sure that hiveVector is as big as arrowVector
-    final int size = arrowVector.getValueCount();
-    hiveVector.ensureSize(size, false);
-
     switch (typeInfo.getCategory()) {
       case PRIMITIVE:
         readPrimitive(arrowVector, hiveVector);
@@ -158,6 +154,7 @@ class Deserializer {
     final Types.MinorType minorType = arrowVector.getMinorType();
 
     final int size = arrowVector.getValueCount();
+    hiveVector.ensureSize(size, false);
 
     switch (minorType) {
       case BIT:
@@ -391,7 +388,6 @@ class Deserializer {
 
   private void readList(FieldVector arrowVector, ListColumnVector hiveVector, ListTypeInfo typeInfo) {
     final int size = arrowVector.getValueCount();
-    hiveVector.ensureSize(size, false);
     final ArrowBuf offsets = arrowVector.getOffsetBuffer();
     final int OFFSET_WIDTH = 4;
 
@@ -413,7 +409,6 @@ class Deserializer {
 
   private void readMap(FieldVector arrowVector, MapColumnVector hiveVector, MapTypeInfo typeInfo) {
     final int size = arrowVector.getValueCount();
-    hiveVector.ensureSize(size, false);
     final ListTypeInfo mapStructListTypeInfo = toStructListTypeInfo(typeInfo);
     final ListColumnVector mapStructListVector = toStructListVector(hiveVector);
     final StructColumnVector mapStructVector = (StructColumnVector) mapStructListVector.child;
@@ -432,7 +427,6 @@ class Deserializer {
 
   private void readStruct(FieldVector arrowVector, StructColumnVector hiveVector, StructTypeInfo typeInfo) {
     final int size = arrowVector.getValueCount();
-    hiveVector.ensureSize(size, false);
     final List<TypeInfo> fieldTypeInfos = typeInfo.getAllStructFieldTypeInfos();
     final int fieldSize = arrowVector.getChildrenFromFields().size();
     for (int i = 0; i < fieldSize; i++) {

@@ -19,6 +19,7 @@
 package org.apache.hadoop.hive.ql.udf;
 
 import java.util.Calendar;
+import java.util.TimeZone;
 
 import org.apache.hadoop.hive.common.type.Date;
 import org.apache.hadoop.hive.common.type.Timestamp;
@@ -29,18 +30,16 @@ import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorUDFWeekOfYearDate
 import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorUDFWeekOfYearString;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorUDFWeekOfYearTimestamp;
 import org.apache.hadoop.hive.ql.udf.generic.NDV;
-import org.apache.hadoop.hive.ql.util.DateTimeMath;
 import org.apache.hadoop.hive.serde2.io.DateWritableV2;
 import org.apache.hadoop.hive.serde2.io.TimestampWritableV2;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Text;
-import org.apache.hive.common.util.DateParser;
 
 /**
  * UDFWeekOfYear.
  *
  */
-@Description(name = "weekofyear",
+@Description(name = "yearweek",
     value = "_FUNC_(date) - Returns the week of the year of the given date. A week "
     + "is considered to start on a Monday and week 1 is the first week with >3 days.",
     extended = "Examples:\n"
@@ -53,7 +52,7 @@ public class UDFWeekOfYear extends UDF {
 
   private final IntWritable result = new IntWritable();
 
-  private final Calendar calendar = DateTimeMath.getProlepticGregorianCalendarUTC();
+  private final Calendar calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
 
 
   public UDFWeekOfYear() {
@@ -71,15 +70,17 @@ public class UDFWeekOfYear extends UDF {
    *         string.
    */
   public IntWritable evaluate(Text dateString) {
-    if (dateString != null) {
-      Date date = DateParser.parseDate(dateString.toString());
-      if (date != null) {
-        calendar.setTimeInMillis(date.toEpochMilli());
-        result.set(calendar.get(Calendar.WEEK_OF_YEAR));
-        return result;
-      }
+    if (dateString == null) {
+      return null;
     }
-    return null;
+    try {
+      Date date = Date.valueOf(dateString.toString());
+      calendar.setTimeInMillis(date.toEpochMilli());
+      result.set(calendar.get(Calendar.WEEK_OF_YEAR));
+      return result;
+    } catch (IllegalArgumentException e) {
+      return null;
+    }
   }
 
   public IntWritable evaluate(DateWritableV2 d) {

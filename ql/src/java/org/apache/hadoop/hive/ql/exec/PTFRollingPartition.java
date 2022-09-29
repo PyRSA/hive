@@ -186,10 +186,5 @@ public class PTFRollingPartition extends PTFPartition {
     public void reset() throws HiveException {
     }
 
-    @Override
-    public long count() {
-      throw new UnsupportedOperationException();
-    }
-
   }
 }

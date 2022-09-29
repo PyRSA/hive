@@ -17,32 +17,28 @@
  */
 package org.apache.hadoop.hive.ql.parse.repl.dump.events;
 
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.metastore.TableType;
 import org.apache.hadoop.hive.metastore.api.NotificationEvent;
 import org.apache.hadoop.hive.metastore.messaging.InsertMessage;
-import org.apache.hadoop.hive.ql.io.AcidUtils;
 import org.apache.hadoop.hive.ql.metadata.Partition;
 import org.apache.hadoop.hive.ql.parse.EximUtil;
 import org.apache.hadoop.hive.ql.parse.repl.DumpType;
 import org.apache.hadoop.hive.ql.parse.repl.dump.Utils;
 import org.apache.hadoop.hive.ql.parse.repl.load.DumpMetaData;
 
-import java.io.File;
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.util.Collections;
 import java.util.List;
 
 
-class InsertHandler extends AbstractEventHandler<InsertMessage> {
+class InsertHandler extends AbstractEventHandler {
 
   InsertHandler(NotificationEvent event) {
     super(event);
-  }
-
-  @Override
-  InsertMessage eventMessage(String stringRepresentation) {
-    return deserializer.getInsertMessage(stringRepresentation);
   }
 
   @Override
@@ -50,62 +46,52 @@ class InsertHandler extends AbstractEventHandler<InsertMessage> {
     if (withinContext.hiveConf.getBoolVar(HiveConf.ConfVars.REPL_DUMP_METADATA_ONLY)) {
       return;
     }
-    org.apache.hadoop.hive.ql.metadata.Table qlMdTable = tableObject(eventMessage);
-    if (TableType.EXTERNAL_TABLE.equals(qlMdTable.getTableType())) {
-      withinContext.replicationSpec.setNoop(true);
-    }
+    InsertMessage insertMsg = deserializer.getInsertMessage(event.getMessage());
+    org.apache.hadoop.hive.ql.metadata.Table qlMdTable = tableObject(insertMsg);
 
-    if (!Utils.shouldReplicate(withinContext.replicationSpec, qlMdTable, true,
-            withinContext.getTablesForBootstrap(), withinContext.oldReplScope, withinContext.hiveConf)) {
+    if (!Utils.shouldReplicate(withinContext.replicationSpec, qlMdTable, withinContext.hiveConf)) {
       return;
     }
 
-    // In case of ACID tables, insert event should not have fired.
-    assert(!AcidUtils.isTransactionalTable(qlMdTable));
-
     List<Partition> qlPtns = null;
-    if (qlMdTable.isPartitioned() && (null != eventMessage.getPtnObj())) {
-      qlPtns = Collections.singletonList(partitionObject(qlMdTable, eventMessage));
+    if (qlMdTable.isPartitioned() && (null != insertMsg.getPtnObj())) {
+      qlPtns = Collections.singletonList(partitionObject(qlMdTable, insertMsg));
     }
     Path metaDataPath = new Path(withinContext.eventRoot, EximUtil.METADATA_NAME);
 
     // Mark the replace type based on INSERT-INTO or INSERT_OVERWRITE operation
-    withinContext.replicationSpec.setIsReplace(eventMessage.isReplace());
+    withinContext.replicationSpec.setIsReplace(insertMsg.isReplace());
     EximUtil.createExportDump(metaDataPath.getFileSystem(withinContext.hiveConf), metaDataPath,
         qlMdTable, qlPtns,
         withinContext.replicationSpec,
         withinContext.hiveConf);
-    Iterable<String> files = eventMessage.getFiles();
+    Iterable<String> files = insertMsg.getFiles();
 
-    boolean copyAtLoad = withinContext.hiveConf.getBoolVar(HiveConf.ConfVars.REPL_RUN_DATA_COPY_TASKS_ON_TARGET);
-
-    /*
-      * Insert into/overwrite operation shall operate on one or more partitions or even partitions from multiple tables.
-      * But, Insert event is generated for each partition to which the data is inserted.
-      * So, qlPtns list will have only one entry.
-     */
-    Partition ptn = (null == qlPtns || qlPtns.isEmpty()) ? null : qlPtns.get(0);
     if (files != null) {
-      if (copyAtLoad) {
-        // encoded filename/checksum of files, write into _files
-        Path dataPath = null;
-        if ((null == qlPtns) || qlPtns.isEmpty()) {
-          dataPath = new Path(withinContext.eventRoot, EximUtil.DATA_PATH_NAME);
-        } else {
-          dataPath = new Path(withinContext.eventRoot, EximUtil.DATA_PATH_NAME + File.separator
-                  + qlPtns.get(0).getName());
-        }
-        writeEncodedDumpFiles(withinContext, files, dataPath);
+      Path dataPath;
+      if ((null == qlPtns) || qlPtns.isEmpty()) {
+        dataPath = new Path(withinContext.eventRoot, EximUtil.DATA_PATH_NAME);
       } else {
+        /*
+         * Insert into/overwrite operation shall operate on one or more partitions or even partitions from multiple
+         * tables. But, Insert event is generated for each partition to which the data is inserted. So, qlPtns list
+         * will have only one entry.
+         */
+        assert(1 == qlPtns.size());
+        dataPath = new Path(withinContext.eventRoot, qlPtns.get(0).getName());
+      }
+
+      // encoded filename/checksum of files, write into _files
+      try (BufferedWriter fileListWriter = writer(withinContext, dataPath)) {
         for (String file : files) {
-          writeFileEntry(qlMdTable, ptn, file, withinContext);
+          fileListWriter.write(file + "\n");
         }
       }
     }
 
-    LOG.info("Processing#{} INSERT message : {}", fromEventId(), eventMessageAsJSON);
+    LOG.info("Processing#{} INSERT message : {}", fromEventId(), event.getMessage());
     DumpMetaData dmd = withinContext.createDmd(this);
-    dmd.setPayload(eventMessageAsJSON);
+    dmd.setPayload(event.getMessage());
     dmd.write();
   }
 
@@ -116,6 +102,12 @@ class InsertHandler extends AbstractEventHandler<InsertMessage> {
   private org.apache.hadoop.hive.ql.metadata.Partition partitionObject(
           org.apache.hadoop.hive.ql.metadata.Table qlMdTable, InsertMessage insertMsg) throws Exception {
     return new org.apache.hadoop.hive.ql.metadata.Partition(qlMdTable, insertMsg.getPtnObj());
+  }
+
+  private BufferedWriter writer(Context withinContext, Path dataPath) throws IOException {
+    Path filesPath = new Path(dataPath, EximUtil.FILES_NAME);
+    FileSystem fs = dataPath.getFileSystem(withinContext.hiveConf);
+    return new BufferedWriter(new OutputStreamWriter(fs.create(filesPath)));
   }
 
   @Override

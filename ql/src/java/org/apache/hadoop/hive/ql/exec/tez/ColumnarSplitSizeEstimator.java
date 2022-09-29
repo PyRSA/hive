@@ -38,13 +38,17 @@ public class ColumnarSplitSizeEstimator implements SplitSizeEstimator {
 
     if (inputSplit instanceof ColumnarSplit) {
       colProjSize = ((ColumnarSplit) inputSplit).getColumnarProjectionSize();
-      LOG.debug("Estimated column projection size: {}", colProjSize);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Estimated column projection size: " + colProjSize);
+      }
     } else if (inputSplit instanceof HiveInputFormat.HiveInputSplit) {
       InputSplit innerSplit = ((HiveInputFormat.HiveInputSplit) inputSplit).getInputSplit();
 
       if (innerSplit instanceof ColumnarSplit) {
         colProjSize = ((ColumnarSplit) innerSplit).getColumnarProjectionSize();
-        LOG.debug("Estimated column projection size: {}", colProjSize);
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Estimated column projection size: " + colProjSize);
+        }
       }
     }
     if (colProjSize <= 0) {

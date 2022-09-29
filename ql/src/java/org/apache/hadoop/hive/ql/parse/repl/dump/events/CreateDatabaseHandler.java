@@ -24,23 +24,20 @@ import org.apache.hadoop.hive.metastore.messaging.CreateDatabaseMessage;
 import org.apache.hadoop.hive.ql.parse.EximUtil;
 import org.apache.hadoop.hive.ql.parse.repl.DumpType;
 
-class CreateDatabaseHandler extends AbstractEventHandler<CreateDatabaseMessage> {
+class CreateDatabaseHandler extends AbstractEventHandler {
   CreateDatabaseHandler(NotificationEvent event) {
     super(event);
   }
 
   @Override
-  CreateDatabaseMessage eventMessage(String stringRepresentation) {
-    return deserializer.getCreateDatabaseMessage(stringRepresentation);
-  }
-
-  @Override
   public void handle(Context withinContext) throws Exception {
-    LOG.info("Processing#{} CREATE_DATABASE message : {}", fromEventId(), eventMessageAsJSON);
+    LOG.info("Processing#{} CREATE_DATABASE message : {}", fromEventId(), event.getMessage());
+    CreateDatabaseMessage createDatabaseMsg =
+        deserializer.getCreateDatabaseMessage(event.getMessage());
     Path metaDataPath = new Path(withinContext.eventRoot, EximUtil.METADATA_NAME);
     FileSystem fileSystem = metaDataPath.getFileSystem(withinContext.hiveConf);
-    EximUtil.createDbExportDump(fileSystem, metaDataPath, eventMessage.getDatabaseObject(),
-        withinContext.replicationSpec, withinContext.hiveConf);
+    EximUtil.createDbExportDump(fileSystem, metaDataPath, createDatabaseMsg.getDatabaseObject(),
+        withinContext.replicationSpec);
     withinContext.createDmd(this).write();
   }
 

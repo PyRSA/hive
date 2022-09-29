@@ -19,9 +19,7 @@ package org.apache.hadoop.hive.ql.hooks;
 
 import java.util.Set;
 
-import org.apache.hadoop.hive.common.StatsSetupConst;
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.metastore.api.EnvironmentContext;
 import org.apache.hadoop.hive.ql.metadata.Hive;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.metadata.Partition;
@@ -61,17 +59,11 @@ public class UpdateInputAccessTimeHook {
         // of the object, before it was modified by StatsTask.
         // Get the latest versions of the object
         case TABLE: {
-          if(re.getTable().getTableName().equals("_dummy_table")){
-            break;
-          }
           String dbName = re.getTable().getDbName();
           String tblName = re.getTable().getTableName();
           Table t = db.getTable(dbName, tblName);
           t.setLastAccessTime(lastAccessTime);
-          EnvironmentContext ec = new EnvironmentContext();
-          /*we are not modifying any data so stats should be exactly the same*/
-          ec.putToProperties(StatsSetupConst.DO_NOT_UPDATE_STATS, StatsSetupConst.TRUE);
-          db.alterTable(dbName + "." + tblName, t, false, ec, false);
+          db.alterTable(dbName + "." + tblName, t, null);
           break;
         }
         case PARTITION: {
@@ -81,12 +73,9 @@ public class UpdateInputAccessTimeHook {
           Table t = db.getTable(dbName, tblName);
           p = db.getPartition(t, p.getSpec(), false);
           p.setLastAccessTime(lastAccessTime);
-          db.alterPartition(null, dbName, tblName, p, null, false);
+          db.alterPartition(dbName, tblName, p, null);
           t.setLastAccessTime(lastAccessTime);
-          EnvironmentContext ec = new EnvironmentContext();
-          /*we are not modifying any data so stats should be exactly the same*/
-          ec.putToProperties(StatsSetupConst.DO_NOT_UPDATE_STATS, StatsSetupConst.TRUE);
-          db.alterTable(dbName + "." + tblName, t, false, ec, false);
+          db.alterTable(dbName + "." + tblName, t, null);
           break;
         }
         default:

@@ -18,7 +18,6 @@
 package org.apache.hadoop.hive.ql.udf.generic;
 
 import java.util.HashSet;
-import java.util.Set;
 
 import org.apache.hadoop.hive.ql.exec.Description;
 import org.apache.hadoop.hive.ql.exec.UDFArgumentException;
@@ -119,12 +118,8 @@ public class GenericUDAFCount implements GenericUDAFResolver2 {
       this.isWindowing = isWindowing;
     }
 
-    public void setCountAllColumns(boolean countAllCols) {
+    private void setCountAllColumns(boolean countAllCols) {
       countAllColumns = countAllCols;
-    }
-
-    public boolean getCountAllColumns() {
-      return countAllColumns;
     }
 
     private void setCountDistinct(boolean countDistinct) {
@@ -154,7 +149,7 @@ public class GenericUDAFCount implements GenericUDAFResolver2 {
     @Override
     public void reset(AggregationBuffer agg) throws HiveException {
       ((CountAgg) agg).value = 0;
-      ((CountAgg) agg).uniqueObjects = null;
+      ((CountAgg) agg).uniqueObjects = new HashSet<ObjectInspectorObject>();
     }
 
     @Override
@@ -178,16 +173,13 @@ public class GenericUDAFCount implements GenericUDAFResolver2 {
 
         // Skip the counting if the values are the same for windowing COUNT(DISTINCT) case
         if (countThisRow && isWindowingDistinct()) {
-          if (((CountAgg) agg).uniqueObjects == null) {
-            ((CountAgg) agg).uniqueObjects = new HashSet<ObjectInspectorObject>();
-          }
-          Set<ObjectInspectorObject> uniqueObjs = ((CountAgg) agg).uniqueObjects;
-
+          HashSet<ObjectInspectorObject> uniqueObjs = ((CountAgg) agg).uniqueObjects;
           ObjectInspectorObject obj = new ObjectInspectorObject(
               ObjectInspectorUtils.copyToStandardObject(parameters, inputOI, ObjectInspectorCopyOption.JAVA),
               outputOI);
-          boolean inserted = uniqueObjs.add(obj);
-          if (!inserted){
+          if (!uniqueObjs.contains(obj)) {
+            uniqueObjs.add(obj);
+          } else {
             countThisRow = false;
           }
         }

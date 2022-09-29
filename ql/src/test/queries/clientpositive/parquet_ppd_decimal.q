@@ -1,5 +1,3 @@
---! qt:dataset:src1
---! qt:dataset:src
 set hive.vectorized.execution.enabled=false;
 set hive.test.vectorized.execution.enabled.override=disable;
 
@@ -7,7 +5,6 @@ SET hive.input.format=org.apache.hadoop.hive.ql.io.HiveInputFormat;
 SET mapred.min.split.size=1000;
 SET mapred.max.split.size=5000;
 set hive.llap.cache.allow.synthetic.fileid=true;
-set hive.strict.checks.type.safety=false;
 
 create table newtypestbl_n5(c char(10), v varchar(10), d decimal(5,3), da date) stored as parquet;
 
@@ -134,22 +131,10 @@ set hive.optimize.index.filter=true;
 select * from newtypestbl_n5 where d in ('0.9', 0.22);
 
 set hive.optimize.index.filter=false;
-select * from newtypestbl_n5 where d in (0.9, 0.22, 11.22) sort by c;
+select * from newtypestbl_n5 where d in ('0.9', 0.22, cast('11.22' as float)) sort by c;
 
 set hive.optimize.index.filter=true;
-select * from newtypestbl_n5 where d in (0.9, 0.22, 11.22) sort by c;
-
-set hive.optimize.index.filter=false;
-select * from newtypestbl_n5 where d in ('0.9', '0.22', '11.22') sort by c;
-
-set hive.optimize.index.filter=true;
-select * from newtypestbl_n5 where d in ('0.9', '0.22', '11.22') sort by c;
-
-set hive.optimize.index.filter=false;
-select * from newtypestbl_n5 where d in (cast('0.9' as float), cast('0.22' as float), cast('11.22' as float)) sort by c;
-
-set hive.optimize.index.filter=true;
-select * from newtypestbl_n5 where d in (cast('0.9' as float), cast('0.22' as float), cast('11.22' as float)) sort by c;
+select * from newtypestbl_n5 where d in ('0.9', 0.22, cast('11.22' as float)) sort by c;
 
 set hive.optimize.index.filter=false;
 select * from newtypestbl_n5 where d between 0 and 1;

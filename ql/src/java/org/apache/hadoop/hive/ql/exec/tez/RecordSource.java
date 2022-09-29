@@ -22,5 +22,4 @@ import org.apache.hadoop.hive.ql.metadata.HiveException;
 public interface RecordSource {
   public boolean pushRecord() throws HiveException;
   public boolean isGrouped();
-  public void setFlushLastRecord(boolean flushLastRecord);
 }

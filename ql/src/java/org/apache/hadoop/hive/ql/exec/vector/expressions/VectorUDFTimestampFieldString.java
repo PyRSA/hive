@@ -18,16 +18,15 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.expressions;
 
-import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.ql.exec.vector.BytesColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorExpressionDescriptor;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
-import org.apache.hadoop.hive.ql.util.DateTimeMath;
 
 import java.text.ParseException;
 import java.util.Calendar;
+import java.util.TimeZone;
 
 /**
  * Abstract class to return various fields from a String.
@@ -36,14 +35,17 @@ public abstract class VectorUDFTimestampFieldString extends VectorExpression {
 
   private static final long serialVersionUID = 1L;
 
+  protected int colNum;
   protected final int fieldStart;
   protected final int fieldLength;
   private static final String patternMin = "0000-00-00 00:00:00.000000000";
   private static final String patternMax = "9999-19-99 29:59:59.999999999";
-  protected final transient Calendar calendar = DateTimeMath.getProlepticGregorianCalendarUTC();
+  protected transient final Calendar calendar = Calendar.getInstance(
+      TimeZone.getTimeZone("UTC"));
 
   public VectorUDFTimestampFieldString(int colNum, int outputColumnNum, int fieldStart, int fieldLength) {
-    super(colNum, outputColumnNum);
+    super(outputColumnNum);
+    this.colNum = colNum;
     this.fieldStart = fieldStart;
     this.fieldLength = fieldLength;
   }
@@ -57,13 +59,13 @@ public abstract class VectorUDFTimestampFieldString extends VectorExpression {
   }
 
   @Override
-  public void transientInit(Configuration conf) throws HiveException {
-    super.transientInit(conf);
+  public void transientInit() throws HiveException {
+    super.transientInit();
     initCalendar();
   }
 
-  protected long getField(byte[] bytes, int start, int length) throws ParseException {
-    int field = 0;
+  private long getField(byte[] bytes, int start, int length) throws ParseException {
+    // Validate
     for (int i = 0; i < length; i++) {
       char ch = (char) bytes[start + i];
       if (ch < patternMin.charAt(i) || ch > patternMax.charAt(i)) {
@@ -71,6 +73,11 @@ public abstract class VectorUDFTimestampFieldString extends VectorExpression {
       }
     }
 
+    return doGetField(bytes, start, length);
+  }
+
+  protected long doGetField(byte[] bytes, int start, int length) throws ParseException {
+    int field = 0;
     if (length < fieldLength) {
       throw new ParseException("A timestamp string should be longer.", 0);
     }
@@ -89,7 +96,7 @@ public abstract class VectorUDFTimestampFieldString extends VectorExpression {
     }
 
     LongColumnVector outV = (LongColumnVector) batch.cols[outputColumnNum];
-    BytesColumnVector inputCol = (BytesColumnVector)batch.cols[this.inputColumnNum[0]];
+    BytesColumnVector inputCol = (BytesColumnVector)batch.cols[this.colNum];
 
     final int n = inputCol.isRepeating ? 1 : batch.size;
     int[] sel = batch.selected;
@@ -179,9 +186,9 @@ public abstract class VectorUDFTimestampFieldString extends VectorExpression {
   @Override
   public String vectorExpressionParameters() {
     if (fieldStart == -1) {
-      return getColumnParamString(0, inputColumnNum[0]);
+      return getColumnParamString(0, colNum);
     } else {
-      return getColumnParamString(0, inputColumnNum[0]) + ", fieldStart " + fieldStart + ", fieldLength " + fieldLength;
+      return getColumnParamString(0, colNum) + ", fieldStart " + fieldStart + ", fieldLength " + fieldLength;
     }
   }
 

@@ -47,20 +47,6 @@ public class DynamicPruningEventDesc extends AppMasterEventDesc {
   // the partition column we're interested in
   private ExprNodeDesc partKey;
 
-  private ExprNodeDesc predicate;
-
-  public ExprNodeDesc getPredicate() {
-    return predicate;
-  }
-
-  public void setPredicate(ExprNodeDesc predicate) {
-    this.predicate = predicate;
-  }
-
-  public String getPartPredicateString() {
-    return this.predicate != null ? this.predicate.getExprString() : "-";
-  }
-
   public TableScanOperator getTableScan() {
     return tableScan;
   }
@@ -126,8 +112,7 @@ public class DynamicPruningEventDesc extends AppMasterEventDesc {
       DynamicPruningEventDesc otherDesc = (DynamicPruningEventDesc) other;
       return Objects.equals(getTargetColumnName(), otherDesc.getTargetColumnName()) &&
           Objects.equals(getTargetColumnType(), otherDesc.getTargetColumnType()) &&
-          Objects.equals(getPartKeyString(), otherDesc.getPartKeyString()) &&
-          Objects.equals(getPartPredicateString(), otherDesc.getPartPredicateString());
+          Objects.equals(getPartKeyString(), otherDesc.getPartKeyString());
     }
     return false;
   }

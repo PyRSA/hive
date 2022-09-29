@@ -18,11 +18,16 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.ptf;
 
-import org.apache.hadoop.hive.ql.exec.vector.ColumnVector.Type;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
+import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
+import org.apache.hadoop.hive.ql.exec.vector.ColumnVector.Type;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorExpression;
 import org.apache.hadoop.hive.ql.plan.ptf.WindowFrameDef;
-import org.apache.hadoop.hive.ql.udf.ptf.Range;
+
+import com.google.common.base.Preconditions;
 
 /**
  * This class evaluates count(*) for a PTF group.
@@ -30,6 +35,10 @@ import org.apache.hadoop.hive.ql.udf.ptf.Range;
  * Count all rows of the group.  No input column/expression.
  */
 public class VectorPTFEvaluatorCountStar extends VectorPTFEvaluatorBase {
+
+  private static final long serialVersionUID = 1L;
+  private static final String CLASS_NAME = VectorPTFEvaluatorCountStar.class.getName();
+  private static final Log LOG = LogFactory.getLog(CLASS_NAME);
 
   protected long count;
 
@@ -39,31 +48,13 @@ public class VectorPTFEvaluatorCountStar extends VectorPTFEvaluatorBase {
     resetEvaluator();
   }
 
-  @Override
-  public void evaluateGroupBatch(VectorizedRowBatch batch) {
+  public void evaluateGroupBatch(VectorizedRowBatch batch, boolean isLastGroupBatch) {
     // No input expression for COUNT(*).
     // evaluateInputExpr(batch);
 
     // Count all rows.
+
     count += batch.size;
-  }
-
-  @Override
-  public boolean canRunOptimizedCalculation(int rowNum, Range range) {
-    return true;
-  }
-
-  /* This is the vectorized counterpart of HIVE-24710. */
-  @Override
-  public Object runOnRange(int rowNum, Range range, VectorPTFGroupBatches batches) {
-    count = range.getEnd() - range.getStart();
-    return count;
-  }
-
-  @Override
-  public boolean streamsResult() {
-    // We must evaluate whole group before producing a result.
-    return false;
   }
 
   @Override
@@ -77,7 +68,7 @@ public class VectorPTFEvaluatorCountStar extends VectorPTFEvaluatorBase {
   }
 
   @Override
-  public Object getGroupResult() {
+  public long getLongGroupResult() {
     return count;
   }
 

@@ -19,14 +19,13 @@
 package org.apache.hadoop.hive.ql.exec;
 
 import org.apache.hadoop.hive.metastore.ReplChangeManager;
-import org.apache.hadoop.hive.ql.exec.repl.util.ReplUtils;
-import org.apache.hadoop.hive.ql.metadata.HiveException;
+import org.apache.hadoop.hive.metastore.api.MetaException;
 import org.apache.hadoop.hive.ql.parse.EximUtil;
 import org.apache.hadoop.hive.ql.parse.ReplicationSpec;
-import org.apache.hadoop.hive.ql.parse.repl.metric.ReplicationMetricCollector;
 import org.apache.hadoop.hive.ql.plan.CopyWork;
 import org.apache.hadoop.hive.ql.plan.ReplCopyWork;
 import org.apache.hadoop.hive.ql.parse.repl.CopyUtils;
+import org.apache.hadoop.hive.ql.ErrorMsg;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -42,10 +41,10 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.common.FileUtils;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.ql.DriverContext;
 import org.apache.hadoop.hive.ql.parse.LoadSemanticAnalyzer;
 import org.apache.hadoop.hive.ql.plan.api.StageType;
-
-import static org.apache.hadoop.hive.common.FileUtils.HIDDEN_FILES_PATH_FILTER;
+import org.apache.hadoop.util.StringUtils;
 
 public class ReplCopyTask extends Task<ReplCopyWork> implements Serializable {
 
@@ -58,14 +57,11 @@ public class ReplCopyTask extends Task<ReplCopyWork> implements Serializable {
   }
 
   @Override
-  public int execute() {
+  protected int execute(DriverContext driverContext) {
     LOG.debug("ReplCopyTask.execute()");
     FileSystem dstFs = null;
     Path toPath = null;
-
     try {
-      initializeFromDeferredContext();
-
       // Note: CopyWork supports copying multiple files, but ReplCopyWork doesn't.
       //       Not clear of ReplCopyWork should inherit from CopyWork.
       if (work.getFromPaths().length > 1 || work.getToPaths().length > 1) {
@@ -130,47 +126,47 @@ public class ReplCopyTask extends Task<ReplCopyWork> implements Serializable {
             return 0;
           }
         }
+
         for (FileStatus oneSrc : srcs) {
           console.printInfo("Copying file: " + oneSrc.getPath().toString());
           LOG.debug("ReplCopyTask :cp:{}=>{}", oneSrc.getPath(), toPath);
-          srcFiles.add(new ReplChangeManager.FileInfo(oneSrc.getPath().getFileSystem(conf), oneSrc.getPath(), null));
+          srcFiles.add(new ReplChangeManager.FileInfo(oneSrc.getPath().getFileSystem(conf),
+                                                      oneSrc.getPath(), null));
         }
       }
 
       LOG.debug("ReplCopyTask numFiles: {}", srcFiles.size());
-
-      // in case of acid tables, file is directly copied to destination. So we need to clear the old content, if
-      // its a replace (insert overwrite ) operation.
-      if (work.getDeleteDestIfExist() && dstFs.exists(toPath)) {
-        LOG.debug(" path " + toPath + " is cleaned before renaming");
-        getHive().cleanUpOneDirectoryForReplace(toPath, dstFs, HIDDEN_FILES_PATH_FILTER, conf, work.getNeedRecycle(),
-                                                          work.getIsAutoPurge());
-      }
-
       if (!FileUtils.mkdir(dstFs, toPath, conf)) {
         console.printError("Cannot make target directory: " + toPath.toString());
         return 2;
       }
       // Copy the files from different source file systems to one destination directory
-      CopyUtils copyUtils = new CopyUtils(rwork.distCpDoAsUser(), conf, dstFs);
-      copyUtils.copyAndVerify(toPath, srcFiles, fromPath, work.readSrcAsFilesList(), work.isOverWrite());
+      new CopyUtils(rwork.distCpDoAsUser(), conf).copyAndVerify(dstFs, toPath, srcFiles);
 
       // If a file is copied from CM path, then need to rename them using original source file name
       // This is needed to avoid having duplicate files in target if same event is applied twice
       // where the first event refers to source path and  second event refers to CM path
-      copyUtils.renameFileCopiedFromCmPath(toPath, dstFs, srcFiles);
+      for (ReplChangeManager.FileInfo srcFile : srcFiles) {
+        if (srcFile.isUseSourcePath()) {
+          continue;
+        }
+        String destFileName = srcFile.getCmPath().getName();
+        Path destFile = new Path(toPath, destFileName);
+        if (dstFs.exists(destFile)) {
+          String destFileWithSourceName = srcFile.getSourcePath().getName();
+          Path newDestFile = new Path(toPath, destFileWithSourceName);
+          boolean result = dstFs.rename(destFile, newDestFile);
+          if (!result) {
+            throw new IllegalStateException(
+                "could not rename " + destFile.getName() + " to " + newDestFile.getName());
+          }
+        }
+      }
       return 0;
     } catch (Exception e) {
-      LOG.error("Failed to execute", e);
-      setException(e);
-      return ReplUtils.handleException(true, e, work.getDumpDirectory(), work.getMetricCollector(),
-              getName(), conf);
-    }
-  }
-
-  private void initializeFromDeferredContext() throws HiveException {
-    if (null != getDeferredWorkContext()) {
-      work.initializeFromDeferredContext(getDeferredWorkContext());
+      console.printError("Failed with exception " + e.getMessage(), "\n"
+          + StringUtils.stringifyException(e));
+      return ErrorMsg.getErrorMsg(e.getMessage()).getErrorCode();
     }
   }
 
@@ -197,10 +193,10 @@ public class ReplCopyTask extends Task<ReplCopyWork> implements Serializable {
           ReplChangeManager.FileInfo f = ReplChangeManager
               .getFileInfo(new Path(fragments[0]), fragments[1], fragments[2], fragments[3], conf);
           filePaths.add(f);
-        } catch (IOException ioe) {
+        } catch (MetaException e) {
           // issue warning for missing file and throw exception
           LOG.warn("Cannot find {} in source repo or cmroot", fragments[0]);
-          throw ioe;
+          throw new IOException(e.getMessage());
         }
         // Note - we need srcFs rather than fs, because it is possible that the _files lists files
         // which are from a different filesystem than the fs where the _files file itself was loaded
@@ -226,83 +222,26 @@ public class ReplCopyTask extends Task<ReplCopyWork> implements Serializable {
     return "REPL_COPY";
   }
 
-
-  public static Task<?> getLoadCopyTask(ReplicationSpec replicationSpec, Path srcPath, Path dstPath,
-                                        HiveConf conf, boolean isAutoPurge, boolean needRecycle,
-                                        boolean readSourceAsFileList, String dumpDirectory,
-                                        ReplicationMetricCollector metricCollector) {
-    return getLoadCopyTask(replicationSpec, srcPath, dstPath, conf, isAutoPurge, needRecycle,
-            readSourceAsFileList, false, true, dumpDirectory, metricCollector);
-  }
-
-
-  private static Task<?> getLoadCopyTask(ReplicationSpec replicationSpec, Path srcPath, Path dstPath,
-                                         HiveConf conf, boolean isAutoPurge, boolean needRecycle,
-                                         boolean readSourceAsFileList,
-                                         boolean overWrite, boolean deleteDestination,
-                                         String dumpDirectory,
-                                         ReplicationMetricCollector metricCollector) {
+  public static Task<?> getLoadCopyTask(ReplicationSpec replicationSpec, Path srcPath, Path dstPath, HiveConf conf) {
     Task<?> copyTask = null;
     LOG.debug("ReplCopyTask:getLoadCopyTask: {}=>{}", srcPath, dstPath);
     if ((replicationSpec != null) && replicationSpec.isInReplicationScope()){
-      ReplCopyWork rcwork = new ReplCopyWork(srcPath, dstPath, false, overWrite, dumpDirectory,
-              metricCollector);
-      rcwork.setReadSrcAsFilesList(readSourceAsFileList);
-      if (replicationSpec.isReplace() && deleteDestination) {
-        rcwork.setDeleteDestIfExist(true);
-        rcwork.setAutoPurge(isAutoPurge);
-        rcwork.setNeedRecycle(needRecycle);
-      }
-      // For replace case, duplicate check should not be done. The new base directory will automatically make the older
-      // data invisible. Doing duplicate check and ignoring copy will cause consistency issue if there are multiple
-      // replace events getting replayed in the first incremental load.
-      rcwork.setCheckDuplicateCopy(replicationSpec.needDupCopyCheck() && !replicationSpec.isReplace());
+      ReplCopyWork rcwork = new ReplCopyWork(srcPath, dstPath, false);
       LOG.debug("ReplCopyTask:\trcwork");
-      String distCpDoAsUser = conf.getVar(HiveConf.ConfVars.HIVE_DISTCP_DOAS_USER);
-      rcwork.setDistCpDoAsUser(distCpDoAsUser);
+      if (replicationSpec.isLazy()) {
+        LOG.debug("ReplCopyTask:\tlazy");
+        rcwork.setReadSrcAsFilesList(true);
+
+        // It is assumed isLazy flag is set only for REPL LOAD flow.
+        // IMPORT always do deep copy. So, distCpDoAsUser will be null by default in ReplCopyWork.
+        String distCpDoAsUser = conf.getVar(HiveConf.ConfVars.HIVE_DISTCP_DOAS_USER);
+        rcwork.setDistCpDoAsUser(distCpDoAsUser);
+      }
       copyTask = TaskFactory.get(rcwork, conf);
     } else {
       LOG.debug("ReplCopyTask:\tcwork");
-      copyTask = TaskFactory.get(new CopyWork(srcPath, dstPath, false, dumpDirectory, metricCollector, true), conf);
+      copyTask = TaskFactory.get(new CopyWork(srcPath, dstPath, false), conf);
     }
     return copyTask;
   }
-
-  public static Task<?> getLoadCopyTask(ReplicationSpec replicationSpec, Path srcPath, Path dstPath,
-                                        HiveConf conf, String dumpDirectory, ReplicationMetricCollector metricCollector) {
-    return getLoadCopyTask(replicationSpec, srcPath, dstPath, conf, false, false,
-      true, false, true, dumpDirectory, metricCollector);
-  }
-
-  /*
-   * Invoked in the bootstrap path.
-   * Overwrite set to true
-   */
-  public static Task<?> getLoadCopyTask(ReplicationSpec replicationSpec, Path srcPath, Path dstPath,
-                                        HiveConf conf, boolean readSourceAsFileList, boolean overWrite,
-                                        String dumpDirectory, ReplicationMetricCollector metricCollector) {
-    return getLoadCopyTask(replicationSpec, srcPath, dstPath, conf, false, false,
-      readSourceAsFileList, overWrite, true, dumpDirectory, metricCollector);
-  }
-
-  /*
-   * Invoked in the bootstrap dump path. bootstrap dump purge is false.
-   * No purge for dump dir in case of check pointing
-   */
-  public static Task<?> getDumpCopyTask(ReplicationSpec replicationSpec, Path srcPath, Path dstPath,
-                                        HiveConf conf, boolean readSourceAsFileList, boolean overWrite,
-                                        boolean deleteDestination, String dumpDirectory,
-                                        ReplicationMetricCollector metricCollector) {
-    return getLoadCopyTask(replicationSpec, srcPath, dstPath, conf, false, false,
-      readSourceAsFileList, overWrite, deleteDestination, dumpDirectory, metricCollector);
-  }
-
-
-  public static Task<?> getDumpCopyTask(ReplicationSpec replicationSpec, Path srcPath, Path dstPath,
-                                        HiveConf conf, String dumpDirectory,
-                                        ReplicationMetricCollector metricCollector) {
-    return getLoadCopyTask(replicationSpec, srcPath, dstPath, conf, false, false,
-      true, false, true, dumpDirectory, metricCollector);
-  }
-
 }

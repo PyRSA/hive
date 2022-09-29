@@ -18,8 +18,9 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.keyseries;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
-
 import com.google.common.base.Preconditions;
 
 /**
@@ -28,6 +29,8 @@ import com.google.common.base.Preconditions;
  */
 public abstract class VectorKeySeriesSingleImpl extends VectorKeySeriesImpl
     implements VectorKeySeries {
+
+  private static final Log LOG = LogFactory.getLog(VectorKeySeriesSingleImpl.class.getName());
 
   protected int currentBatchSize;
 

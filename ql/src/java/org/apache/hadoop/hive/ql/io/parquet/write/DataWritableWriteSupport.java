@@ -18,10 +18,8 @@ import java.util.Map;
 import java.util.TimeZone;
 
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.serde2.io.ParquetHiveRecord;
 
-import org.apache.hive.common.util.HiveVersionInfo;
 import org.apache.parquet.hadoop.api.WriteSupport;
 import org.apache.parquet.io.api.RecordConsumer;
 import org.apache.parquet.schema.MessageType;
@@ -36,13 +34,9 @@ public class DataWritableWriteSupport extends WriteSupport<ParquetHiveRecord> {
 
   public static final String PARQUET_HIVE_SCHEMA = "parquet.hive.schema";
   public static final String WRITER_TIMEZONE = "writer.time.zone";
-  public static final String WRITER_DATE_PROLEPTIC = "writer.date.proleptic";
-  public static final String WRITER_ZONE_CONVERSION_LEGACY = "writer.zone.conversion.legacy";
 
   private DataWritableWriter writer;
   private MessageType schema;
-  private boolean defaultDateProleptic;
-  private Configuration conf;
 
   public static void setSchema(final MessageType schema, final Configuration configuration) {
     configuration.set(PARQUET_HIVE_SCHEMA, schema.toString());
@@ -54,30 +48,19 @@ public class DataWritableWriteSupport extends WriteSupport<ParquetHiveRecord> {
 
   @Override
   public WriteContext init(final Configuration configuration) {
-    conf = configuration;
     schema = getSchema(configuration);
     Map<String, String> metaData = new HashMap<>();
     metaData.put(WRITER_TIMEZONE, TimeZone.getDefault().toZoneId().toString());
-    defaultDateProleptic = HiveConf.getBoolVar(
-        configuration, HiveConf.ConfVars.HIVE_PARQUET_DATE_PROLEPTIC_GREGORIAN);
-    metaData.put(WRITER_DATE_PROLEPTIC, String.valueOf(defaultDateProleptic));
-    metaData.put(WRITER_ZONE_CONVERSION_LEGACY, String
-        .valueOf(HiveConf.getBoolVar(conf, HiveConf.ConfVars.HIVE_PARQUET_TIMESTAMP_WRITE_LEGACY_CONVERSION_ENABLED)));
     return new WriteContext(schema, metaData);
   }
 
   @Override
   public void prepareForWrite(final RecordConsumer recordConsumer) {
-    writer = new DataWritableWriter(recordConsumer, schema, defaultDateProleptic, conf);
+    writer = new DataWritableWriter(recordConsumer, schema);
   }
 
   @Override
   public void write(final ParquetHiveRecord record) {
     writer.write(record);
-  }
-
-  @Override
-  public String getName() {
-    return HiveVersionInfo.getVersion();
   }
 }

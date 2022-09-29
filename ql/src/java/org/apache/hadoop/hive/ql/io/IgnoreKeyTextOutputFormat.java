@@ -30,7 +30,7 @@ import org.apache.hadoop.mapred.TextOutputFormat;
 import org.apache.hadoop.util.Progressable;
 
 /**
- * This class replaces key with null before feeding the &lt;key, value&gt; to
+ * This class replaces key with null before feeding the <key, value> to
  * TextOutputFormat.RecordWriter.
  * 
  * @deprecated use {@link HiveIgnoreKeyTextOutputFormat} instead}

@@ -21,9 +21,11 @@ import java.util.Arrays;
 import java.util.List;
 
 import org.apache.calcite.adapter.jdbc.JdbcRules.JdbcUnion;
+import org.apache.calcite.adapter.jdbc.JdbcRules.JdbcUnionRule;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.core.Union;
 import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.jdbc.HiveJdbcConverter;
 import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveUnion;
 import org.slf4j.Logger;
@@ -53,18 +55,12 @@ public class JDBCUnionPushDownRule extends RelOptRule {
     final HiveJdbcConverter converter1 = call.rel(1);
     final HiveJdbcConverter converter2 = call.rel(2);
 
-    // First we compare the convention
+    //The actual check should be the compare of the connection string of the external tables
+    /*if (converter1.getJdbcConvention().equals(converter2.getJdbcConvention()) == false) {
+      return false;
+    }*/
+
     if (!converter1.getJdbcConvention().getName().equals(converter2.getJdbcConvention().getName())) {
-      return false;
-    }
-
-    // Second, we compare the connection string
-    if (!converter1.getConnectionUrl().equals(converter2.getConnectionUrl())) {
-      return false;
-    }
-
-    // Third, we compare the connection user
-    if (!converter1.getConnectionUser().equals(converter2.getConnectionUser())) {
       return false;
     }
 
@@ -79,14 +75,14 @@ public class JDBCUnionPushDownRule extends RelOptRule {
     final HiveJdbcConverter converter1 = call.rel(1);
     final HiveJdbcConverter converter2 = call.rel(2);
 
-    List<RelNode> unionInput = Arrays.asList(converter1.getInput(), converter2.getInput());
-    JdbcUnion jdbcUnion = new JdbcUnion(
-        union.getCluster(),
-        union.getTraitSet().replace(converter1.getJdbcConvention()),
-        unionInput,
-        union.all);
+    final List<RelNode> unionInput = Arrays.asList(converter1.getInput(), converter2.getInput());
+    Union newHiveUnion = (Union) union.copy(union.getTraitSet(), unionInput, union.all);
+    JdbcUnion newJdbcUnion = (JdbcUnion) new JdbcUnionRule(converter1.getJdbcConvention()).convert(newHiveUnion);
+    if (newJdbcUnion != null) {
+      RelNode converterRes = converter1.copy(converter1.getTraitSet(), Arrays.asList(newJdbcUnion));
 
-    call.transformTo(converter1.copy(converter1.getTraitSet(), jdbcUnion));
+      call.transformTo(converterRes);
+    }
   }
 
-}
+};

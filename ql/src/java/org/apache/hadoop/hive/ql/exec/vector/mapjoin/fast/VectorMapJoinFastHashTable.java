@@ -22,22 +22,15 @@ import org.apache.hadoop.hive.ql.util.JavaDataModel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.ql.exec.mapjoin.MapJoinMemoryExhaustionError;
-import org.apache.hadoop.hive.ql.exec.persistence.MatchTracker;
 import org.apache.hadoop.hive.ql.exec.vector.mapjoin.hashtable.VectorMapJoinHashTable;
-import org.apache.hadoop.hive.ql.exec.vector.mapjoin.hashtable.VectorMapJoinNonMatchedIterator;
 
 public abstract class VectorMapJoinFastHashTable implements VectorMapJoinHashTable {
   public static final Logger LOG = LoggerFactory.getLogger(VectorMapJoinFastHashTable.class);
 
-  // when rehashing, jump directly to 1M items
-  public static final int FIRST_SIZE_UP = 1048576;
-
-  protected final boolean isFullOuter;
-
   protected int logicalHashBucketCount;
   protected int logicalHashBucketMask;
 
-  protected final float loadFactor;
+  protected float loadFactor;
   protected final int writeBuffersSize;
 
   protected long estimatedKeyCount;
@@ -63,36 +56,29 @@ public abstract class VectorMapJoinFastHashTable implements VectorMapJoinHashTab
   }
 
   private static void validateCapacity(long capacity) {
+    if (Long.bitCount(capacity) != 1) {
+      throw new AssertionError("Capacity must be a power of two");
+    }
     if (capacity <= 0) {
       throw new AssertionError("Invalid capacity " + capacity);
-    }
-    if (Long.bitCount(capacity) != 1) {
-      throw new AssertionError("Capacity must be a power of two " + capacity);
     }
   }
 
   private static int nextHighestPowerOfTwo(int v) {
-    int value = Integer.highestOneBit(v);
-    if (Integer.highestOneBit(v) == HIGHEST_INT_POWER_OF_2) {
-      LOG.warn("Reached highest 2 power: {}", HIGHEST_INT_POWER_OF_2);
-      return value;
-    }
-    return value << 1;
+    return Integer.highestOneBit(v) << 1;
   }
 
   public VectorMapJoinFastHashTable(
-      boolean isFullOuter,
-      int initialCapacity, float loadFactor, int writeBuffersSize, long estimatedKeyCount) {
+        int initialCapacity, float loadFactor, int writeBuffersSize, long estimatedKeyCount) {
 
-    this.isFullOuter = isFullOuter;
-
-    this.logicalHashBucketCount = (Long.bitCount(initialCapacity) == 1)
+    initialCapacity = (Long.bitCount(initialCapacity) == 1)
         ? initialCapacity : nextHighestPowerOfTwo(initialCapacity);
-    LOG.info("Initial Capacity {} Recomputed Capacity {}", initialCapacity, logicalHashBucketCount);
 
-    validateCapacity(logicalHashBucketCount);
+    validateCapacity(initialCapacity);
 
     this.estimatedKeyCount = estimatedKeyCount;
+
+    logicalHashBucketCount = initialCapacity;
     logicalHashBucketMask = logicalHashBucketCount - 1;
     resizeThreshold = (int)(logicalHashBucketCount * loadFactor);
 
@@ -105,35 +91,9 @@ public abstract class VectorMapJoinFastHashTable implements VectorMapJoinHashTab
     return keysAssigned;
   }
 
-  protected final boolean checkResize() {
-    // resize small hashtables up to a higher width (4096 items), but when there are collisions
-    return (resizeThreshold <= keysAssigned)
-        || (logicalHashBucketCount <= FIRST_SIZE_UP && largestNumberOfSteps > 1);
-  }
-
   @Override
   public long getEstimatedMemorySize() {
-    int size = 0;
     JavaDataModel jdm = JavaDataModel.get();
-    size += JavaDataModel.alignUp(10L * jdm.primitive1() + jdm.primitive2(), jdm.memoryAlign());
-    if (isFullOuter) {
-      size += MatchTracker.calculateEstimatedMemorySize(logicalHashBucketCount);
-    }
-    return size;
-  }
-
-  @Override
-  public MatchTracker createMatchTracker() {
-    return MatchTracker.create(logicalHashBucketCount);
-  }
-
-  @Override
-  public VectorMapJoinNonMatchedIterator createNonMatchedIterator(MatchTracker matchTracker) {
-    throw new RuntimeException("Not implemented");
-  }
-
-  @Override
-  public int spillPartitionId() {
-    throw new RuntimeException("Not implemented");
+    return JavaDataModel.alignUp(10L * jdm.primitive1() + jdm.primitive2(), jdm.memoryAlign());
   }
 }

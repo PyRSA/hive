@@ -18,10 +18,9 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.expressions;
 
-import java.nio.charset.StandardCharsets;
+import java.io.UnsupportedEncodingException;
 import java.util.Arrays;
 
-import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.hive.ql.exec.vector.BytesColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorExpressionDescriptor;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
@@ -37,15 +36,27 @@ import org.apache.hadoop.hive.ql.metadata.HiveException;
 public class StringSubstrColStartLen extends VectorExpression {
   private static final long serialVersionUID = 1L;
 
+  private final int colNum;
+
   private final int startIdx;
   private final int length;
   private final int[] offsetArray;
 
-  private static final byte[] EMPTY_STRING =
-      StringUtils.EMPTY.getBytes(StandardCharsets.UTF_8);
+  private transient static byte[] EMPTY_STRING;
+
+  // Populating the Empty string bytes. Putting it as static since it should be immutable and can be
+  // shared
+  static {
+    try {
+      EMPTY_STRING = "".getBytes("UTF-8");
+    } catch(UnsupportedEncodingException e) {
+      e.printStackTrace();
+    }
+  }
 
   public StringSubstrColStartLen(int colNum, int startIdx, int length, int outputColumnNum) {
-    super(colNum, outputColumnNum);
+    super(outputColumnNum);
+    this.colNum = colNum;
     offsetArray = new int[2];
 
     /* Switch from a 1-based start offset (the Hive end user convention) to a 0-based start offset
@@ -71,6 +82,7 @@ public class StringSubstrColStartLen extends VectorExpression {
     super();
 
     // Dummy final assignments.
+    colNum = -1;
     startIdx = -1;
     length = 0;
     offsetArray = null;
@@ -135,7 +147,7 @@ public class StringSubstrColStartLen extends VectorExpression {
       super.evaluateChildren(batch);
     }
 
-    BytesColumnVector inV = (BytesColumnVector) batch.cols[inputColumnNum[0]];
+    BytesColumnVector inV = (BytesColumnVector) batch.cols[colNum];
     BytesColumnVector outputColVector = (BytesColumnVector) batch.cols[outputColumnNum];
 
     int n = batch.size;
@@ -247,7 +259,7 @@ public class StringSubstrColStartLen extends VectorExpression {
 
   @Override
   public String vectorExpressionParameters() {
-    return getColumnParamString(0, inputColumnNum[0]) + ", start " + startIdx + ", length " + length;
+    return getColumnParamString(0, colNum) + ", start " + startIdx + ", length " + length;
   }
 
   @Override

@@ -1,4 +1,3 @@
---! qt:dataset:src
 set hive.mapred.mode=nonstrict;
 create table src_multi1_n2 like src;
 create table src_multi2_n3 like src;

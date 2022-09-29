@@ -1,4 +1,3 @@
---! qt:dataset:alltypesorc
 SET hive.vectorized.execution.enabled=false;
 set hive.map.aggr=false;
 

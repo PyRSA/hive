@@ -1,4 +1,3 @@
---! qt:dataset:src
 explain select key || value from src;
 
 select concat('a','b','c');
@@ -44,8 +43,3 @@ explain select 'a' || 'b' || 'c';
 -- true and (false or false) and (true or true) => false	should not happen
 select true and false or false and true or true;
 
-explain formatted select key || value from src;
-
-explain formatted select key || value || key from src;
-
-explain formatted select key || value || key || value from src;

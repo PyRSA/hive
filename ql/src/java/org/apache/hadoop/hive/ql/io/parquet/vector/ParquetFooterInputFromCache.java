@@ -30,9 +30,9 @@ import org.apache.parquet.io.SeekableInputStream;
  * read the footer from cache without being aware of the latter.
  * This implements both InputFile and the InputStream that the reader gets from InputFile.
  */
-public final class ParquetFooterInputFromCache
+final class ParquetFooterInputFromCache
     extends SeekableInputStream implements InputFile {
-  public final static int FOOTER_LENGTH_SIZE = 4; // For the file size check.
+  final static int FOOTER_LENGTH_SIZE = 4; // For the file size check.
   private static final int TAIL_LENGTH = ParquetFileWriter.MAGIC.length + FOOTER_LENGTH_SIZE;
   private static final int FAKE_PREFIX_LENGTH = ParquetFileWriter.MAGIC.length;
   private final int length, footerLength;
@@ -143,13 +143,13 @@ public final class ParquetFooterInputFromCache
     // Simple implementation for now - currently Parquet uses heap buffers.
     int result = -1;
     if (bb.hasArray()) {
-      result = readInternal(bb.array(), bb.arrayOffset(), bb.remaining());
+      result = readInternal(bb.array(), bb.arrayOffset(), result);
       if (result > 0) {
         bb.position(bb.position() + result);
       }
     } else {
       byte[] b = new byte[bb.remaining()];
-      result = readInternal(b, 0, bb.remaining());
+      result = readInternal(b, 0, result);
       bb.put(b, 0, result);
     }
     return result;

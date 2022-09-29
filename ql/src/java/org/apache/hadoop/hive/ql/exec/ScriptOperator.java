@@ -43,9 +43,9 @@ import org.apache.hadoop.hive.ql.ErrorMsg;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.plan.ScriptDesc;
 import org.apache.hadoop.hive.ql.plan.api.OperatorType;
-import org.apache.hadoop.hive.serde2.AbstractSerDe;
 import org.apache.hadoop.hive.serde2.Deserializer;
 import org.apache.hadoop.hive.serde2.SerDeException;
+import org.apache.hadoop.hive.serde2.SerDeUtils;
 import org.apache.hadoop.hive.serde2.Serializer;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.io.BytesWritable;
@@ -53,6 +53,11 @@ import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.mapred.Reporter;
+import org.apache.hadoop.util.Shell;
+import org.apache.hadoop.util.StringUtils;
+import org.apache.spark.SparkConf;
+import org.apache.spark.SparkEnv;
+import org.apache.spark.SparkFiles;
 
 /**
  * ScriptOperator.
@@ -268,14 +273,15 @@ public class ScriptOperator extends Operator<ScriptDesc> implements
     try {
       this.hconf = hconf;
 
-      AbstractSerDe outputSerDe = conf.getScriptOutputInfo().getSerDeClass().newInstance();
-      outputSerDe.initialize(hconf, conf.getScriptOutputInfo().getProperties(), null);
+      scriptOutputDeserializer = conf.getScriptOutputInfo()
+          .getDeserializerClass().newInstance();
+      SerDeUtils.initializeSerDe(scriptOutputDeserializer, hconf,
+                                 conf.getScriptOutputInfo().getProperties(), null);
 
-      AbstractSerDe inputSerde = conf.getScriptInputInfo().getSerDeClass().newInstance();
-      inputSerde.initialize(hconf, conf.getScriptInputInfo().getProperties(), null);
-
-      scriptOutputDeserializer = outputSerDe;
-      scriptInputSerializer = inputSerde;
+      scriptInputSerializer = (Serializer) conf.getScriptInputInfo()
+          .getDeserializerClass().newInstance();
+      scriptInputSerializer.initialize(hconf, conf.getScriptInputInfo()
+          .getProperties());
 
       outputObjInspector = scriptOutputDeserializer.getObjectInspector();
 
@@ -294,8 +300,10 @@ public class ScriptOperator extends Operator<ScriptDesc> implements
   }
 
   void displayBrokenPipeInfo() {
-    LOG.info("The script did not consume all input data. This is considered as an error.");
-    LOG.info("set " + HiveConf.ConfVars.ALLOWPARTIALCONSUMP.toString() + "=true; to ignore it.");
+    if (LOG.isInfoEnabled()) {
+      LOG.info("The script did not consume all input data. This is considered as an error.");
+      LOG.info("set " + HiveConf.ConfVars.ALLOWPARTIALCONSUMP.toString() + "=true; to ignore it.");
+    }
     return;
   }
 
@@ -314,6 +322,7 @@ public class ScriptOperator extends Operator<ScriptDesc> implements
     // initialize the user's process only when you receive the first row
     if (firstRow) {
       firstRow = false;
+      SparkConf sparkConf = null;
       try {
         String[] cmdArgs = splitArgs(conf.getScriptCmd());
 
@@ -323,6 +332,12 @@ public class ScriptOperator extends Operator<ScriptDesc> implements
         if (!new File(prog).isAbsolute()) {
           PathFinder finder = new PathFinder("PATH");
           finder.prependPathComponent(currentDir.toString());
+
+          // In spark local mode, we need to search added files in root directory.
+          if (HiveConf.getVar(hconf, HiveConf.ConfVars.HIVE_EXECUTION_ENGINE).equals("spark")) {
+            sparkConf = SparkEnv.get().conf();
+            finder.prependPathComponent(SparkFiles.getRootDirectory());
+          }
           File f = finder.getAbsolutePath(prog);
           if (f != null) {
             cmdArgs[0] = f.getAbsolutePath();
@@ -331,10 +346,12 @@ public class ScriptOperator extends Operator<ScriptDesc> implements
         }
 
         String[] wrappedCmdArgs = addWrapper(cmdArgs);
-        LOG.info("Executing " + Arrays.asList(wrappedCmdArgs));
-        LOG.info("tablename=" + tableName);
-        LOG.info("partname=" + partitionName);
-        LOG.info("alias=" + alias);
+        if (LOG.isInfoEnabled()) {
+          LOG.info("Executing " + Arrays.asList(wrappedCmdArgs));
+          LOG.info("tablename=" + tableName);
+          LOG.info("partname=" + partitionName);
+          LOG.info("alias=" + alias);
+        }
 
         ProcessBuilder pb = new ProcessBuilder(wrappedCmdArgs);
         Map<String, String> env = pb.environment();
@@ -348,6 +365,17 @@ public class ScriptOperator extends Operator<ScriptDesc> implements
             HiveConf.ConfVars.HIVESCRIPTIDENVVAR);
         String idEnvVarVal = getOperatorId();
         env.put(safeEnvVarName(idEnvVarName), idEnvVarVal);
+
+        // For spark, in non-local mode, any added dependencies are stored at
+        // SparkFiles::getRootDirectory, which is the executor's working directory.
+        // In local mode, we need to manually point the process's working directory to it,
+        // in order to make the dependencies accessible.
+        if (sparkConf != null) {
+          String master = sparkConf.get("spark.master");
+          if (master.equals("local") || master.startsWith("local[")) {
+            pb.directory(new File(SparkFiles.getRootDirectory()));
+          }
+        }
 
         scriptPid = pb.start(); // Runtime.getRuntime().exec(wrappedCmdArgs);
 
@@ -422,7 +450,8 @@ public class ScriptOperator extends Operator<ScriptDesc> implements
             outThread.join(0);
           }
         } catch (Exception e2) {
-          LOG.warn("Exception in closing outThread", e2);
+          LOG.warn("Exception in closing outThread: "
+              + StringUtils.stringifyException(e2));
         }
         setDone(true);
         LOG.warn("Got broken pipe during write: ignoring exception and setting operator to done");
@@ -470,7 +499,8 @@ public class ScriptOperator extends Operator<ScriptDesc> implements
           new_abort = true;
         }
       } catch (IOException e) {
-        LOG.error("Got exception", e);
+        LOG.error("Got ioexception: " + e.getMessage());
+        e.printStackTrace();
         new_abort = true;
       } catch (InterruptedException e) {
       }
@@ -510,7 +540,8 @@ public class ScriptOperator extends Operator<ScriptDesc> implements
         outThread.join(0);
       }
     } catch (Exception e) {
-      LOG.warn("Exception in closing outThread", e);
+      LOG.warn("Exception in closing outThread: "
+          + StringUtils.stringifyException(e));
     }
 
     try {
@@ -518,7 +549,8 @@ public class ScriptOperator extends Operator<ScriptDesc> implements
         errThread.join(0);
       }
     } catch (Exception e) {
-      LOG.warn("Exception in closing errThread", e);
+      LOG.warn("Exception in closing errThread: "
+          + StringUtils.stringifyException(e));
     }
 
     try {
@@ -526,7 +558,8 @@ public class ScriptOperator extends Operator<ScriptDesc> implements
         scriptPid.destroy();
       }
     } catch (Exception e) {
-      LOG.warn("Exception in destroying scriptPid", e);
+      LOG.warn("Exception in destroying scriptPid: "
+          + StringUtils.stringifyException(e));
     }
 
     super.close(new_abort);
@@ -647,7 +680,9 @@ public class ScriptOperator extends Operator<ScriptDesc> implements
       long now = System.currentTimeMillis();
       // reporter is a member variable of the Operator class.
       if (now - lastReportTime > 60 * 1000 && reporter != null) {
-        LOG.info("ErrorStreamProcessor calling reporter.progress()");
+        if (LOG.isInfoEnabled()) {
+          LOG.info("ErrorStreamProcessor calling reporter.progress()");
+        }
         lastReportTime = now;
         reporter.progress();
       }
@@ -703,18 +738,23 @@ public class ScriptOperator extends Operator<ScriptDesc> implements
           }
           proc.processLine(row);
         }
-        LOG.info("StreamThread " + name + " done");
+        if (LOG.isInfoEnabled()) {
+          LOG.info("StreamThread " + name + " done");
+        }
 
       } catch (Throwable th) {
         scriptError = th;
-        LOG.warn("Exception in StreamThread.run()", th);
+        LOG.warn("Exception in StreamThread.run(): " + th.getMessage() +
+            "\nCause: " + th.getCause());
+        LOG.warn(StringUtils.stringifyException(th));
       } finally {
         try {
           if (in != null) {
             in.close();
           }
         } catch (Exception e) {
-          LOG.warn(name + ": error in closing ..", e);
+          LOG.warn(name + ": error in closing ..");
+          LOG.warn(StringUtils.stringifyException(e));
         }
         try
         {
@@ -722,7 +762,7 @@ public class ScriptOperator extends Operator<ScriptDesc> implements
             proc.close();
           }
         }catch (Exception e) {
-          LOG.warn(": error in closing ..", e);
+          LOG.warn(": error in closing .."+StringUtils.stringifyException(e));
         }
       }
     }

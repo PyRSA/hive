@@ -20,7 +20,6 @@ package org.apache.hadoop.hive.ql.exec.vector.expressions;
 
 import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.DoubleColumnVector;
-import org.apache.hadoop.hive.ql.exec.vector.MapColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorExpressionDescriptor;
 
 /**
@@ -58,17 +57,7 @@ public class VectorUDFMapIndexDoubleCol extends VectorUDFMapIndexBaseCol {
   }
 
   @Override
-  public int findInMap(ColumnVector indexColumnVector, int indexBatchIndex,
-      MapColumnVector mapColumnVector, int mapBatchIndex) {
-    final int offset = (int) mapColumnVector.offsets[mapBatchIndex];
-    final int count = (int) mapColumnVector.lengths[mapBatchIndex];
-    double[] keys = ((DoubleColumnVector) mapColumnVector.keys).vector;
-    final double index = ((DoubleColumnVector) indexColumnVector).vector[indexBatchIndex];
-    for (int i = 0; i < count; i++) {
-      if (index == keys[offset + i]) {
-        return offset + i;
-      }
-    }
-    return -1;
+  protected Object getKeyByIndex(ColumnVector cv, int index) {
+    return ((DoubleColumnVector) cv).vector[index];
   }
 }

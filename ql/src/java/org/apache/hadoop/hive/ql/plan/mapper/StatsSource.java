@@ -18,23 +18,18 @@
 
 package org.apache.hadoop.hive.ql.plan.mapper;
 
-import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
-import org.apache.hadoop.hive.common.classification.InterfaceAudience;
 import org.apache.hadoop.hive.ql.optimizer.signature.OpTreeSignature;
-import org.apache.hadoop.hive.ql.optimizer.signature.RelTreeSignature;
 import org.apache.hadoop.hive.ql.stats.OperatorStats;
 
-@InterfaceAudience.Private
 public interface StatsSource {
 
   boolean canProvideStatsFor(Class<?> clazz);
 
   Optional<OperatorStats> lookup(OpTreeSignature treeSig);
 
-  Optional<OperatorStats> lookup(RelTreeSignature treeSig);
-
-  void load(List<PersistedRuntimeStats> list);
+  void putAll(Map<OpTreeSignature, OperatorStats> map);
 
 }

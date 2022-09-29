@@ -40,6 +40,16 @@ POSTHOOK: Lineage: cmv_basetable_n7.a SCRIPT []
 POSTHOOK: Lineage: cmv_basetable_n7.b SCRIPT []
 POSTHOOK: Lineage: cmv_basetable_n7.c SCRIPT []
 POSTHOOK: Lineage: cmv_basetable_n7.d SCRIPT []
+PREHOOK: query: analyze table cmv_basetable_n7 compute statistics for columns
+PREHOOK: type: ANALYZE_TABLE
+PREHOOK: Input: db1@cmv_basetable_n7
+PREHOOK: Output: db1@cmv_basetable_n7
+#### A masked pattern was here ####
+POSTHOOK: query: analyze table cmv_basetable_n7 compute statistics for columns
+POSTHOOK: type: ANALYZE_TABLE
+POSTHOOK: Input: db1@cmv_basetable_n7
+POSTHOOK: Output: db1@cmv_basetable_n7
+#### A masked pattern was here ####
 PREHOOK: query: create database db2
 PREHOOK: type: CREATEDATABASE
 PREHOOK: Output: database:db2
@@ -64,9 +74,6 @@ POSTHOOK: type: CREATE_MATERIALIZED_VIEW
 POSTHOOK: Input: db1@cmv_basetable_n7
 POSTHOOK: Output: database:db2
 POSTHOOK: Output: db2@cmv_mat_view_n7
-POSTHOOK: Lineage: cmv_mat_view_n7.a SIMPLE []
-POSTHOOK: Lineage: cmv_mat_view_n7.b SIMPLE [(cmv_basetable_n7)cmv_basetable_n7.FieldSchema(name:b, type:varchar(256), comment:null), ]
-POSTHOOK: Lineage: cmv_mat_view_n7.c SIMPLE [(cmv_basetable_n7)cmv_basetable_n7.FieldSchema(name:c, type:decimal(10,2), comment:null), ]
 PREHOOK: query: select * from cmv_mat_view_n7
 PREHOOK: type: QUERY
 PREHOOK: Input: db2@cmv_mat_view_n7
@@ -81,13 +88,12 @@ PREHOOK: query: show tblproperties cmv_mat_view_n7
 PREHOOK: type: SHOW_TBLPROPERTIES
 POSTHOOK: query: show tblproperties cmv_mat_view_n7
 POSTHOOK: type: SHOW_TBLPROPERTIES
-COLUMN_STATS_ACCURATE	{"BASIC_STATS":"true","COLUMN_STATS":{"a":"true","b":"true","c":"true"}}
+COLUMN_STATS_ACCURATE	{"BASIC_STATS":"true"}
 bucketing_version	2
 numFiles	1
-numFilesErasureCoded	0
 numRows	2
 rawDataSize	408
-totalSize	468
+totalSize	467
 #### A masked pattern was here ####
 PREHOOK: query: create materialized view if not exists cmv_mat_view2_n2
 as select a, c from db1.cmv_basetable_n7 where a = 3
@@ -101,8 +107,6 @@ POSTHOOK: type: CREATE_MATERIALIZED_VIEW
 POSTHOOK: Input: db1@cmv_basetable_n7
 POSTHOOK: Output: database:db2
 POSTHOOK: Output: db2@cmv_mat_view2_n2
-POSTHOOK: Lineage: cmv_mat_view2_n2.a SIMPLE []
-POSTHOOK: Lineage: cmv_mat_view2_n2.c SIMPLE [(cmv_basetable_n7)cmv_basetable_n7.FieldSchema(name:c, type:decimal(10,2), comment:null), ]
 PREHOOK: query: select * from cmv_mat_view2_n2
 PREHOOK: type: QUERY
 PREHOOK: Input: db2@cmv_mat_view2_n2
@@ -117,13 +121,12 @@ PREHOOK: query: show tblproperties cmv_mat_view2_n2
 PREHOOK: type: SHOW_TBLPROPERTIES
 POSTHOOK: query: show tblproperties cmv_mat_view2_n2
 POSTHOOK: type: SHOW_TBLPROPERTIES
-COLUMN_STATS_ACCURATE	{"BASIC_STATS":"true","COLUMN_STATS":{"a":"true","c":"true"}}
+COLUMN_STATS_ACCURATE	{"BASIC_STATS":"true"}
 bucketing_version	2
 numFiles	1
-numFilesErasureCoded	0
 numRows	2
 rawDataSize	232
-totalSize	334
+totalSize	332
 #### A masked pattern was here ####
 PREHOOK: query: create database db3
 PREHOOK: type: CREATEDATABASE
@@ -160,7 +163,7 @@ STAGE PLANS:
         TableScan
           alias: db2.cmv_mat_view2_n2
           Select Operator
-            expressions: a (type: int), c (type: decimal(10,2))
+            expressions: 3 (type: int), c (type: decimal(10,2))
             outputColumnNames: _col0, _col1
             ListSink
 

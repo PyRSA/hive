@@ -18,35 +18,20 @@
 package org.apache.hadoop.hive.ql.parse.repl.dump.events;
 
 import org.apache.hadoop.hive.metastore.api.NotificationEvent;
-import org.apache.hadoop.hive.metastore.messaging.OpenTxnMessage;
-import org.apache.hadoop.hive.ql.exec.repl.util.ReplUtils;
 import org.apache.hadoop.hive.ql.parse.repl.DumpType;
 import org.apache.hadoop.hive.ql.parse.repl.load.DumpMetaData;
 
-class OpenTxnHandler extends AbstractEventHandler<OpenTxnMessage> {
+class OpenTxnHandler extends AbstractEventHandler {
 
   OpenTxnHandler(NotificationEvent event) {
     super(event);
   }
 
   @Override
-  OpenTxnMessage eventMessage(String stringRepresentation) {
-    return deserializer.getOpenTxnMessage(stringRepresentation);
-  }
-
-  @Override
   public void handle(Context withinContext) throws Exception {
-    if (!ReplUtils.includeAcidTableInDump(withinContext.hiveConf)) {
-      return;
-    }
-
-    if (ReplUtils.filterTransactionOperations(withinContext.hiveConf)) {
-      return;
-    }
-
-    LOG.info("Processing#{} OPEN_TXN message : {}", fromEventId(), eventMessageAsJSON);
+    LOG.info("Processing#{} OPEN_TXN message : {}", fromEventId(), event.getMessage());
     DumpMetaData dmd = withinContext.createDmd(this);
-    dmd.setPayload(eventMessageAsJSON);
+    dmd.setPayload(event.getMessage());
     dmd.write();
   }
 

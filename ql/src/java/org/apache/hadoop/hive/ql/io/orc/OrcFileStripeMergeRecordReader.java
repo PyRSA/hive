@@ -19,11 +19,8 @@
 package org.apache.hadoop.hive.ql.io.orc;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -40,23 +37,19 @@ public class OrcFileStripeMergeRecordReader implements
   protected Iterator<StripeInformation> iter;
   protected List<OrcProto.StripeStatistics> stripeStatistics;
   private int stripeIdx;
+  private long start;
+  private long end;
   private boolean skipFile;
 
   public OrcFileStripeMergeRecordReader(Configuration conf, FileSplit split) throws IOException {
     path = split.getPath();
-    long start = split.getStart();
-    // if the combined split has only part of the file split, the entire file will be handled by the mapper that
-    // owns the start of file split.
-    skipFile = start > 0; // skip the file if start is not 0
-    if (!skipFile) {
-      FileSystem fs = path.getFileSystem(conf);
-      this.reader = OrcFile.createReader(path, OrcFile.readerOptions(conf).filesystem(fs));
-      this.iter = reader.getStripes().iterator();
-      this.stripeIdx = 0;
-      this.stripeStatistics = ((ReaderImpl) reader).getOrcProtoStripeStatistics();
-    } else {
-      reader = null;
-    }
+    start = split.getStart();
+    end = start + split.getLength();
+    FileSystem fs = path.getFileSystem(conf);
+    this.reader = OrcFile.createReader(path, OrcFile.readerOptions(conf).filesystem(fs));
+    this.iter = reader.getStripes().iterator();
+    this.stripeIdx = 0;
+    this.stripeStatistics = ((ReaderImpl) reader).getOrcProtoStripeStatistics();
   }
 
   public Class<?> getKeyClass() {
@@ -94,27 +87,29 @@ public class OrcFileStripeMergeRecordReader implements
       return true;
     }
 
-    // file split starts with 0 and hence this mapper owns concatenate of all stripes in the file.
-    if (iter.hasNext()) {
+    while (iter.hasNext()) {
       StripeInformation si = iter.next();
-      valueWrapper.setStripeStatistics(stripeStatistics.get(stripeIdx));
-      valueWrapper.setStripeInformation(si);
-      if (!iter.hasNext()) {
-        valueWrapper.setLastStripeInFile(true);
-        Map<String, ByteBuffer> userMeta = new HashMap<>();
-        for(String key: reader.getMetadataKeys()) {
-          userMeta.put(key, reader.getMetadataValue(key));
+
+      // if stripe offset is outside the split boundary then ignore the current
+      // stripe as it will be handled by some other mapper.
+      if (si.getOffset() >= start && si.getOffset() < end) {
+        valueWrapper.setStripeStatistics(stripeStatistics.get(stripeIdx++));
+        valueWrapper.setStripeInformation(si);
+        if (!iter.hasNext()) {
+          valueWrapper.setLastStripeInFile(true);
+          valueWrapper.setUserMetadata(((ReaderImpl) reader).getOrcProtoUserMetadata());
         }
-        valueWrapper.setUserMetadata(userMeta);
+        keyWrapper.setInputPath(path);
+        keyWrapper.setCompression(reader.getCompressionKind());
+        keyWrapper.setCompressBufferSize(reader.getCompressionSize());
+        keyWrapper.setFileVersion(reader.getFileVersion());
+        keyWrapper.setWriterVersion(reader.getWriterVersion());
+        keyWrapper.setRowIndexStride(reader.getRowIndexStride());
+        keyWrapper.setFileSchema(reader.getSchema());
+      } else {
+        stripeIdx++;
+        continue;
       }
-      keyWrapper.setInputPath(path);
-      keyWrapper.setCompression(reader.getCompressionKind());
-      keyWrapper.setCompressBufferSize(reader.getCompressionSize());
-      keyWrapper.setFileVersion(reader.getFileVersion());
-      keyWrapper.setWriterVersion(reader.getWriterVersion());
-      keyWrapper.setRowIndexStride(reader.getRowIndexStride());
-      keyWrapper.setFileSchema(reader.getSchema());
-      stripeIdx++;
       return true;
     }
 
@@ -141,9 +136,6 @@ public class OrcFileStripeMergeRecordReader implements
   }
 
   public void close() throws IOException {
-    if (reader != null) {
-      reader.close();
-    }
   }
 
 }

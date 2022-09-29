@@ -48,7 +48,7 @@ public class IfExprCharScalarStringScalar extends IfExprStringScalarStringScalar
         .setArgumentTypes(
             VectorExpressionDescriptor.ArgumentType.INT_FAMILY,
             VectorExpressionDescriptor.ArgumentType.CHAR,
-            VectorExpressionDescriptor.ArgumentType.CHAR)
+            VectorExpressionDescriptor.ArgumentType.STRING)
         .setInputExpressionTypes(
             VectorExpressionDescriptor.InputExpressionType.COLUMN,
             VectorExpressionDescriptor.InputExpressionType.SCALAR,

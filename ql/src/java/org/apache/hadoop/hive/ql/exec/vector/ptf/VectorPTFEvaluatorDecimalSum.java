@@ -15,16 +15,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.apache.hadoop.hive.ql.exec.vector.ptf;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hive.common.type.HiveDecimal;
-import org.apache.hadoop.hive.ql.exec.vector.ColumnVector.Type;
 import org.apache.hadoop.hive.ql.exec.vector.DecimalColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
+import org.apache.hadoop.hive.ql.exec.vector.ColumnVector.Type;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorExpression;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.plan.ptf.WindowFrameDef;
-import org.apache.hadoop.hive.ql.udf.ptf.Range;
 import org.apache.hadoop.hive.serde2.io.HiveDecimalWritable;
 
 import com.google.common.base.Preconditions;
@@ -32,8 +34,14 @@ import com.google.common.base.Preconditions;
 /**
  * This class evaluates HiveDecimal sum() for a PTF group.
  */
-public class VectorPTFEvaluatorDecimalSum extends VectorPTFEvaluatorAbstractSum<HiveDecimalWritable> {
+public class VectorPTFEvaluatorDecimalSum extends VectorPTFEvaluatorBase {
 
+  private static final long serialVersionUID = 1L;
+  private static final String CLASS_NAME = VectorPTFEvaluatorDecimalSum.class.getName();
+  private static final Log LOG = LogFactory.getLog(CLASS_NAME);
+
+  protected boolean isGroupResultNull;
+  protected HiveDecimalWritable sum;
   protected HiveDecimalWritable temp;
 
   public VectorPTFEvaluatorDecimalSum(WindowFrameDef windowFrameDef, VectorExpression inputVecExpr,
@@ -44,8 +52,7 @@ public class VectorPTFEvaluatorDecimalSum extends VectorPTFEvaluatorAbstractSum<
     resetEvaluator();
   }
 
-  @Override
-  public void evaluateGroupBatch(VectorizedRowBatch batch)
+  public void evaluateGroupBatch(VectorizedRowBatch batch, boolean isLastGroupBatch)
       throws HiveException {
 
     evaluateInputExpr(batch);
@@ -114,38 +121,23 @@ public class VectorPTFEvaluatorDecimalSum extends VectorPTFEvaluatorAbstractSum<
   }
 
   @Override
+  public boolean isGroupResultNull() {
+    return isGroupResultNull;
+  }
+
+  @Override
   public Type getResultColumnVectorType() {
     return Type.DECIMAL;
   }
 
   @Override
-  protected HiveDecimalWritable computeValue(HiveDecimalWritable number) {
-    return VectorPTFEvaluatorHelper.computeValue(number);
-  }
-
-  @Override
-  public HiveDecimalWritable plus(HiveDecimalWritable t1, HiveDecimalWritable t2) {
-    return VectorPTFEvaluatorHelper.plus(t1, t2);
-  }
-
-  @Override
-  public HiveDecimalWritable minus(HiveDecimalWritable t1, HiveDecimalWritable t2) {
-    return VectorPTFEvaluatorHelper.minus(t1, t2);
-  }
-
-  @Override
-  public void onResultCalculated(Object result, Range range) {
-    if (previousSum != null) {
-      previousSum.set((HiveDecimalWritable) result);
-    } else {
-      previousSum = new HiveDecimalWritable((HiveDecimalWritable) result);
-    }
-    this.previousRange = range;
+  public HiveDecimalWritable getDecimalGroupResult() {
+    return sum;
   }
 
   @Override
   public void resetEvaluator() {
     isGroupResultNull = true;
-    sum.set(HiveDecimal.ZERO);
+    sum.set(HiveDecimal.ZERO);;
   }
 }

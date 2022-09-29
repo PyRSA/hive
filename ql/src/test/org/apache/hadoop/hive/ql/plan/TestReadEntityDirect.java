@@ -50,8 +50,10 @@ public class TestReadEntityDirect {
   @BeforeClass
   public static void onetimeSetup() throws Exception {
     Driver driver = createDriver();
-    driver.run("create table t1(i int)");
-    driver.run("create view v1 as select * from t1");
+    int ret = driver.run("create table t1(i int)").getResponseCode();
+    assertEquals("Checking command success", 0, ret);
+    ret = driver.run("create view v1 as select * from t1").getResponseCode();
+    assertEquals("Checking command success", 0, ret);
   }
 
   @AfterClass
@@ -74,7 +76,7 @@ public class TestReadEntityDirect {
   @Test
   public void testSelectEntityDirect() throws ParseException {
     Driver driver = createDriver();
-    int ret = driver.compile("select * from t1", true);
+    int ret = driver.compile("select * from t1");
     assertEquals("Checking command success", 0, ret);
     assertEquals(1, CheckInputReadEntityDirect.readEntities.size());
     assertTrue("isDirect", CheckInputReadEntityDirect.readEntities.iterator().next().isDirect());
@@ -88,7 +90,7 @@ public class TestReadEntityDirect {
   @Test
   public void testSelectEntityInDirect() throws ParseException {
     Driver driver = createDriver();
-    int ret = driver.compile("select * from v1", true);
+    int ret = driver.compile("select * from v1");
     assertEquals("Checking command success", 0, ret);
     assertEquals(2, CheckInputReadEntityDirect.readEntities.size());
     for (ReadEntity readEntity : CheckInputReadEntityDirect.readEntities) {
@@ -111,7 +113,7 @@ public class TestReadEntityDirect {
   @Test
   public void testSelectEntityViewDirectJoin() throws ParseException {
     Driver driver = createDriver();
-    int ret = driver.compile("select * from v1 join t1 on (v1.i = t1.i)", true);
+    int ret = driver.compile("select * from v1 join t1 on (v1.i = t1.i)");
     assertEquals("Checking command success", 0, ret);
     assertEquals(2, CheckInputReadEntityDirect.readEntities.size());
     for (ReadEntity readEntity : CheckInputReadEntityDirect.readEntities) {
@@ -134,7 +136,7 @@ public class TestReadEntityDirect {
   @Test
   public void testSelectEntityViewDirectUnion() throws ParseException {
     Driver driver = createDriver();
-    int ret = driver.compile("select * from ( select * from v1 union all select * from t1) uv1t1", true);
+    int ret = driver.compile("select * from ( select * from v1 union all select * from t1) uv1t1");
     assertEquals("Checking command success", 0, ret);
     assertEquals(2, CheckInputReadEntityDirect.readEntities.size());
     for (ReadEntity readEntity : CheckInputReadEntityDirect.readEntities) {
@@ -156,7 +158,7 @@ public class TestReadEntityDirect {
   @Test
   public void testSelectEntityInDirectJoinAlias() throws ParseException {
     Driver driver = createDriver();
-    int ret = driver.compile("select * from v1 as a join v1 as b on (a.i = b.i)", true);
+    int ret = driver.compile("select * from v1 as a join v1 as b on (a.i = b.i)");
     assertEquals("Checking command success", 0, ret);
     assertEquals(2, CheckInputReadEntityDirect.readEntities.size());
     for (ReadEntity readEntity : CheckInputReadEntityDirect.readEntities) {
@@ -194,7 +196,7 @@ public class TestReadEntityDirect {
 
     @Override
     public void postAnalyze(HiveSemanticAnalyzerHookContext context,
-        List<Task<?>> rootTasks) throws SemanticException {
+        List<Task<? extends Serializable>> rootTasks) throws SemanticException {
       readEntities = context.getInputs();
     }
 

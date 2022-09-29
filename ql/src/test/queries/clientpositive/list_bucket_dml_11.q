@@ -1,4 +1,3 @@
---! qt:dataset:src
 set hive.mapred.mode=nonstrict;
 set mapred.input.dir.recursive=true;
 set hive.merge.mapfiles=false;	
@@ -6,6 +5,7 @@ set hive.merge.mapredfiles=false;
 
 -- Ensure it works if skewed column is not the first column in the table columns
 
+-- INCLUDE_HADOOP_MAJOR_VERSIONS(0.23)
 
 -- list bucketing DML: static partition. multiple skewed columns.
 

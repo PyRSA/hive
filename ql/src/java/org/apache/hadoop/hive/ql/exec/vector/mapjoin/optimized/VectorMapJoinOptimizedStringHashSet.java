@@ -25,7 +25,6 @@ import org.apache.hadoop.hive.ql.exec.persistence.MapJoinTableContainer;
 import org.apache.hadoop.hive.ql.exec.persistence.MapJoinTableContainer.ReusableGetAdaptor;
 import org.apache.hadoop.hive.ql.exec.vector.mapjoin.hashtable.VectorMapJoinBytesHashSet;
 import org.apache.hadoop.hive.ql.exec.vector.mapjoin.hashtable.VectorMapJoinHashSetResult;
-import org.apache.hadoop.hive.ql.plan.TableDesc;
 
 /*
  * An multi-key hash map based on the BytesBytesMultiHashSet.
@@ -56,10 +55,10 @@ public class VectorMapJoinOptimizedStringHashSet
 
   }
 
-  public VectorMapJoinOptimizedStringHashSet(boolean isOuterJoin, MapJoinTableContainer originalTableContainer,
-                                             ReusableGetAdaptor hashMapRowGetter, TableDesc tableDesc) {
+  public VectorMapJoinOptimizedStringHashSet(boolean isOuterJoin,
+      MapJoinTableContainer originalTableContainer, ReusableGetAdaptor hashMapRowGetter) {
     super(originalTableContainer, hashMapRowGetter);
-    stringCommon =  new VectorMapJoinOptimizedStringCommon(isOuterJoin, tableDesc);
+    stringCommon =  new VectorMapJoinOptimizedStringCommon(isOuterJoin);
   }
 
   @Override

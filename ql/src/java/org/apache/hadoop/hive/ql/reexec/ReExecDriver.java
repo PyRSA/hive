@@ -19,7 +19,8 @@
 package org.apache.hadoop.hive.ql.reexec;
 
 import java.io.IOException;
-import java.util.Arrays;
+import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.antlr.runtime.tree.Tree;
@@ -33,20 +34,16 @@ import org.apache.hadoop.hive.ql.QueryDisplay;
 import org.apache.hadoop.hive.ql.QueryInfo;
 import org.apache.hadoop.hive.ql.QueryPlan;
 import org.apache.hadoop.hive.ql.QueryState;
-import org.apache.hadoop.hive.ql.exec.ExplainTask;
 import org.apache.hadoop.hive.ql.exec.FetchTask;
 import org.apache.hadoop.hive.ql.exec.Task;
 import org.apache.hadoop.hive.ql.parse.ASTNode;
-import org.apache.hadoop.hive.ql.parse.CBOFallbackStrategy;
 import org.apache.hadoop.hive.ql.parse.HiveParser;
 import org.apache.hadoop.hive.ql.parse.HiveSemanticAnalyzerHook;
 import org.apache.hadoop.hive.ql.parse.HiveSemanticAnalyzerHookContext;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
 import org.apache.hadoop.hive.ql.plan.mapper.PlanMapper;
 import org.apache.hadoop.hive.ql.plan.mapper.StatsSource;
-import org.apache.hadoop.hive.ql.processors.CommandProcessorException;
 import org.apache.hadoop.hive.ql.processors.CommandProcessorResponse;
-import org.apache.hadoop.hive.ql.session.SessionState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,92 +55,75 @@ import com.google.common.annotations.VisibleForTesting;
  * Covers the IDriver interface, handles query re-execution; and asks clear questions from the underlying re-execution plugins.
  */
 public class ReExecDriver implements IDriver {
+
+  private class HandleReOptimizationExplain implements HiveSemanticAnalyzerHook {
+
+    @Override
+    public ASTNode preAnalyze(HiveSemanticAnalyzerHookContext context, ASTNode ast) throws SemanticException {
+      if (ast.getType() == HiveParser.TOK_EXPLAIN) {
+        int childCount = ast.getChildCount();
+        for (int i = 1; i < childCount; i++) {
+          if (ast.getChild(i).getType() == HiveParser.KW_REOPTIMIZATION) {
+            explainReOptimization = true;
+            ast.deleteChild(i);
+            break;
+          }
+        }
+        if (explainReOptimization && firstExecution()) {
+          Tree execTree = ast.getChild(0);
+          execTree.setParent(ast.getParent());
+          ast.getParent().setChild(0, execTree);
+          return (ASTNode) execTree;
+        }
+      }
+      return ast;
+    }
+
+    @Override
+    public void postAnalyze(HiveSemanticAnalyzerHookContext context, List<Task<? extends Serializable>> rootTasks)
+        throws SemanticException {
+    }
+  }
+
   private static final Logger LOG = LoggerFactory.getLogger(ReExecDriver.class);
-  private static final SessionState.LogHelper CONSOLE = new SessionState.LogHelper(LOG);
-
-  private final Driver coreDriver;
-  private final QueryState queryState;
-  private final List<IReExecutionPlugin> plugins;
-
   private boolean explainReOptimization;
+  protected Driver coreDriver;
+  private QueryState queryState;
   private String currentQuery;
   private int executionIndex;
 
-  public ReExecDriver(QueryState queryState, QueryInfo queryInfo, List<IReExecutionPlugin> plugins) {
-    this.queryState = queryState;
-    this.coreDriver = new Driver(queryState, queryInfo, null);
-    this.plugins = plugins;
-
-    coreDriver.getHookRunner().addSemanticAnalyzerHook(new HandleReOptimizationExplain());
-    plugins.forEach(p -> p.initialize(coreDriver));
-  }
-
-  @VisibleForTesting
-  public int compile(String command, boolean resetTaskIds) {
-    return coreDriver.compile(command, resetTaskIds);
-  }
-
-  private boolean firstExecution() {
-    return executionIndex == 0;
-  }
-
-  private void checkHookConfig() throws CommandProcessorException {
-    String strategies = coreDriver.getConf().getVar(ConfVars.HIVE_QUERY_REEXECUTION_STRATEGIES);
-    CBOFallbackStrategy fallbackStrategy =
-        CBOFallbackStrategy.valueOf(coreDriver.getConf().getVar(ConfVars.HIVE_CBO_FALLBACK_STRATEGY));
-    if (fallbackStrategy.allowsRetry() &&
-        (strategies == null || !Arrays.stream(strategies.split(",")).anyMatch("recompile_without_cbo"::equals))) {
-      String errorMsg = "Invalid configuration. If fallbackStrategy is set to " + fallbackStrategy.name() + " then " +
-          ConfVars.HIVE_QUERY_REEXECUTION_STRATEGIES.varname + " should contain 'recompile_without_cbo'";
-      CONSOLE.printError(errorMsg);
-      throw new CommandProcessorException(errorMsg);
-    }
-  }
-
-  @Override
-  public CommandProcessorResponse compileAndRespond(String statement) throws CommandProcessorException {
-    currentQuery = statement;
-
-    checkHookConfig();
-
-    int compileIndex = 0;
-    int maxCompilations = 1 + coreDriver.getConf().getIntVar(ConfVars.HIVE_QUERY_MAX_RECOMPILATION_COUNT);
-    while (true) {
-      compileIndex++;
-
-      final int currentIndex = compileIndex;
-      plugins.forEach(p -> p.beforeCompile(currentIndex));
-
-      LOG.info("Compile #{} of query", compileIndex);
-      CommandProcessorResponse cpr = null;
-      CommandProcessorException cpe = null;
-      try {
-        cpr = coreDriver.compileAndRespond(statement);
-      } catch (CommandProcessorException e) {
-        cpe = e;
-      }
-
-      final boolean success = cpe == null;
-      plugins.forEach(p -> p.afterCompile(success));
-
-      // If the compilation was successful return the result
-      if (success) {
-        return cpr;
-      }
-
-      if (compileIndex >= maxCompilations || !plugins.stream().anyMatch(p -> p.shouldReCompile(currentIndex))) {
-        // If we do not have to recompile, return the last error
-        throw cpe;
-      }
-
-      // Prepare for the recompile and start the next loop
-      plugins.forEach(IReExecutionPlugin::prepareToReCompile);
-    }
-  }
+  private ArrayList<IReExecutionPlugin> plugins;
 
   @Override
   public HiveConf getConf() {
     return queryState.getConf();
+  }
+
+  public boolean firstExecution() {
+    return executionIndex == 0;
+  }
+
+  public ReExecDriver(QueryState queryState, String userName, QueryInfo queryInfo,
+      ArrayList<IReExecutionPlugin> plugins) {
+    this.queryState = queryState;
+    coreDriver = new Driver(queryState, userName, queryInfo, null);
+    coreDriver.getHookRunner().addSemanticAnalyzerHook(new HandleReOptimizationExplain());
+    this.plugins = plugins;
+
+    for (IReExecutionPlugin p : plugins) {
+      p.initialize(coreDriver);
+    }
+  }
+
+  @Override
+  public int compile(String string) {
+    return coreDriver.compile(string);
+  }
+
+  @Override
+  public CommandProcessorResponse compileAndRespond(String statement) {
+    currentQuery = statement;
+    return coreDriver.compileAndRespond(statement);
   }
 
   @Override
@@ -152,69 +132,50 @@ public class ReExecDriver implements IDriver {
   }
 
   @Override
-  public QueryState getQueryState() {
-    return queryState;
-  }
-
-  @Override
   public QueryDisplay getQueryDisplay() {
     return coreDriver.getQueryDisplay();
   }
 
   @Override
-  public void setOperationId(String operationId) {
-    coreDriver.setOperationId(operationId);
+  public void setOperationId(String guid64) {
+    coreDriver.setOperationId(guid64);
   }
 
   @Override
-  public CommandProcessorResponse run() throws CommandProcessorException {
+  public CommandProcessorResponse run() {
     executionIndex = 0;
-    int maxExecutions = 1 + coreDriver.getConf().getIntVar(ConfVars.HIVE_QUERY_MAX_REEXECUTION_COUNT);
+    int maxExecutuions = 1 + coreDriver.getConf().getIntVar(ConfVars.HIVE_QUERY_MAX_REEXECUTION_COUNT);
+
 
     while (true) {
       executionIndex++;
-
       for (IReExecutionPlugin p : plugins) {
         p.beforeExecute(executionIndex, explainReOptimization);
       }
       coreDriver.getContext().setExecutionIndex(executionIndex);
       LOG.info("Execution #{} of query", executionIndex);
-      CommandProcessorResponse cpr = null;
-      CommandProcessorException cpe = null;
-      try {
-        cpr = coreDriver.run();
-      } catch (CommandProcessorException e) {
-        cpe = e;
-      }
+      CommandProcessorResponse cpr = coreDriver.run();
 
       PlanMapper oldPlanMapper = coreDriver.getPlanMapper();
-      boolean success = cpr != null;
-      plugins.forEach(p -> p.afterExecute(oldPlanMapper, success));
+      afterExecute(oldPlanMapper, cpr.getResponseCode() == 0);
 
       boolean shouldReExecute = explainReOptimization && executionIndex==1;
-      shouldReExecute |= cpr == null && plugins.stream().anyMatch(p -> p.shouldReExecute(executionIndex));
+      shouldReExecute |= cpr.getResponseCode() != 0 && shouldReExecute();
 
-      if (executionIndex >= maxExecutions || !shouldReExecute) {
-        if (cpr != null) {
-          return cpr;
-        } else {
-          throw cpe;
-        }
+      if (executionIndex >= maxExecutuions || !shouldReExecute) {
+        return cpr;
       }
       LOG.info("Preparing to re-execute query");
-      plugins.forEach(IReExecutionPlugin::prepareToReExecute);
-
-      try {
-        coreDriver.compileAndRespond(currentQuery);
-      } catch (CommandProcessorException e) {
+      prepareToReExecute();
+      CommandProcessorResponse compile_resp = coreDriver.compileAndRespond(currentQuery);
+      if (compile_resp.failed()) {
         LOG.error("Recompilation of the query failed; this is unexpected.");
         // FIXME: somehow place pointers that re-execution compilation have failed; the query have been successfully compiled before?
-        throw e;
+        return compile_resp;
       }
 
       PlanMapper newPlanMapper = coreDriver.getPlanMapper();
-      if (!explainReOptimization &&
-          !plugins.stream().anyMatch(p -> p.shouldReExecuteAfterCompile(executionIndex, oldPlanMapper, newPlanMapper))) {
+      if (!explainReOptimization && !shouldReExecuteAfterCompile(oldPlanMapper, newPlanMapper)) {
         LOG.info("re-running the query would probably not yield better results; returning with last error");
         // FIXME: retain old error; or create a new one?
         return cpr;
@@ -222,10 +183,45 @@ public class ReExecDriver implements IDriver {
     }
   }
 
+  private void afterExecute(PlanMapper planMapper, boolean success) {
+    for (IReExecutionPlugin p : plugins) {
+      p.afterExecute(planMapper, success);
+    }
+  }
+
+  private boolean shouldReExecuteAfterCompile(PlanMapper oldPlanMapper, PlanMapper newPlanMapper) {
+    boolean ret = false;
+    for (IReExecutionPlugin p : plugins) {
+      boolean shouldReExecute = p.shouldReExecute(executionIndex, oldPlanMapper, newPlanMapper);
+      LOG.debug("{}.shouldReExecuteAfterCompile = {}", p, shouldReExecute);
+      ret |= shouldReExecute;
+    }
+    return ret;
+  }
+
+  private boolean shouldReExecute() {
+    boolean ret = false;
+    for (IReExecutionPlugin p : plugins) {
+      boolean shouldReExecute = p.shouldReExecute(executionIndex);
+      LOG.debug("{}.shouldReExecute = {}", p, shouldReExecute);
+      ret |= shouldReExecute;
+    }
+    return ret;
+  }
+
   @Override
-  public CommandProcessorResponse run(String command) throws CommandProcessorException {
-    compileAndRespond(command);
+  public CommandProcessorResponse run(String command) {
+    CommandProcessorResponse r0 = compileAndRespond(command);
+    if (r0.getResponseCode() != 0) {
+      return r0;
+    }
     return run();
+  }
+
+  protected void prepareToReExecute() {
+    for (IReExecutionPlugin p : plugins) {
+      p.prepareToReExecute();
+    }
   }
 
   @Override
@@ -245,8 +241,8 @@ public class ReExecDriver implements IDriver {
 
   @Override
   public Schema getSchema() {
-    if (explainReOptimization) {
-      return new Schema(ExplainTask.getResultSchema(), null);
+    if(explainReOptimization) {
+      return coreDriver.getExplainSchema();
     }
     return coreDriver.getSchema();
   }
@@ -286,32 +282,4 @@ public class ReExecDriver implements IDriver {
     return explainReOptimization || coreDriver.hasResultSet();
   }
 
-  private class HandleReOptimizationExplain implements HiveSemanticAnalyzerHook {
-
-    @Override
-    public ASTNode preAnalyze(HiveSemanticAnalyzerHookContext context, ASTNode ast) throws SemanticException {
-      if (ast.getType() == HiveParser.TOK_EXPLAIN) {
-        int childCount = ast.getChildCount();
-        for (int i = 1; i < childCount; i++) {
-          if (ast.getChild(i).getType() == HiveParser.KW_REOPTIMIZATION) {
-            explainReOptimization = true;
-            ast.deleteChild(i);
-            break;
-          }
-        }
-        if (explainReOptimization && firstExecution()) {
-          Tree execTree = ast.getChild(0);
-          execTree.setParent(ast.getParent());
-          ast.getParent().setChild(0, execTree);
-          return (ASTNode) execTree;
-        }
-      }
-      return ast;
-    }
-
-    @Override
-    public void postAnalyze(HiveSemanticAnalyzerHookContext context, List<Task<?>> rootTasks)
-        throws SemanticException {
-    }
-  }
 }

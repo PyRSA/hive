@@ -20,11 +20,8 @@ package org.apache.hadoop.hive.ql.parse.repl.dump;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.ql.exec.repl.util.FileList;
-import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.metadata.Partition;
 import org.apache.hadoop.hive.ql.metadata.PartitionIterable;
-import org.apache.hadoop.hive.ql.parse.EximUtil.DataCopyPath;
 import org.apache.hadoop.hive.ql.parse.ReplicationSpec;
 import org.apache.hadoop.hive.ql.parse.repl.dump.io.FileOperations;
 import org.apache.hadoop.hive.ql.plan.ExportWork.MmContext;
@@ -32,7 +29,6 @@ import org.apache.hadoop.hive.ql.session.SessionState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -40,7 +36,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.Future;
 
 import static org.apache.hadoop.hive.ql.parse.repl.dump.TableExport.Paths;
 
@@ -75,14 +70,10 @@ class PartitionExport {
     this.callersSession = SessionState.get();
   }
 
-  List<DataCopyPath> write(final ReplicationSpec forReplicationSpec, boolean isExportTask,
-                                   FileList fileList, boolean dataCopyAtLoad)
-          throws InterruptedException, HiveException {
-    List<Future<?>> futures = new LinkedList<>();
-    List<DataCopyPath> managedTableCopyPaths = new LinkedList<>();
+  void write(final ReplicationSpec forReplicationSpec) throws InterruptedException {
     ExecutorService producer = Executors.newFixedThreadPool(1,
         new ThreadFactoryBuilder().setNameFormat("partition-submitter-thread-%d").build());
-    futures.add(producer.submit(() -> {
+    producer.submit(() -> {
       SessionState.setCurrentSessionState(callersSession);
       for (Partition partition : partitionIterable) {
         try {
@@ -92,7 +83,7 @@ class PartitionExport {
               "Error while queuing up the partitions for export of data files", e);
         }
       }
-    }));
+    });
     producer.shutdown();
 
     ThreadFactory namingThreadFactory =
@@ -111,40 +102,25 @@ class PartitionExport {
         continue;
       }
       LOG.debug("scheduling partition dump {}", partition.getName());
-      futures.add(consumer.submit(() -> {
+      consumer.submit(() -> {
         String partitionName = partition.getName();
         String threadName = Thread.currentThread().getName();
         LOG.debug("Thread: {}, start partition dump {}", threadName, partitionName);
         try {
-          // Data Copy in case of ExportTask or when dataCopyAtLoad is true
+          // this the data copy
           List<Path> dataPathList = Utils.getDataPathList(partition.getDataLocation(),
                   forReplicationSpec, hiveConf);
-          Path rootDataDumpDir = isExportTask
-                  ? paths.partitionMetadataExportDir(partitionName) : paths.partitionDataExportDir(partitionName);
+          Path rootDataDumpDir = paths.partitionExportDir(partitionName);
           new FileOperations(dataPathList, rootDataDumpDir, distCpDoAsUser, hiveConf, mmCtx)
-                  .export(isExportTask, dataCopyAtLoad);
-          Path dataDumpDir = new Path(paths.dataExportRootDir(), partitionName);
+                  .export(forReplicationSpec);
           LOG.debug("Thread: {}, finish partition dump {}", threadName, partitionName);
-          if (!(isExportTask || dataCopyAtLoad)) {
-            fileList.add(new DataCopyPath(forReplicationSpec, partition.getDataLocation(),
-                    dataDumpDir).convertToString());
-          }
         } catch (Exception e) {
-          throw new RuntimeException(e.getMessage(), e);
+          throw new RuntimeException("Error while export of data files", e);
         }
-      }));
+      });
     }
     consumer.shutdown();
-    for (Future<?> future : futures) {
-      try {
-        future.get();
-      } catch (Exception e) {
-        LOG.error("failed", e.getCause());
-        throw new HiveException(e.getCause().getMessage(), e.getCause());
-      }
-    }
     // may be drive this via configuration as well.
     consumer.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
-    return managedTableCopyPaths;
   }
 }

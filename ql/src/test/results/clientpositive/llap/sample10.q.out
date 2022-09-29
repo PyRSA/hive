@@ -21,7 +21,6 @@ POSTHOOK: Input: default@srcpart@ds=2008-04-08/hr=11
 POSTHOOK: Input: default@srcpart@ds=2008-04-08/hr=12
 POSTHOOK: Input: default@srcpart@ds=2008-04-09/hr=11
 POSTHOOK: Input: default@srcpart@ds=2008-04-09/hr=12
-POSTHOOK: Output: default@srcpartbucket
 POSTHOOK: Output: default@srcpartbucket@ds=2008-04-08/hr=11
 POSTHOOK: Output: default@srcpartbucket@ds=2008-04-08/hr=12
 POSTHOOK: Output: default@srcpartbucket@ds=2008-04-09/hr=11
@@ -69,7 +68,6 @@ STAGE PLANS:
             Map Operator Tree:
                 TableScan
                   alias: srcpartbucket
-                  filterExpr: ds is not null (type: boolean)
                   Statistics: Num rows: 40 Data size: 10760 Basic stats: COMPLETE Column stats: COMPLETE
                   GatherStats: false
                   Filter Operator
@@ -84,18 +82,15 @@ STAGE PLANS:
                       Group By Operator
                         aggregations: count(1)
                         keys: ds (type: string)
-                        minReductionHashAggr: 0.9
                         mode: hash
                         outputColumnNames: _col0, _col1
-                        Statistics: Num rows: 2 Data size: 384 Basic stats: COMPLETE Column stats: COMPLETE
+                        Statistics: Num rows: 1 Data size: 192 Basic stats: COMPLETE Column stats: COMPLETE
                         Reduce Output Operator
-                          bucketingVersion: 2
                           key expressions: _col0 (type: string)
-                          null sort order: z
-                          numBuckets: -1
+                          null sort order: a
                           sort order: +
                           Map-reduce partition columns: _col0 (type: string)
-                          Statistics: Num rows: 2 Data size: 384 Basic stats: COMPLETE Column stats: COMPLETE
+                          Statistics: Num rows: 1 Data size: 192 Basic stats: COMPLETE Column stats: COMPLETE
                           tag: -1
                           value expressions: _col1 (type: bigint)
                           auto parallelism: true
@@ -113,17 +108,25 @@ STAGE PLANS:
                     ds 2008-04-08
                     hr 11
                   properties:
+                    COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                     bucket_count 4
                     bucket_field_name key
                     column.name.delimiter ,
                     columns key,value
+                    columns.comments 
                     columns.types string:string
 #### A masked pattern was here ####
                     name default.srcpartbucket
+                    numFiles 3
+                    numRows 10
                     partition_columns ds/hr
                     partition_columns.types string:string
+                    rawDataSize 60
+                    serialization.ddl struct srcpartbucket { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe
+                    totalSize 295
+#### A masked pattern was here ####
                   serde: org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe
                 
                     input format: org.apache.hadoop.hive.ql.io.RCFileInputFormat
@@ -140,8 +143,10 @@ STAGE PLANS:
                       name default.srcpartbucket
                       partition_columns ds/hr
                       partition_columns.types string:string
+                      serialization.ddl struct srcpartbucket { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe
+#### A masked pattern was here ####
                     serde: org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe
                     name: default.srcpartbucket
                   name: default.srcpartbucket
@@ -154,17 +159,25 @@ STAGE PLANS:
                     ds 2008-04-08
                     hr 12
                   properties:
+                    COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                     bucket_count 4
                     bucket_field_name key
                     column.name.delimiter ,
                     columns key,value
+                    columns.comments 
                     columns.types string:string
 #### A masked pattern was here ####
                     name default.srcpartbucket
+                    numFiles 3
+                    numRows 10
                     partition_columns ds/hr
                     partition_columns.types string:string
+                    rawDataSize 60
+                    serialization.ddl struct srcpartbucket { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe
+                    totalSize 295
+#### A masked pattern was here ####
                   serde: org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe
                 
                     input format: org.apache.hadoop.hive.ql.io.RCFileInputFormat
@@ -181,8 +194,10 @@ STAGE PLANS:
                       name default.srcpartbucket
                       partition_columns ds/hr
                       partition_columns.types string:string
+                      serialization.ddl struct srcpartbucket { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe
+#### A masked pattern was here ####
                     serde: org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe
                     name: default.srcpartbucket
                   name: default.srcpartbucket
@@ -195,17 +210,25 @@ STAGE PLANS:
                     ds 2008-04-09
                     hr 11
                   properties:
+                    COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                     bucket_count 4
                     bucket_field_name key
                     column.name.delimiter ,
                     columns key,value
+                    columns.comments 
                     columns.types string:string
 #### A masked pattern was here ####
                     name default.srcpartbucket
+                    numFiles 3
+                    numRows 10
                     partition_columns ds/hr
                     partition_columns.types string:string
+                    rawDataSize 60
+                    serialization.ddl struct srcpartbucket { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe
+                    totalSize 295
+#### A masked pattern was here ####
                   serde: org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe
                 
                     input format: org.apache.hadoop.hive.ql.io.RCFileInputFormat
@@ -222,8 +245,10 @@ STAGE PLANS:
                       name default.srcpartbucket
                       partition_columns ds/hr
                       partition_columns.types string:string
+                      serialization.ddl struct srcpartbucket { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe
+#### A masked pattern was here ####
                     serde: org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe
                     name: default.srcpartbucket
                   name: default.srcpartbucket
@@ -236,17 +261,25 @@ STAGE PLANS:
                     ds 2008-04-09
                     hr 12
                   properties:
+                    COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                     bucket_count 4
                     bucket_field_name key
                     column.name.delimiter ,
                     columns key,value
+                    columns.comments 
                     columns.types string:string
 #### A masked pattern was here ####
                     name default.srcpartbucket
+                    numFiles 3
+                    numRows 10
                     partition_columns ds/hr
                     partition_columns.types string:string
+                    rawDataSize 60
+                    serialization.ddl struct srcpartbucket { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe
+                    totalSize 295
+#### A masked pattern was here ####
                   serde: org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe
                 
                     input format: org.apache.hadoop.hive.ql.io.RCFileInputFormat
@@ -263,8 +296,10 @@ STAGE PLANS:
                       name default.srcpartbucket
                       partition_columns ds/hr
                       partition_columns.types string:string
+                      serialization.ddl struct srcpartbucket { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe
+#### A masked pattern was here ####
                     serde: org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe
                     name: default.srcpartbucket
                   name: default.srcpartbucket
@@ -282,14 +317,12 @@ STAGE PLANS:
                 keys: KEY._col0 (type: string)
                 mode: mergepartial
                 outputColumnNames: _col0, _col1
-                Statistics: Num rows: 2 Data size: 384 Basic stats: COMPLETE Column stats: COMPLETE
+                Statistics: Num rows: 1 Data size: 192 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
-                  bucketingVersion: 2
                   key expressions: _col0 (type: string)
-                  null sort order: z
-                  numBuckets: -1
+                  null sort order: a
                   sort order: +
-                  Statistics: Num rows: 2 Data size: 384 Basic stats: COMPLETE Column stats: COMPLETE
+                  Statistics: Num rows: 1 Data size: 192 Basic stats: COMPLETE Column stats: COMPLETE
                   tag: -1
                   value expressions: _col1 (type: bigint)
                   auto parallelism: false
@@ -300,20 +333,18 @@ STAGE PLANS:
               Select Operator
                 expressions: KEY.reducesinkkey0 (type: string), VALUE._col0 (type: bigint)
                 outputColumnNames: _col0, _col1
-                Statistics: Num rows: 2 Data size: 384 Basic stats: COMPLETE Column stats: COMPLETE
+                Statistics: Num rows: 1 Data size: 192 Basic stats: COMPLETE Column stats: COMPLETE
                 File Output Operator
-                  bucketingVersion: 2
                   compressed: false
                   GlobalTableId: 0
 #### A masked pattern was here ####
                   NumFilesPerFileSink: 1
-                  Statistics: Num rows: 2 Data size: 384 Basic stats: COMPLETE Column stats: COMPLETE
+                  Statistics: Num rows: 1 Data size: 192 Basic stats: COMPLETE Column stats: COMPLETE
 #### A masked pattern was here ####
                   table:
                       input format: org.apache.hadoop.mapred.SequenceFileInputFormat
                       output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
                       properties:
-                        bucketing_version -1
                         columns _col0,_col1
                         columns.types string:bigint
                         escape.delim \

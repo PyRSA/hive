@@ -1,5 +1,3 @@
---! qt:dataset:src
---! qt:dataset:part
 set hive.stats.column.autogather=false;
 set hive.mapred.mode=nonstrict;
 set hive.exec.infer.bucket.sort=true;

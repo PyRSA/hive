@@ -20,6 +20,7 @@ package org.apache.hadoop.hive.ql.exec;
 
 import java.io.Serializable;
 
+import org.apache.hadoop.hive.ql.DriverContext;
 import org.apache.hadoop.hive.ql.plan.DependencyCollectionWork;
 import org.apache.hadoop.hive.ql.plan.api.StageType;
 
@@ -38,7 +39,7 @@ public class DependencyCollectionTask extends Task<DependencyCollectionWork>
   }
 
   @Override
-  public int execute() {
+  public int execute(DriverContext driverContext) {
     return 0;
   }
 

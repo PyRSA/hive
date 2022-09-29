@@ -1,5 +1,3 @@
---! qt:dataset:alltypesorc
-
 set hive.mapred.mode=nonstrict;
 set hive.explain.user=false;
 set hive.fetch.task.conversion=none;
@@ -156,7 +154,7 @@ FROM alltypesorc_wrong
 ORDER BY c1;
 
 SELECT
-  stimestamp1, to_unix_timestamp(stimestamp1) AS c1,
+  to_unix_timestamp(stimestamp1) AS c1,
   year(stimestamp1),
   month(stimestamp1),
   day(stimestamp1),

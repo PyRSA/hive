@@ -1,6 +1,4 @@
---! qt:dataset:src
 set hive.fetch.task.conversion=more;
-set hive.local.time.zone=UTC;
 
 -- 'true' cases:
 
@@ -20,11 +18,7 @@ SELECT CAST(CAST('TrUe' AS STRING) AS BOOLEAN) FROM src tablesample (1 rows);
 
 SELECT CAST(CAST('2011-05-06 07:08:09' as timestamp) AS BOOLEAN) FROM src tablesample (1 rows);
 
-set hive.local.time.zone=Asia/Bangkok;
-SELECT CAST(CAST(0 as timestamp) AS BOOLEAN) FROM src tablesample (1 rows);
-set hive.local.time.zone=UTC;
-
--- 'false' cases:
+-- 'false' cases: 
 
 SELECT CAST(CAST(0 AS TINYINT) AS BOOLEAN) FROM src tablesample (1 rows);
 SELECT CAST(CAST(0 AS SMALLINT) AS BOOLEAN) FROM src tablesample (1 rows);
@@ -56,5 +50,3 @@ SELECT CAST(CAST(NULL AS DECIMAL) AS BOOLEAN) FROM src tablesample (1 rows);
 
 SELECT CAST(CAST(NULL AS STRING) AS BOOLEAN) FROM src tablesample (1 rows);
 SELECT CAST(CAST(NULL as timestamp) AS BOOLEAN) FROM src tablesample (1 rows);
-
-set hive.local.time.zone=LOCAL;

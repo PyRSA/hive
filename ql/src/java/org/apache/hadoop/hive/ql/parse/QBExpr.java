@@ -18,7 +18,6 @@
 
 package org.apache.hadoop.hive.ql.parse;
 
-import org.apache.hadoop.hive.common.StringInternUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,23 +43,17 @@ public class QBExpr {
   private QBExpr qbexpr2;
   private QB qb;
   private String alias;
-  private ASTNode subQueryRoot;
 
   public String getAlias() {
     return alias;
   }
 
   public void setAlias(String alias) {
-    this.alias = StringInternUtils.internIfNotNull(alias);
+    this.alias = alias;
   }
 
   public QBExpr(String alias) {
-    this(alias, null);
-  }
-
-  public QBExpr(String alias, ASTNode subQueryRoot) {
-    setAlias(alias);
-    this.subQueryRoot = subQueryRoot;
+    this.alias = alias;
   }
 
   public QBExpr(QB qb) {
@@ -104,10 +97,6 @@ public class QBExpr {
 
   public QBExpr getQBExpr2() {
     return qbexpr2;
-  }
-
-  public ASTNode getSubQueryRoot() {
-    return subQueryRoot;
   }
 
   public void print(String msg) {

@@ -20,7 +20,6 @@ package org.apache.hadoop.hive.ql.exec.vector.mapjoin.fast;
 
 import java.io.IOException;
 
-import org.apache.hadoop.hive.ql.plan.TableDesc;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.ql.exec.JoinUtil;
@@ -48,27 +47,13 @@ public class VectorMapJoinFastLongHashSet
     return new VectorMapJoinFastHashSet.HashSetResult();
   }
 
-  @Override
-  public void putRow(long hashCode, BytesWritable currentKey, BytesWritable currentValue)
-      throws HiveException, IOException {
-
-    // Ignore NULL keys (HashSet not used for FULL OUTER).
-    adaptPutRow(hashCode, currentKey, currentValue);
-  }
-
-  @Override
-  public boolean containsLongKey(long currentKey) {
-    return containsKey(currentKey);
-  }
-
   /*
    * A Unit Test convenience method for putting the key into the hash table using the
    * actual type.
    */
   @VisibleForTesting
   public void testPutRow(long currentKey) throws HiveException, IOException {
-    long hashCode = HashCodeUtil.calculateLongHashCode(currentKey);
-    add(hashCode, currentKey, null);
+    add(currentKey, null);
   }
 
   @Override
@@ -91,18 +76,11 @@ public class VectorMapJoinFastLongHashSet
     optimizedHashSetResult.forget();
 
     long hashCode = HashCodeUtil.calculateLongHashCode(key);
-    int pairIndex = findReadSlot(key, hashCode);
+    long existance = findReadSlot(key, hashCode);
     JoinUtil.JoinResult joinResult;
-    if (pairIndex == -1) {
+    if (existance == -1) {
       joinResult = JoinUtil.JoinResult.NOMATCH;
     } else {
-      /*
-       * NOTE: Support for trackMatched not needed yet for Set.
-
-      if (matchTracker != null) {
-        matchTracker.trackMatch(pairIndex / 2);
-      }
-      */
       joinResult = JoinUtil.JoinResult.MATCH;
     }
 
@@ -113,14 +91,10 @@ public class VectorMapJoinFastLongHashSet
   }
 
   public VectorMapJoinFastLongHashSet(
-      boolean isFullOuter,
-      boolean minMaxEnabled,
-      HashTableKeyType hashTableKeyType,
-      int initialCapacity, float loadFactor, int writeBuffersSize, long estimatedKeyCount, TableDesc tableDesc) {
-    super(
-        isFullOuter,
-        minMaxEnabled, hashTableKeyType,
-        initialCapacity, loadFactor, writeBuffersSize, estimatedKeyCount, tableDesc);
+      boolean minMaxEnabled, boolean isOuterJoin, HashTableKeyType hashTableKeyType,
+      int initialCapacity, float loadFactor, int writeBuffersSize, long estimatedKeyCount) {
+    super(minMaxEnabled, isOuterJoin, hashTableKeyType,
+        initialCapacity, loadFactor, writeBuffersSize, estimatedKeyCount);
   }
 
   @Override

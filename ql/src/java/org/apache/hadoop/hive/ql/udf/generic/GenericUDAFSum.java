@@ -184,9 +184,6 @@ public class GenericUDAFSum extends AbstractGenericUDAFResolver {
       }
 
       if (isWindowingDistinct()) {
-        if (agg.uniqueObjects == null) {
-          agg.uniqueObjects = new HashSet<ObjectInspectorObject>();
-        }
         HashSet<ObjectInspectorObject> uniqueObjs = agg.uniqueObjects;
         ObjectInspectorObject obj = input instanceof ObjectInspectorObject ?
             (ObjectInspectorObject)input :
@@ -269,7 +266,7 @@ public class GenericUDAFSum extends AbstractGenericUDAFResolver {
       SumAgg<HiveDecimalWritable> bdAgg = (SumAgg<HiveDecimalWritable>) agg;
       bdAgg.empty = true;
       bdAgg.sum = new HiveDecimalWritable(0);
-      bdAgg.uniqueObjects = null;
+      bdAgg.uniqueObjects = new HashSet<ObjectInspectorObject>();
     }
 
     boolean warned = false;
@@ -370,10 +367,8 @@ public class GenericUDAFSum extends AbstractGenericUDAFResolver {
         WindowFrameDef winFrame,
         PTFPartition partition,
         List<PTFExpressionDef> parameters,
-        ObjectInspector outputOI,
-        boolean nullsLast) {
-      return new BasePartitionEvaluator.SumPartitionHiveDecimalEvaluator(this, winFrame,
-          partition, parameters, outputOI, nullsLast);
+        ObjectInspector outputOI) {
+      return new BasePartitionEvaluator.SumPartitionHiveDecimalEvaluator(this, winFrame, partition, parameters, outputOI);
     }
   }
 
@@ -415,7 +410,7 @@ public class GenericUDAFSum extends AbstractGenericUDAFResolver {
       SumDoubleAgg myagg = (SumDoubleAgg) agg;
       myagg.empty = true;
       myagg.sum = 0.0;
-      myagg.uniqueObjects = null;
+      myagg.uniqueObjects = new HashSet<ObjectInspectorObject>();
     }
 
     boolean warned = false;
@@ -492,7 +487,7 @@ public class GenericUDAFSum extends AbstractGenericUDAFResolver {
             org.apache.hadoop.hive.ql.udf.generic.GenericUDAFStreamingEvaluator.SumAvgEnhancer<DoubleWritable, Double>.SumAvgStreamingState ss)
             throws HiveException {
           SumDoubleAgg myagg = (SumDoubleAgg) ss.wrappedBuf;
-          return myagg.empty ? null : myagg.sum;
+          return myagg.empty ? null : new Double(myagg.sum);
         }
 
       };
@@ -503,10 +498,8 @@ public class GenericUDAFSum extends AbstractGenericUDAFResolver {
         WindowFrameDef winFrame,
         PTFPartition partition,
         List<PTFExpressionDef> parameters,
-        ObjectInspector outputOI,
-        boolean nullsLast) {
-      return new BasePartitionEvaluator.SumPartitionDoubleEvaluator(this, winFrame, partition,
-          parameters, outputOI, nullsLast);
+        ObjectInspector outputOI) {
+      return new BasePartitionEvaluator.SumPartitionDoubleEvaluator(this, winFrame, partition, parameters, outputOI);
     }
   }
 
@@ -547,7 +540,7 @@ public class GenericUDAFSum extends AbstractGenericUDAFResolver {
       SumLongAgg myagg = (SumLongAgg) agg;
       myagg.empty = true;
       myagg.sum = 0L;
-      myagg.uniqueObjects = null;
+      myagg.uniqueObjects = new HashSet<ObjectInspectorObject>();
     }
 
     private boolean warned = false;
@@ -621,7 +614,7 @@ public class GenericUDAFSum extends AbstractGenericUDAFResolver {
             org.apache.hadoop.hive.ql.udf.generic.GenericUDAFStreamingEvaluator.SumAvgEnhancer<LongWritable, Long>.SumAvgStreamingState ss)
             throws HiveException {
           SumLongAgg myagg = (SumLongAgg) ss.wrappedBuf;
-          return myagg.empty ? null : myagg.sum;
+          return myagg.empty ? null : new Long(myagg.sum);
         }
       };
     }
@@ -631,10 +624,8 @@ public class GenericUDAFSum extends AbstractGenericUDAFResolver {
         WindowFrameDef winFrame,
         PTFPartition partition,
         List<PTFExpressionDef> parameters,
-        ObjectInspector outputOI,
-        boolean nullsLast) {
-      return new BasePartitionEvaluator.SumPartitionLongEvaluator(this, winFrame, partition,
-          parameters, outputOI, nullsLast);
+        ObjectInspector outputOI) {
+      return new BasePartitionEvaluator.SumPartitionLongEvaluator(this, winFrame, partition, parameters, outputOI);
     }
   }
 }

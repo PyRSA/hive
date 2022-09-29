@@ -18,13 +18,12 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.expressions;
 
+import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Random;
 
-import org.apache.hadoop.hive.common.type.Date;
-import org.apache.hadoop.hive.conf.HiveConf;
-import org.junit.Assert;
+import junit.framework.Assert;
 
 import org.apache.hadoop.hive.serde2.RandomTypeUtil;
 import org.apache.hadoop.hive.common.type.Timestamp;
@@ -64,8 +63,6 @@ import org.junit.Test;
 
 public class TestVectorMathFunctions {
 
-  private HiveConf hiveConf = new HiveConf();
-
   private static final double eps = 1.0e-7;
   private static boolean equalsWithinTolerance(double a, double b) {
     return Math.abs(a - b) < eps;
@@ -78,13 +75,13 @@ public class TestVectorMathFunctions {
     DoubleColumnVector resultV = (DoubleColumnVector) b.cols[1];
     b.cols[0].noNulls = true;
     expr.evaluate(b);
-    Assert.assertEquals(-2d, resultV.vector[0], Double.MIN_VALUE);
-    Assert.assertEquals(-1d, resultV.vector[1], Double.MIN_VALUE);
-    Assert.assertEquals(0d, resultV.vector[2], Double.MIN_VALUE);
-    Assert.assertEquals(0d, resultV.vector[3], Double.MIN_VALUE);
-    Assert.assertEquals(1d, resultV.vector[4], Double.MIN_VALUE);
-    Assert.assertEquals(1d, resultV.vector[5], Double.MIN_VALUE);
-    Assert.assertEquals(2d, resultV.vector[6], Double.MIN_VALUE);
+    Assert.assertEquals(-2d, resultV.vector[0]);
+    Assert.assertEquals(-1d, resultV.vector[1]);
+    Assert.assertEquals(0d, resultV.vector[2]);
+    Assert.assertEquals(0d, resultV.vector[3]);
+    Assert.assertEquals(1d, resultV.vector[4]);
+    Assert.assertEquals(1d, resultV.vector[5]);
+    Assert.assertEquals(2d, resultV.vector[6]);
 
     // spot check null propagation
     b.cols[0].noNulls = false;
@@ -98,13 +95,13 @@ public class TestVectorMathFunctions {
     b.cols[0].isRepeating = true;
     resultV.isRepeating = false;
     expr.evaluate(b);
-    Assert.assertEquals(-2d, resultV.vector[0], Double.MIN_VALUE);
+    Assert.assertEquals(-2d, resultV.vector[0]);
     Assert.assertEquals(true, resultV.isRepeating);
 
     resultV.isRepeating = false;
     b.cols[0].noNulls = true;
     expr.evaluate(b);
-    Assert.assertEquals(-2d, resultV.vector[0], Double.MIN_VALUE);
+    Assert.assertEquals(-2d, resultV.vector[0]);
     Assert.assertEquals(true, resultV.isRepeating);
   }
 
@@ -116,23 +113,21 @@ public class TestVectorMathFunctions {
     DoubleColumnVector resultV = (DoubleColumnVector) b.cols[1];
 
     // Verify result is rounded to 4 digits
-    Assert.assertEquals(1.2346d, resultV.vector[7], Double.MIN_VALUE);
+    Assert.assertEquals(1.2346d, resultV.vector[7]);
   }
 
-  private static final int DAYS_LIMIT = 365 * 9999;
-  //approximate, so we get some negative values:
-  private static final int SMALLEST_EPOCH_DAY = -365 * 1969;
+  static int DAYS_LIMIT = 365 * 9999;
 
   public static VectorizedRowBatch getVectorizedRowBatchDateInTimestampOut(int[] intValues) {
     Random r = new Random(12099);
     VectorizedRowBatch batch = new VectorizedRowBatch(2);
     LongColumnVector inV;
     TimestampColumnVector outV;
-    inV = new LongColumnVector(intValues.length);
-    outV = new TimestampColumnVector(intValues.length);
+    inV = new LongColumnVector();
+    outV = new TimestampColumnVector();
 
     for (int i = 0; i < intValues.length; i++) {
-      intValues[i] = SMALLEST_EPOCH_DAY + r.nextInt() % DAYS_LIMIT;
+      intValues[i] = r.nextInt() % DAYS_LIMIT;
       inV.vector[i] = intValues[i];
     }
 
@@ -140,36 +135,6 @@ public class TestVectorMathFunctions {
     batch.cols[1] = outV;
 
     batch.size = intValues.length;
-    return batch;
-  }
-
-  public static VectorizedRowBatch getVectorizedRowBatchDateInStringOut(int[] intValues) {
-    // get date in timestamp out, and change timestamp out to string out
-    VectorizedRowBatch batch =  getVectorizedRowBatchDateInTimestampOut(intValues);
-    BytesColumnVector outV = new BytesColumnVector(intValues.length);
-    batch.cols[1] = outV;
-    return batch;
-  }
-
-  // For testing CastDateToStringWithFormat with
-  // TestVectorTypeCastsWithFormat#testCastDateToStringWithFormat
-  public static VectorizedRowBatch getVectorizedRowBatchDateInStringOutFormatted() {
-    VectorizedRowBatch batch = new VectorizedRowBatch(2);
-    LongColumnVector dateColumnV;
-    BytesColumnVector stringColumnV;
-    dateColumnV = new LongColumnVector();
-    stringColumnV = new BytesColumnVector();
-
-    dateColumnV.vector[0] = Date.valueOf("2019-12-31").toEpochDay();
-    dateColumnV.vector[1] = Date.valueOf("1776-07-04").toEpochDay();
-    dateColumnV.vector[2] = Date.valueOf("2012-02-29").toEpochDay();
-    dateColumnV.vector[3] = Date.valueOf("1580-08-08").toEpochDay();
-    dateColumnV.vector[4] = Date.valueOf("0005-01-01").toEpochDay();
-    dateColumnV.vector[5] = Date.valueOf("9999-12-31").toEpochDay();
-
-    batch.cols[0] = dateColumnV;
-    batch.cols[1] = stringColumnV;
-    batch.size = 6;
     return batch;
   }
 
@@ -313,42 +278,6 @@ public class TestVectorMathFunctions {
     return batch;
   }
 
-  public static VectorizedRowBatch getVectorizedRowBatchStringInTimestampOutFormatted() {
-    VectorizedRowBatch batch = new VectorizedRowBatch(2);
-    BytesColumnVector inV;
-    inV = new BytesColumnVector();
-    inV.initBuffer();
-    inV.setVal(0, StandardCharsets.UTF_8.encode("2019-12-31 00:00:00.999999999").array());
-    inV.setVal(1, StandardCharsets.UTF_8.encode("1776-07-04 17:07:06.177617761").array());
-    inV.setVal(2, StandardCharsets.UTF_8.encode("2012-02-29 23:59:59.999999999").array());
-    inV.setVal(3, StandardCharsets.UTF_8.encode("1580-08-08 00:00:00.0").array());
-    inV.setVal(4, StandardCharsets.UTF_8.encode("0005-01-01 00:00:00.0").array());
-    inV.setVal(5, StandardCharsets.UTF_8.encode("9999-12-31 23:59:59.999999999").array());
-
-    batch.cols[0] = inV;
-
-    batch.size = 6;
-    return batch;
-  }
-
-  public static VectorizedRowBatch getVectorizedRowBatchStringInDateOutFormatted() {
-    VectorizedRowBatch batch = new VectorizedRowBatch(2);
-    BytesColumnVector inV;
-    inV = new BytesColumnVector();
-    inV.initBuffer();
-    inV.setVal(0, StandardCharsets.UTF_8.encode("19/12/31").array());
-    inV.setVal(1, StandardCharsets.UTF_8.encode("1776--07--04").array());
-    inV.setVal(2, StandardCharsets.UTF_8.encode("2012/02/29").array());
-    inV.setVal(3, StandardCharsets.UTF_8.encode("1580/08/08").array());
-    inV.setVal(4, StandardCharsets.UTF_8.encode("0005/01/01").array());
-    inV.setVal(5, StandardCharsets.UTF_8.encode("9999/12/31").array());
-
-    batch.cols[0] = inV;
-
-    batch.size = 6;
-    return batch;
-  }
-
   public static VectorizedRowBatch getVectorizedRowBatchTimestampInLongOut(long[] longValues) {
     Random r = new Random(345);
     VectorizedRowBatch batch = new VectorizedRowBatch(2);
@@ -367,55 +296,6 @@ public class TestVectorMathFunctions {
 
     batch.size = longValues.length;
     return batch;
-  }
-
-
-  public static VectorizedRowBatch getVectorizedRowBatchTimestampInStringOut(
-      long[] epochSecondValues, int[] nanoValues) {
-    Random r = new Random(345);
-    VectorizedRowBatch batch = new VectorizedRowBatch(2);
-    batch.size = epochSecondValues.length;
-
-    TimestampColumnVector inV;
-    BytesColumnVector outV;
-    inV = new TimestampColumnVector(batch.size);
-    outV = new BytesColumnVector(batch.size);
-
-    for (int i = 0; i < batch.size; i++) {
-      Timestamp randTimestamp = RandomTypeUtil.getRandTimestamp(r);
-      epochSecondValues[i] = randTimestamp.toEpochSecond();
-      nanoValues[i] = randTimestamp.getNanos();
-      inV.set(i, randTimestamp.toSqlTimestamp());
-    }
-
-    batch.cols[0] = inV;
-    batch.cols[1] = outV;
-
-    return batch;
-  }
-
-  public static VectorizedRowBatch getVectorizedRowBatchTimestampInStringOutFormatted() {
-    VectorizedRowBatch batch = new VectorizedRowBatch(2);
-    TimestampColumnVector timestampColumnV;
-    BytesColumnVector stringColumnV;
-    timestampColumnV = new TimestampColumnVector();
-    stringColumnV = new BytesColumnVector();
-
-    timestampColumnV.set(0, getSqlTimestamp("2019-12-31 19:20:21.999999999"));
-    timestampColumnV.set(1, getSqlTimestamp("1776-07-04 17:07:06.177617761"));
-    timestampColumnV.set(2, getSqlTimestamp("2012-02-29 23:59:59.999999999"));
-    timestampColumnV.set(3, getSqlTimestamp("1580-08-08 00:00:00"));
-    timestampColumnV.set(4, getSqlTimestamp("0005-01-01 00:00:00"));
-    timestampColumnV.set(5, getSqlTimestamp("9999-12-31 23:59:59.999999999"));
-
-    batch.cols[0] = timestampColumnV;
-    batch.cols[1] = stringColumnV;
-    batch.size = 6;
-    return batch;
-  }
-
-  private static java.sql.Timestamp getSqlTimestamp(String s) {
-    return Timestamp.valueOf(s).toSqlTimestamp();
   }
 
   static long SECONDS_LIMIT = 60L * 24L * 365L * 9999L;
@@ -451,12 +331,15 @@ public class TestVectorMathFunctions {
     inL.vector[1] = 255;
     inL.vector[2] = 0;
     inS.initBuffer();
-
-    inS.setVal(0, "00".getBytes(StandardCharsets.UTF_8), 0, 2);
-    inS.setVal(1, "3232".getBytes(StandardCharsets.UTF_8), 0, 4);
-    byte[] bad = "bad data".getBytes(StandardCharsets.UTF_8);
-    inS.setVal(2, bad, 0, bad.length);
-
+    try {
+      inS.setVal(0, "00".getBytes("UTF-8"), 0, 2);
+      inS.setVal(1, "3232".getBytes("UTF-8"), 0, 4);
+      byte[] bad = "bad data".getBytes("UTF-8");
+      inS.setVal(2, bad, 0, bad.length);
+    } catch (UnsupportedEncodingException e) {
+      e.printStackTrace();
+      Assert.assertTrue(false);
+    }
 
     batch.cols[0] = inS;
     batch.cols[1] = inL;
@@ -480,7 +363,7 @@ public class TestVectorMathFunctions {
     b.cols[0].noNulls = true;
     VectorExpression expr = new FuncSinDoubleToDouble(0, 1);
     expr.evaluate(b);
-    Assert.assertEquals(Math.sin(0.5d), resultV.vector[4], Double.MIN_VALUE);
+    Assert.assertEquals(Math.sin(0.5d), resultV.vector[4]);
   }
 
   @Test
@@ -490,7 +373,7 @@ public class TestVectorMathFunctions {
     b.cols[0].noNulls = true;
     VectorExpression expr = new FuncCosDoubleToDouble(0, 1);
     expr.evaluate(b);
-    Assert.assertEquals(Math.cos(0.5d), resultV.vector[4], Double.MIN_VALUE);
+    Assert.assertEquals(Math.cos(0.5d), resultV.vector[4]);
   }
 
   @Test
@@ -500,7 +383,7 @@ public class TestVectorMathFunctions {
     b.cols[0].noNulls = true;
     VectorExpression expr = new FuncTanDoubleToDouble(0, 1);
     expr.evaluate(b);
-    Assert.assertEquals(Math.tan(0.5d), resultV.vector[4], Double.MIN_VALUE);
+    Assert.assertEquals(Math.tan(0.5d), resultV.vector[4]);
   }
 
   @Test
@@ -510,7 +393,7 @@ public class TestVectorMathFunctions {
     b.cols[0].noNulls = true;
     VectorExpression expr = new FuncASinDoubleToDouble(0, 1);
     expr.evaluate(b);
-    Assert.assertEquals(Math.asin(0.5d), resultV.vector[4], Double.MIN_VALUE);
+    Assert.assertEquals(Math.asin(0.5d), resultV.vector[4]);
   }
 
   @Test
@@ -520,7 +403,7 @@ public class TestVectorMathFunctions {
     b.cols[0].noNulls = true;
     VectorExpression expr = new FuncACosDoubleToDouble(0, 1);
     expr.evaluate(b);
-    Assert.assertEquals(Math.acos(0.5d), resultV.vector[4], Double.MIN_VALUE);
+    Assert.assertEquals(Math.acos(0.5d), resultV.vector[4]);
   }
 
   @Test
@@ -530,7 +413,7 @@ public class TestVectorMathFunctions {
     b.cols[0].noNulls = true;
     VectorExpression expr = new FuncATanDoubleToDouble(0, 1);
     expr.evaluate(b);
-    Assert.assertEquals(Math.atan(0.5d), resultV.vector[4], Double.MIN_VALUE);
+    Assert.assertEquals(Math.atan(0.5d), resultV.vector[4]);
   }
 
   @Test
@@ -540,7 +423,7 @@ public class TestVectorMathFunctions {
     b.cols[0].noNulls = true;
     VectorExpression expr = new FuncDegreesDoubleToDouble(0, 1);
     expr.evaluate(b);
-    Assert.assertEquals(Math.toDegrees(0.5d), resultV.vector[4], Double.MIN_VALUE);
+    Assert.assertEquals(Math.toDegrees(0.5d), resultV.vector[4]);
   }
 
   @Test
@@ -550,7 +433,7 @@ public class TestVectorMathFunctions {
     b.cols[0].noNulls = true;
     VectorExpression expr = new FuncRadiansDoubleToDouble(0, 1);
     expr.evaluate(b);
-    Assert.assertEquals(Math.toRadians(0.5d), resultV.vector[4], Double.MIN_VALUE);
+    Assert.assertEquals(Math.toRadians(0.5d), resultV.vector[4]);
   }
 
   @Test
@@ -582,7 +465,7 @@ public class TestVectorMathFunctions {
     b.cols[0].noNulls = true;
     VectorExpression expr = new FuncExpDoubleToDouble(0, 1);
     expr.evaluate(b);
-    Assert.assertEquals(Math.exp(0.5d), resultV.vector[4], Double.MIN_VALUE);
+    Assert.assertEquals(Math.exp(0.5d), resultV.vector[4]);
   }
 
   @Test
@@ -594,7 +477,7 @@ public class TestVectorMathFunctions {
     b.cols[0].noNulls = true;
     VectorExpression expr = new FuncLnDoubleToDouble(0, 1);
     expr.evaluate(b);
-    Assert.assertEquals(Math.log(0.5), resultV.vector[4], Double.MIN_VALUE);
+    Assert.assertEquals(Math.log(0.5), resultV.vector[4]);
 
     // test long->double version
     b = getVectorizedRowBatchLongInDoubleOut();
@@ -602,7 +485,7 @@ public class TestVectorMathFunctions {
     b.cols[0].noNulls = true;
     expr = new FuncLnLongToDouble(0, 1);
     expr.evaluate(b);
-    Assert.assertEquals(Math.log(2), resultV.vector[4], Double.MIN_VALUE);
+    Assert.assertEquals(Math.log(2), resultV.vector[4]);
   }
 
   @Test
@@ -614,7 +497,7 @@ public class TestVectorMathFunctions {
     b.cols[0].noNulls = true;
     VectorExpression expr = new FuncLog2DoubleToDouble(0, 1);
     expr.evaluate(b);
-    Assert.assertEquals(Math.log(0.5d) / Math.log(2), resultV.vector[4], Double.MIN_VALUE);
+    Assert.assertEquals(Math.log(0.5d) / Math.log(2), resultV.vector[4]);
 
     // test long->double version
     b = getVectorizedRowBatchLongInDoubleOut();
@@ -622,7 +505,7 @@ public class TestVectorMathFunctions {
     b.cols[0].noNulls = true;
     expr = new FuncLog2LongToDouble(0, 1);
     expr.evaluate(b);
-    Assert.assertEquals(Math.log(1) / Math.log(2), resultV.vector[3], Double.MIN_VALUE);
+    Assert.assertEquals(Math.log(1) / Math.log(2), resultV.vector[3]);
   }
 
   @Test
@@ -642,7 +525,7 @@ public class TestVectorMathFunctions {
     b.cols[0].noNulls = true;
     expr = new FuncLog10LongToDouble(0, 1);
     expr.evaluate(b);
-    Assert.assertEquals(Math.log(1) / Math.log(10), resultV.vector[3], Double.MIN_VALUE);
+    Assert.assertEquals(Math.log(1) / Math.log(10), resultV.vector[3]);
   }
 
   @Test
@@ -777,7 +660,7 @@ public class TestVectorMathFunctions {
     b.cols[0].noNulls = true;
     VectorExpression expr = new FuncSqrtDoubleToDouble(0, 1);
     expr.evaluate(b);
-    Assert.assertEquals(Math.sqrt(0.5d), resultV.vector[4], Double.MIN_VALUE);
+    Assert.assertEquals(Math.sqrt(0.5d), resultV.vector[4]);
   }
 
   @Test
@@ -789,8 +672,8 @@ public class TestVectorMathFunctions {
     b.cols[0].noNulls = true;
     VectorExpression expr = new FuncAbsDoubleToDouble(0, 1);
     expr.evaluate(b);
-    Assert.assertEquals(1.5, resultV.vector[0], Double.MIN_VALUE);
-    Assert.assertEquals(0.5, resultV.vector[4], Double.MIN_VALUE);
+    Assert.assertEquals(1.5, resultV.vector[0]);
+    Assert.assertEquals(0.5, resultV.vector[4]);
 
     // test long->long version
     b = getVectorizedRowBatchLongInLongOut();
@@ -811,8 +694,8 @@ public class TestVectorMathFunctions {
     b.cols[0].noNulls = true;
     VectorExpression expr = new FuncSignDoubleToDouble(0, 1);
     expr.evaluate(b);
-    Assert.assertEquals(-1.0d, resultV.vector[0], Double.MIN_VALUE);
-    Assert.assertEquals(1.0d, resultV.vector[4], Double.MIN_VALUE);
+    Assert.assertEquals(-1.0d, resultV.vector[0]);
+    Assert.assertEquals(1.0d, resultV.vector[4]);
 
     // test long->double version
     b = getVectorizedRowBatchLongInDoubleOut();
@@ -820,8 +703,8 @@ public class TestVectorMathFunctions {
     b.cols[0].noNulls = true;
     expr = new FuncSignLongToDouble(0, 1);
     expr.evaluate(b);
-    Assert.assertEquals(-1.0d, resultV.vector[0], Double.MIN_VALUE);
-    Assert.assertEquals(1.0d, resultV.vector[4], Double.MIN_VALUE);
+    Assert.assertEquals(-1.0d, resultV.vector[0]);
+    Assert.assertEquals(1.0d, resultV.vector[4]);
   }
 
   @Test
@@ -832,7 +715,7 @@ public class TestVectorMathFunctions {
     BytesColumnVector resultV = (BytesColumnVector) b.cols[2];
     b.cols[0].noNulls = true;
     VectorExpression expr = new FuncBin(1, 2);
-    expr.transientInit(hiveConf);
+    expr.transientInit();
     expr.evaluate(b);
     String s = new String(resultV.vector[1], resultV.start[1], resultV.length[1]);
     Assert.assertEquals("11111111", s);
@@ -846,7 +729,7 @@ public class TestVectorMathFunctions {
     BytesColumnVector resultV = (BytesColumnVector) b.cols[2];
     b.cols[1].noNulls = true;
     VectorExpression expr = new FuncHex(1, 2);
-    expr.transientInit(hiveConf);
+    expr.transientInit();
     expr.evaluate(b);
     String s = new String(resultV.vector[1], resultV.start[1], resultV.length[1]);
     Assert.assertEquals("FF", s);

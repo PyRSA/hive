@@ -18,7 +18,6 @@
 package org.apache.hadoop.hive.ql.exec.repl.bootstrap.load;
 
 import org.apache.hadoop.hive.ql.exec.Task;
-import org.apache.hadoop.hive.ql.exec.repl.util.TaskTracker;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
@@ -32,7 +31,7 @@ import static org.junit.Assert.assertTrue;
 @RunWith(PowerMockRunner.class)
   public class TestTaskTracker {
   @Mock
-  private Task<?> task;
+  private Task<? extends Serializable> task;
 
   @Test
   public void taskTrackerCompositionInitializesTheMaxTasksCorrectly() {

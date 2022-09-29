@@ -1,4 +1,3 @@
---! qt:dataset:src
 set hive.fetch.task.conversion=more;
 
 DESCRIBE FUNCTION instr;
@@ -17,27 +16,7 @@ SELECT instr('abcd', 'abc'),
        instr(CAST(1.25 AS FLOAT), '.25'),
        instr(CAST(16.0 AS DOUBLE), '.0'),
        instr(null, 'abc'),
-       instr('abcd', null),
-       instr('abcdabcd', 'abc', 1),
-       instr('abcdabcd', 'abc', 2),
-       instr('abcdabcd', 'abc', 5),
-       instr('abcdabcd', 'abc', 6),
-       instr('abcdabcd', 'abc', -1),
-       instr('abcdabcd', 'abc', -4),
-       instr('abcdabcd', 'abc', -5),
-       instr('abcdabcd', 'abc', 1, 1),
-       instr('abcdabcd', 'abc', 1, 2),
-       instr('abcdabcd', 'abc', 1, 3),
-       instr('abcdabcd', 'abc', 2, 1),
-       instr('abcdabcd', 'abc', 2, 2),
-       instr('abcdabcd', 'abc', 5, 2),
-       instr('abcdabcd', 'abc', -1, 2),
-       instr('abcdabcd', 'abc', -4, 2),
-       instr('abcdabcd', 'abc', -5, 2),
-       instr('abcdabcd', 'abc', 1, null),
-       instr('abcdabcd', 'abc', null, 1),
-       instr('aaa', 'a', 3, 1),
-       instr('aaa', 'a', 3, 2)
+       instr('abcd', null)
 FROM src tablesample (1 rows);
 
 SELECT instr('abcd', 'abc'),
@@ -52,25 +31,5 @@ SELECT instr('abcd', 'abc'),
        instr(CAST(1.25 AS FLOAT), '.25'),
        instr(CAST(16.0 AS DOUBLE), '.0'),
        instr(null, 'abc'),
-       instr('abcd', null),
-       instr('abcdabcd', 'abc', 1),
-       instr('abcdabcd', 'abc', 2),
-       instr('abcdabcd', 'abc', 5),
-       instr('abcdabcd', 'abc', 6),
-       instr('abcdabcd', 'abc', -1),
-       instr('abcdabcd', 'abc', -4),
-       instr('abcdabcd', 'abc', -5),
-       instr('abcdabcd', 'abc', 1, 1),
-       instr('abcdabcd', 'abc', 1, 2),
-       instr('abcdabcd', 'abc', 1, 3),
-       instr('abcdabcd', 'abc', 2, 1),
-       instr('abcdabcd', 'abc', 2, 2),
-       instr('abcdabcd', 'abc', 5, 2),
-       instr('abcdabcd', 'abc', -1, 2),
-       instr('abcdabcd', 'abc', -4, 2),
-       instr('abcdabcd', 'abc', -5, 2),
-       instr('abcdabcd', 'abc', 1, null),
-       instr('abcdabcd', 'abc', null, 1),
-       instr('aaa', 'a', 3, 1),
-       instr('aaa', 'a', 3, 2)
+       instr('abcd', null)
 FROM src tablesample (1 rows);

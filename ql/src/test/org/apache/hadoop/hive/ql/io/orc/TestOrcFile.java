@@ -19,14 +19,12 @@
 package org.apache.hadoop.hive.ql.io.orc;
 
 import static junit.framework.Assert.assertEquals;
-import static junit.framework.Assert.assertFalse;
 import static junit.framework.Assert.assertNotNull;
 import static junit.framework.Assert.assertNull;
 import static junit.framework.Assert.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
-import java.lang.management.ManagementFactory;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -45,9 +43,6 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.common.type.Date;
 import org.apache.hadoop.hive.common.type.HiveDecimal;
 import org.apache.hadoop.hive.common.type.Timestamp;
-import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.llap.LlapDaemonInfo;
-import org.apache.hadoop.hive.llap.io.api.LlapProxy;
 import org.apache.hadoop.hive.ql.io.sarg.PredicateLeaf;
 import org.apache.hadoop.hive.ql.io.sarg.SearchArgument;
 import org.apache.hadoop.hive.ql.io.sarg.SearchArgumentFactory;
@@ -96,7 +91,6 @@ import org.apache.orc.StringColumnStatistics;
 import org.apache.orc.StripeInformation;
 import org.apache.orc.StripeStatistics;
 import org.apache.orc.TypeDescription;
-import org.apache.orc.impl.MemoryManagerImpl;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
@@ -237,8 +231,7 @@ public class TestOrcFile {
 
   @Parameters
   public static Collection<Boolean[]> data() {
-    // Test Disabled with ZeroCopy=True until ORC-701
-    return Arrays.asList(new Boolean[][] { {false}, /* {true} */});
+    return Arrays.asList(new Boolean[][] { {false}, {true}});
   }
 
   public TestOrcFile(Boolean zcr) {
@@ -326,7 +319,7 @@ public class TestOrcFile {
         + "binary,string1:string,middle:struct<list:array<struct<int1:int,"
         + "string1:string>>>,list:array<struct<int1:int,string1:string>>,"
         + "map:map<string,struct<int1:int,string1:string>>,ts:timestamp,"
-        + "decimal1:decimal(38,10)>", readerInspector.getTypeName());
+        + "decimal1:decimal(38,18)>", readerInspector.getTypeName());
     List<? extends StructField> fields = readerInspector
         .getAllStructFieldRefs();
     BooleanObjectInspector bo = (BooleanObjectInspector) readerInspector
@@ -556,7 +549,6 @@ public class TestOrcFile {
     boolean[] expected = new boolean[] {false};
     boolean[] included = OrcUtils.includeColumns("", writer.getSchema());
     assertEquals(true, Arrays.equals(expected, included));
-    rows.close();
   }
 
   @Test
@@ -593,7 +585,6 @@ public class TestOrcFile {
     assertEquals(2, stats[0].getNumberOfValues());
     assertEquals(0, stats[1].getNumberOfValues());
     assertEquals(true, stats[1].hasNull());
-    rows.close();
   }
 
   @Test
@@ -662,7 +653,6 @@ public class TestOrcFile {
     assertEquals(HiveDecimal.create(1), ((DecimalColumnStatistics) stats[1]).getMinimum());
     assertEquals(HiveDecimal.create(6), ((DecimalColumnStatistics) stats[1]).getSum());
     assertEquals(true, stats[1].hasNull());
-    rows.close();
   }
 
   @Test
@@ -857,7 +847,6 @@ public class TestOrcFile {
     items = index[1].getEntryList();
     assertEquals(2,
         items.get(0).getStatistics().getIntStatistics().getMaximum());
-    reader.close();
   }
 
   @Test
@@ -1238,7 +1227,6 @@ public class TestOrcFile {
     assertEquals(false, reader.getMetadataKeys().iterator().hasNext());
     assertEquals(3, reader.getContentLength());
     assertEquals(false, reader.getStripes().iterator().hasNext());
-    reader.close();
   }
 
   @Test
@@ -1293,7 +1281,6 @@ public class TestOrcFile {
     assertEquals(3, i);
     int numStripes = reader.getStripeStatistics().size();
     assertEquals(1, numStripes);
-    reader.close();
   }
 
   /**
@@ -1319,8 +1306,7 @@ public class TestOrcFile {
             .inspector(inspector)
             .stripeSize(100000)
             .bufferSize(10000)
-            .blockPadding(false)
-            .setProlepticGregorian(true));
+            .blockPadding(false));
     OrcStruct row = new OrcStruct(2);
     for (int year = minYear; year < maxYear; ++year) {
       for (int ms = 1000; ms < 2000; ++ms) {
@@ -1346,7 +1332,6 @@ public class TestOrcFile {
             row.getFieldValue(1));
       }
     }
-    rows.close();
   }
 
   @Test
@@ -1937,22 +1922,52 @@ public class TestOrcFile {
         new MiddleStruct(inner, inner2), list(), map(inner,inner2));
   }
 
+  private static class MyMemoryManager implements MemoryManager {
+    final long totalSpace;
+    double rate;
+    Path path = null;
+    long lastAllocation = 0;
+    int rows = 0;
+    MemoryManager.Callback callback;
+
+    MyMemoryManager(Configuration conf, long totalSpace, double rate) {
+      this.totalSpace = totalSpace;
+      this.rate = rate;
+    }
+
+    @Override
+    public void addWriter(Path path, long requestedAllocation,
+                   MemoryManager.Callback callback) {
+      this.path = path;
+      this.lastAllocation = requestedAllocation;
+      this.callback = callback;
+    }
+
+    @Override
+    public synchronized void removeWriter(Path path) {
+      this.path = null;
+      this.lastAllocation = 0;
+    }
+
+    @Override
+    public void addedRow(int count) throws IOException {
+      rows += count;
+      if (rows >= 100) {
+        callback.checkMemory(rate);
+        rows = 0;
+      }
+    }
+  }
+
   @Test
   public void testMemoryManagementV11() throws Exception {
-    OrcConf.ROWS_BETWEEN_CHECKS.setLong(conf, 100);
-    final long poolSize = 50_000;
     ObjectInspector inspector;
     synchronized (TestOrcFile.class) {
       inspector = ObjectInspectorFactory.getReflectionObjectInspector
           (InnerStruct.class,
               ObjectInspectorFactory.ObjectInspectorOptions.JAVA);
     }
-    MemoryManager memoryManager = new MemoryManagerImpl(poolSize);
-    // set up 10 files that all request the full size.
-    MemoryManager.Callback ignore = newScale -> false;
-    for(int f=0; f < 9; ++f) {
-      memoryManager.addWriter(new Path("file-" + f), poolSize, ignore);
-    }
+    MyMemoryManager memory = new MyMemoryManager(conf, 10000, 0.1);
     Writer writer = OrcFile.createWriter(testFilePath,
                                          OrcFile.writerOptions(conf)
                                          .inspector(inspector)
@@ -1960,14 +1975,15 @@ public class TestOrcFile {
                                          .stripeSize(50000)
                                          .bufferSize(100)
                                          .rowIndexStride(0)
-                                         .memory(memoryManager)
+                                         .memory(memory)
                                          .batchSize(100)
                                          .version(OrcFile.Version.V_0_11));
-    assertEquals(0.1, ((MemoryManagerImpl) memoryManager).getAllocationScale());
+    assertEquals(testFilePath, memory.path);
     for(int i=0; i < 2500; ++i) {
       writer.addRow(new InnerStruct(i*300, Integer.toHexString(10*i)));
     }
     writer.close();
+    assertEquals(null, memory.path);
     Reader reader = OrcFile.createReader(testFilePath,
         OrcFile.readerOptions(conf).filesystem(fs));
     int i = 0;
@@ -1978,40 +1994,33 @@ public class TestOrcFile {
     }
     assertEquals(25, i);
     assertEquals(2500, reader.getNumberOfRows());
-    reader.close();
   }
 
   @Test
   public void testMemoryManagementV12() throws Exception {
-    OrcConf.ROWS_BETWEEN_CHECKS.setLong(conf, 100);
-    final long poolSize = 50_000;
     ObjectInspector inspector;
     synchronized (TestOrcFile.class) {
       inspector = ObjectInspectorFactory.getReflectionObjectInspector
           (InnerStruct.class,
               ObjectInspectorFactory.ObjectInspectorOptions.JAVA);
     }
-    MemoryManager memoryManager = new MemoryManagerImpl(poolSize);
-    // set up 10 files that all request the full size.
-    MemoryManager.Callback ignore = newScale -> false;
-    for(int f=0; f < 9; ++f) {
-      memoryManager.addWriter(new Path("file-" + f), poolSize, ignore);
-    }
+    MyMemoryManager memory = new MyMemoryManager(conf, 10000, 0.1);
     Writer writer = OrcFile.createWriter(testFilePath,
-        OrcFile.writerOptions(conf)
-            .inspector(inspector)
-            .compress(CompressionKind.NONE)
-            .stripeSize(50000)
-            .bufferSize(100)
-            .rowIndexStride(0)
-            .memory(memoryManager)
-            .batchSize(100)
-            .version(OrcFile.Version.V_0_12));
-    assertEquals(0.1, ((MemoryManagerImpl) memoryManager).getAllocationScale());
+                                         OrcFile.writerOptions(conf)
+                                         .inspector(inspector)
+                                         .compress(CompressionKind.NONE)
+                                         .stripeSize(50000)
+                                         .bufferSize(100)
+                                         .rowIndexStride(0)
+                                         .memory(memory)
+                                         .batchSize(100)
+                                         .version(OrcFile.Version.V_0_12));
+    assertEquals(testFilePath, memory.path);
     for(int i=0; i < 2500; ++i) {
       writer.addRow(new InnerStruct(i*300, Integer.toHexString(10*i)));
     }
     writer.close();
+    assertEquals(null, memory.path);
     Reader reader = OrcFile.createReader(testFilePath,
         OrcFile.readerOptions(conf).filesystem(fs));
     int i = 0;
@@ -2025,7 +2034,6 @@ public class TestOrcFile {
     // compared to 25 stripes in version 0.11 (above test case)
     assertEquals(3, i);
     assertEquals(2500, reader.getNumberOfRows());
-    reader.close();
   }
 
   @Test
@@ -2112,7 +2120,6 @@ public class TestOrcFile {
     }
     assertTrue(!rows.hasNext());
     assertEquals(3500, rows.getRowNumber());
-    rows.close();
   }
 
   @Test
@@ -2145,7 +2152,6 @@ public class TestOrcFile {
       Object row = rows.next(null);
       Assert.assertEquals(input.get(idx++).longValue(), ((LongWritable) row).get());
     }
-    rows.close();
   }
 
   static class MyList {
@@ -2195,40 +2201,5 @@ public class TestOrcFile {
     assertEquals(4, ((List<IntWritable>) orcrow.getFieldValue(0)).size());
     assertEquals(false, reader.hasNext());
     reader.close();
-  }
-
-  @Test
-  public void testLlapAwareMemoryManager() throws IOException {
-    ObjectInspector inspector;
-    synchronized (TestOrcFile.class) {
-      inspector = ObjectInspectorFactory.getReflectionObjectInspector(Long.class,
-        ObjectInspectorFactory.ObjectInspectorOptions.JAVA);
-    }
-
-    try {
-      OrcFile.WriterOptions opts = OrcFile.writerOptions(conf).inspector(inspector).compress(CompressionKind.ZLIB);
-      Writer writer = OrcFile.createWriter(new Path(testFilePath, "-0"), opts);
-      writer.close();
-      assertEquals(opts.getMemoryManager().getClass(), MemoryManagerImpl.class);
-
-      conf.set(HiveConf.ConfVars.HIVE_EXECUTION_MODE.varname, "llap");
-      LlapDaemonInfo.initialize("test", new Configuration());
-      LlapProxy.setDaemon(true);
-      opts = OrcFile.writerOptions(conf).inspector(inspector).compress(CompressionKind.ZLIB);
-      writer = OrcFile.createWriter(new Path(testFilePath, "-1"), opts);
-      writer.close();
-      assertEquals(opts.getMemoryManager().getClass(), OrcFile.LlapAwareMemoryManager.class);
-      assertEquals(LlapDaemonInfo.INSTANCE.getMemoryPerExecutor() * 0.5,
-        ((OrcFile.LlapAwareMemoryManager) opts.getMemoryManager()).getTotalMemoryPool(), 100);
-
-      conf.setBoolean(HiveConf.ConfVars.HIVE_ORC_WRITER_LLAP_MEMORY_MANAGER_ENABLED.varname, false);
-      opts = OrcFile.writerOptions(conf).inspector(inspector).compress(CompressionKind.ZLIB);
-      writer = OrcFile.createWriter(new Path(testFilePath, "-2"), opts);
-      writer.close();
-      assertEquals(opts.getMemoryManager().getClass(), MemoryManagerImpl.class);
-    } finally {
-      LlapProxy.setDaemon(false);
-      conf.set(HiveConf.ConfVars.HIVE_EXECUTION_MODE.varname, "container");
-    }
   }
 }

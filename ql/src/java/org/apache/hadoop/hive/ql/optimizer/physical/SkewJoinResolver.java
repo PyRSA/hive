@@ -18,6 +18,7 @@
 
 package org.apache.hadoop.hive.ql.optimizer.physical;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -28,12 +29,12 @@ import org.apache.hadoop.hive.ql.exec.ConditionalTask;
 import org.apache.hadoop.hive.ql.exec.Task;
 import org.apache.hadoop.hive.ql.lib.DefaultGraphWalker;
 import org.apache.hadoop.hive.ql.lib.DefaultRuleDispatcher;
-import org.apache.hadoop.hive.ql.lib.SemanticDispatcher;
-import org.apache.hadoop.hive.ql.lib.SemanticGraphWalker;
+import org.apache.hadoop.hive.ql.lib.Dispatcher;
+import org.apache.hadoop.hive.ql.lib.GraphWalker;
 import org.apache.hadoop.hive.ql.lib.Node;
-import org.apache.hadoop.hive.ql.lib.SemanticNodeProcessor;
+import org.apache.hadoop.hive.ql.lib.NodeProcessor;
 import org.apache.hadoop.hive.ql.lib.NodeProcessorCtx;
-import org.apache.hadoop.hive.ql.lib.SemanticRule;
+import org.apache.hadoop.hive.ql.lib.Rule;
 import org.apache.hadoop.hive.ql.lib.RuleRegExp;
 import org.apache.hadoop.hive.ql.parse.ParseContext;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
@@ -52,8 +53,8 @@ public class SkewJoinResolver implements PhysicalPlanResolver {
 
   @Override
   public PhysicalContext resolve(PhysicalContext pctx) throws SemanticException {
-    SemanticDispatcher disp = new SkewJoinTaskDispatcher(pctx);
-    SemanticGraphWalker ogw = new DefaultGraphWalker(disp);
+    Dispatcher disp = new SkewJoinTaskDispatcher(pctx);
+    GraphWalker ogw = new DefaultGraphWalker(disp);
     ArrayList<Node> topNodes = new ArrayList<Node>();
     topNodes.addAll(pctx.getRootTasks());
     ogw.startWalking(topNodes, null);
@@ -63,7 +64,7 @@ public class SkewJoinResolver implements PhysicalPlanResolver {
   /**
    * Iterator a task with a rule dispatcher for its reducer operator tree.
    */
-  class SkewJoinTaskDispatcher implements SemanticDispatcher {
+  class SkewJoinTaskDispatcher implements Dispatcher {
 
     private PhysicalContext physicalContext;
 
@@ -75,7 +76,7 @@ public class SkewJoinResolver implements PhysicalPlanResolver {
     @Override
     public Object dispatch(Node nd, Stack<Node> stack, Object... nodeOutputs)
         throws SemanticException {
-      Task<?> task = (Task<?>) nd;
+      Task<? extends Serializable> task = (Task<? extends Serializable>) nd;
 
       if (!task.isMapRedTask() || task instanceof ConditionalTask
           || ((MapredWork) task.getWork()).getReduceWork() == null) {
@@ -106,16 +107,16 @@ public class SkewJoinResolver implements PhysicalPlanResolver {
 
       SkewJoinProcCtx skewJoinProcContext = new SkewJoinProcCtx(task, pc);
 
-      Map<SemanticRule, SemanticNodeProcessor> opRules = new LinkedHashMap<SemanticRule, SemanticNodeProcessor>();
+      Map<Rule, NodeProcessor> opRules = new LinkedHashMap<Rule, NodeProcessor>();
       opRules.put(new RuleRegExp("R1",
         CommonJoinOperator.getOperatorName() + "%"),
         SkewJoinProcFactory.getJoinProc());
 
       // The dispatcher fires the processor corresponding to the closest
       // matching rule and passes the context along
-      SemanticDispatcher disp = new DefaultRuleDispatcher(SkewJoinProcFactory
+      Dispatcher disp = new DefaultRuleDispatcher(SkewJoinProcFactory
           .getDefaultProc(), opRules, skewJoinProcContext);
-      SemanticGraphWalker ogw = new DefaultGraphWalker(disp);
+      GraphWalker ogw = new DefaultGraphWalker(disp);
 
       // iterator the reducer operator tree
       ArrayList<Node> topNodes = new ArrayList<Node>();
@@ -139,20 +140,20 @@ public class SkewJoinResolver implements PhysicalPlanResolver {
    * A container of current task and parse context.
    */
   public static class SkewJoinProcCtx implements NodeProcessorCtx {
-    private Task<?> currentTask;
+    private Task<? extends Serializable> currentTask;
     private ParseContext parseCtx;
 
-    public SkewJoinProcCtx(Task<?> task,
+    public SkewJoinProcCtx(Task<? extends Serializable> task,
         ParseContext parseCtx) {
       currentTask = task;
       this.parseCtx = parseCtx;
     }
 
-    public Task<?> getCurrentTask() {
+    public Task<? extends Serializable> getCurrentTask() {
       return currentTask;
     }
 
-    public void setCurrentTask(Task<?> currentTask) {
+    public void setCurrentTask(Task<? extends Serializable> currentTask) {
       this.currentTask = currentTask;
     }
 

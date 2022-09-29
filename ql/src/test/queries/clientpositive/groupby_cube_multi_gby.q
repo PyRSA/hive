@@ -1,4 +1,3 @@
---! qt:dataset:src
 set hive.multigroupby.singlereducer=false;
 
 create table t1_n21 like src;

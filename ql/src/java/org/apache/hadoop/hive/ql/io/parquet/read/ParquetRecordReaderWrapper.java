@@ -57,11 +57,22 @@ public class ParquetRecordReaderWrapper extends ParquetRecordReaderBase
       final JobConf oldJobConf,
       final Reporter reporter)
           throws IOException, InterruptedException {
-    super(oldJobConf, oldSplit);
+    this(newInputFormat, oldSplit, oldJobConf, reporter, new ProjectionPusher());
+  }
 
-    setupMetadataAndParquetSplit(oldJobConf);
-
+  public ParquetRecordReaderWrapper(
+      final ParquetInputFormat<ArrayWritable> newInputFormat,
+      final InputSplit oldSplit,
+      final JobConf oldJobConf,
+      final Reporter reporter,
+      final ProjectionPusher pusher)
+          throws IOException, InterruptedException {
     this.splitLen = oldSplit.getLength();
+    this.projectionPusher = pusher;
+    this.serDeStats = new SerDeStats();
+
+    jobConf = oldJobConf;
+    final ParquetInputSplit split = getSplit(oldSplit, jobConf);
 
     TaskAttemptID taskAttemptID = TaskAttemptID.forName(jobConf.get(IOConstants.MAPRED_TASK_ID));
     if (taskAttemptID == null) {
@@ -72,16 +83,16 @@ public class ParquetRecordReaderWrapper extends ParquetRecordReaderBase
     Configuration conf = jobConf;
     if (skipTimestampConversion ^ HiveConf.getBoolVar(
         conf, HiveConf.ConfVars.HIVE_PARQUET_TIMESTAMP_SKIP_CONVERSION)) {
-      conf = new JobConf(jobConf);
+      conf = new JobConf(oldJobConf);
       HiveConf.setBoolVar(conf,
         HiveConf.ConfVars.HIVE_PARQUET_TIMESTAMP_SKIP_CONVERSION, skipTimestampConversion);
     }
 
     final TaskAttemptContext taskContext = ContextUtil.newTaskAttemptContext(conf, taskAttemptID);
-    if (parquetInputSplit != null) {
+    if (split != null) {
       try {
-        realReader = newInputFormat.createRecordReader(parquetInputSplit, taskContext);
-        realReader.initialize(parquetInputSplit, taskContext);
+        realReader = newInputFormat.createRecordReader(split, taskContext);
+        realReader.initialize(split, taskContext);
 
         // read once to gain access to key and value objects
         if (realReader.nextKeyValue()) {

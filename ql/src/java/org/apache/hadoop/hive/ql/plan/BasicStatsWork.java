@@ -57,7 +57,7 @@ public class BasicStatsWork implements Serializable {
 
   // sourceTask for TS is not changed (currently) but that of FS might be changed
   // by various optimizers (auto.convert.join, for example)
-  // so this is set by TaskQueue in runtime
+  // so this is set by DriverContext in runtime
   private transient Task sourceTask;
 
   private boolean isFollowedByColStats = false;
@@ -195,9 +195,9 @@ public class BasicStatsWork implements Serializable {
     if (work.getLoadTableDesc() != null) {
       return work.getLoadTableDesc().getTable().getTableName();
     } else if (work.getTableSpecs() != null) {
-      return work.getTableSpecs().getTableName().getTable();
+      return work.getTableSpecs().tableName;
     } else if (getLoadFileDesc().getCtasCreateTableDesc() != null) {
-      return getLoadFileDesc().getCtasCreateTableDesc().getDbTableName();
+      return getLoadFileDesc().getCtasCreateTableDesc().getTableName();
     } else {
       return getLoadFileDesc().getCreateViewDesc().getViewName();
     }

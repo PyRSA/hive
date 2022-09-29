@@ -49,8 +49,6 @@ import org.junit.Test;
 
 public class TestGenericUDFOPPlus extends AbstractTestGenericUDFOPNumeric {
 
-  private static final double EPSILON = 1E-6;
-
   @Test
   public void testBytePlusShort() throws HiveException {
     GenericUDFOPPlus udf = new GenericUDFOPPlus();
@@ -93,7 +91,7 @@ public class TestGenericUDFOPPlus extends AbstractTestGenericUDFOPNumeric {
     PrimitiveObjectInspector oi = (PrimitiveObjectInspector) udf.initialize(inputOIs);
     Assert.assertEquals(oi.getTypeInfo(), TypeInfoFactory.doubleTypeInfo);
     DoubleWritable res = (DoubleWritable) udf.evaluate(args);
-    Assert.assertEquals(579.0, res.get(), EPSILON);
+    Assert.assertEquals(new Double(579.0), new Double(res.get()));
   }
 
   @Test
@@ -115,7 +113,7 @@ public class TestGenericUDFOPPlus extends AbstractTestGenericUDFOPNumeric {
     PrimitiveObjectInspector oi = (PrimitiveObjectInspector) udf.initialize(inputOIs);
     Assert.assertEquals(TypeInfoFactory.doubleTypeInfo, oi.getTypeInfo());
     DoubleWritable res = (DoubleWritable) udf.evaluate(args);
-    Assert.assertEquals(14.5, res.get(), EPSILON);
+    Assert.assertEquals(new Double(14.5), new Double(res.get()));
   }
 
   @Test
@@ -159,7 +157,7 @@ public class TestGenericUDFOPPlus extends AbstractTestGenericUDFOPNumeric {
     PrimitiveObjectInspector oi = (PrimitiveObjectInspector) udf.initialize(inputOIs);
     Assert.assertEquals(oi.getTypeInfo(), TypeInfoFactory.floatTypeInfo);
     FloatWritable res = (FloatWritable) udf.evaluate(args);
-    Assert.assertEquals(4.5, res.get(), EPSILON);
+    Assert.assertEquals(new Float(4.5), new Float(res.get()));
   }
 
   @Test
@@ -181,7 +179,7 @@ public class TestGenericUDFOPPlus extends AbstractTestGenericUDFOPNumeric {
     PrimitiveObjectInspector oi = (PrimitiveObjectInspector) udf.initialize(inputOIs);
     Assert.assertEquals(TypeInfoFactory.doubleTypeInfo, oi.getTypeInfo());
     DoubleWritable res = (DoubleWritable) udf.evaluate(args);
-    Assert.assertEquals(309.49, res.get(), EPSILON);
+    Assert.assertEquals(new Double(309.49), new Double(res.get()));
   }
 
   @Test

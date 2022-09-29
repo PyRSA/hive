@@ -18,10 +18,9 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.expressions;
 
-import java.nio.charset.StandardCharsets;
+import java.io.UnsupportedEncodingException;
 import java.util.Arrays;
 
-import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.hive.ql.exec.vector.BytesColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorExpressionDescriptor;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
@@ -35,13 +34,25 @@ import org.apache.hadoop.hive.ql.metadata.HiveException;
 public class StringSubstrColStart extends VectorExpression {
   private static final long serialVersionUID = 1L;
 
+  private final int colNum;
+
   private int startIdx;
 
-  private static final byte[] EMPTY_STRING =
-      StringUtils.EMPTY.getBytes(StandardCharsets.UTF_8);
+  private transient static byte[] EMPTY_STRING;
+
+  // Populating the Empty string bytes. Putting it as static since it should be immutable and can
+  // be shared.
+  static {
+    try {
+      EMPTY_STRING = "".getBytes("UTF-8");
+    } catch(UnsupportedEncodingException e) {
+      e.printStackTrace();
+    }
+  }
 
   public StringSubstrColStart(int colNum, int startIdx, int outputColumnNum) {
-    super(colNum, outputColumnNum);
+    super(outputColumnNum);
+    this.colNum = colNum;
 
     /* Switch from a 1-based start offset (the Hive end user convention) to a 0-based start offset
      * (the internal convention).
@@ -64,6 +75,7 @@ public class StringSubstrColStart extends VectorExpression {
     super();
 
     // Dummy final assignments.
+    colNum = -1;
     startIdx = -1;
   }
 
@@ -114,7 +126,7 @@ public class StringSubstrColStart extends VectorExpression {
       super.evaluateChildren(batch);
     }
 
-    BytesColumnVector inV = (BytesColumnVector) batch.cols[inputColumnNum[0]];
+    BytesColumnVector inV = (BytesColumnVector) batch.cols[colNum];
     BytesColumnVector outputColVector = (BytesColumnVector) batch.cols[outputColumnNum];
 
     int n = batch.size;
@@ -229,7 +241,7 @@ public class StringSubstrColStart extends VectorExpression {
 
   @Override
   public String vectorExpressionParameters() {
-    return getColumnParamString(0, inputColumnNum[0]) + ", start " + startIdx;
+    return getColumnParamString(0, colNum) + ", start " + startIdx;
   }
 
   @Override

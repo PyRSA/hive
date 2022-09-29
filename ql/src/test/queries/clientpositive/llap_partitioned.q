@@ -1,4 +1,3 @@
---! qt:dataset:alltypesorc
 set hive.mapred.mode=nonstrict;
 SET hive.vectorized.execution.enabled=true;
 
@@ -10,6 +9,7 @@ SET hive.optimize.index.filter=true;
 
 set hive.auto.convert.join=true;
 set hive.exec.dynamic.partition=true;
+set hive.exec.dynamic.partition.mode=nonstrict;
 set hive.exec.max.dynamic.partitions.pernode=255;
 
 DROP TABLE orc_llap_part;

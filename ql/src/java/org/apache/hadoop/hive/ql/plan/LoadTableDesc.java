@@ -21,7 +21,6 @@ package org.apache.hadoop.hive.ql.plan;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.ql.exec.Utilities;
 import org.apache.hadoop.hive.ql.io.AcidUtils;
-import org.apache.hadoop.hive.ql.metadata.Table;
 import org.apache.hadoop.hive.ql.plan.Explain.Level;
 
 import java.io.Serializable;
@@ -39,17 +38,13 @@ public class LoadTableDesc extends LoadDesc implements Serializable {
   private ListBucketingCtx lbCtx;
   private boolean inheritTableSpecs = true; //For partitions, flag controlling whether the current
                                             //table specs are to be used
-  private boolean inheritLocation = false; // A silly setting.
   private int stmtId;
   private Long currentWriteId;
   private boolean isInsertOverwrite;
-  private boolean isDirectInsert;
 
   // TODO: the below seem like they should just be combined into partitionDesc
-  private Table mdTable;
   private org.apache.hadoop.hive.ql.plan.TableDesc table;
   private Map<String, String> partitionSpec; // NOTE: this partitionSpec has to be ordered map
-  private String moveTaskId;
 
   public enum LoadFileType {
     /**
@@ -67,13 +62,7 @@ public class LoadTableDesc extends LoadDesc implements Serializable {
      * the file instead of making a duplicate copy.
      * If any file exist while copy, then just overwrite the file
      */
-    OVERWRITE_EXISTING,
-    /**
-     * No need to move the file, used in case of replication to s3. If load type is set to ignore, then only the file
-     * operations(move/rename) is ignored at load table/partition method. Other operations like statistics update,
-     * event notification happens as usual.
-     */
-    IGNORE
+    OVERWRITE_EXISTING
   }
   public LoadTableDesc(final LoadTableDesc o) {
     super(o.getSourcePath(), o.getWriteType());
@@ -82,11 +71,9 @@ public class LoadTableDesc extends LoadDesc implements Serializable {
     this.dpCtx = o.dpCtx;
     this.lbCtx = o.lbCtx;
     this.inheritTableSpecs = o.inheritTableSpecs;
-    this.inheritLocation = o.inheritLocation;
     this.currentWriteId = o.currentWriteId;
     this.table = o.table;
     this.partitionSpec = o.partitionSpec;
-    this.isDirectInsert = o.isDirectInsert;
   }
 
   public LoadTableDesc(final Path sourcePath,
@@ -220,14 +207,8 @@ public class LoadTableDesc extends LoadDesc implements Serializable {
     return inheritTableSpecs;
   }
 
-  public boolean getInheritLocation() {
-    return inheritLocation;
-  }
-
   public void setInheritTableSpecs(boolean inheritTableSpecs) {
-    // Set inheritLocation if this is set to true explicitly.
-    // TODO: Who actually needs this? Might just be some be pointless legacy code.
-    this.inheritTableSpecs = inheritLocation = inheritTableSpecs;
+    this.inheritTableSpecs = inheritTableSpecs;
   }
 
   public boolean isInsertOverwrite() {
@@ -236,14 +217,6 @@ public class LoadTableDesc extends LoadDesc implements Serializable {
 
   public void setInsertOverwrite(boolean v) {
    this.isInsertOverwrite = v;
-  }
-
-  public void setIsDirectInsert(boolean isDirectInsert) {
-    this.isDirectInsert = isDirectInsert;
-  }
-
-  public boolean isDirectInsert() {
-    return this.isDirectInsert;
   }
 
   /**
@@ -264,31 +237,11 @@ public class LoadTableDesc extends LoadDesc implements Serializable {
     return currentWriteId == null ? 0 : currentWriteId;
   }
 
-  public void setWriteId(long writeId) {
-    currentWriteId = writeId;
-  }
-
   public int getStmtId() {
     return stmtId;
   }
   //todo: should this not be passed in the c'tor?
   public void setStmtId(int stmtId) {
     this.stmtId = stmtId;
-  }
-
-  public Table getMdTable() {
-    return mdTable;
-  }
-
-  public void setMdTable(Table mdTable) {
-    this.mdTable = mdTable;
-  }
-
-  public String getMoveTaskId() {
-    return moveTaskId;
-  }
-
-  public void setMoveTaskId(String moveTaskId) {
-    this.moveTaskId = moveTaskId;
   }
 }

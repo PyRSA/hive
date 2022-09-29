@@ -18,7 +18,6 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.expressions;
 
-import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.common.type.HiveDecimal;
 import org.apache.hadoop.hive.ql.exec.vector.BytesColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.DecimalColumnVector;
@@ -47,8 +46,8 @@ public class CastDecimalToString extends DecimalToStringUnaryUDF {
   }
 
   @Override
-  public void transientInit(Configuration conf) throws HiveException {
-    super.transientInit(conf);
+  public void transientInit() throws HiveException {
+    super.transientInit();
 
     scratchBuffer = new byte[HiveDecimal.SCRATCH_BUFFER_LEN_TO_BYTES];
   }
@@ -61,7 +60,7 @@ public class CastDecimalToString extends DecimalToStringUnaryUDF {
   @Override
   protected void func(BytesColumnVector outV, DecimalColumnVector inV, int i) {
     HiveDecimalWritable decWritable = inV.vector[i];
-    final int byteIndex = decWritable.toFormatBytes(inV.scale, scratchBuffer);
+    final int byteIndex = decWritable.toBytes(scratchBuffer);
     assign(outV, i, scratchBuffer, byteIndex, HiveDecimal.SCRATCH_BUFFER_LEN_TO_BYTES - byteIndex);
   }
 }

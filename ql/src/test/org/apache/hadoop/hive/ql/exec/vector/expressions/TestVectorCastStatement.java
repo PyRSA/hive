@@ -24,6 +24,8 @@ import java.util.List;
 import java.util.Random;
 
 import org.apache.hadoop.hive.common.type.DataTypePhysicalVariation;
+import org.apache.hadoop.hive.common.type.HiveChar;
+import org.apache.hadoop.hive.common.type.HiveVarchar;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.exec.ExprNodeEvaluator;
 import org.apache.hadoop.hive.ql.exec.ExprNodeEvaluatorFactory;
@@ -36,7 +38,6 @@ import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatchCtx;
 import org.apache.hadoop.hive.ql.exec.vector.VectorRandomRowSource.GenerationSpec;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.IdentityExpression;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorExpression;
-import org.apache.hadoop.hive.ql.exec.vector.udf.VectorUDFAdaptor;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.metadata.VirtualColumn;
 import org.apache.hadoop.hive.ql.plan.ExprNodeColumnDesc;
@@ -46,24 +47,29 @@ import org.apache.hadoop.hive.ql.plan.ExprNodeGenericFuncDesc;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDF;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFIf;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFWhen;
+import org.apache.hadoop.hive.serde2.io.DoubleWritable;
+import org.apache.hadoop.hive.serde2.io.HiveCharWritable;
 import org.apache.hadoop.hive.serde2.io.HiveDecimalWritable;
+import org.apache.hadoop.hive.serde2.io.HiveVarcharWritable;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorUtils;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorUtils.ObjectInspectorCopyOption;
 import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector.PrimitiveCategory;
+import org.apache.hadoop.hive.serde2.typeinfo.CharTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.DecimalTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.PrimitiveTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoUtils;
+import org.apache.hadoop.hive.serde2.typeinfo.VarcharTypeInfo;
 import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
 
-import org.junit.Assert;
+import junit.framework.Assert;
 
 import org.junit.Ignore;
 import org.junit.Test;
 
-@org.junit.Ignore("HIVE-25323")
 public class TestVectorCastStatement {
 
   @Test
@@ -151,6 +157,13 @@ public class TestVectorCastStatement {
   }
 
   @Test
+  public void testBinary() throws Exception {
+    Random random = new Random(12882);
+
+    doIfTests(random, "binary");
+  }
+
+  @Test
   public void testDecimal() throws Exception {
     Random random = new Random(9300);
 
@@ -182,28 +195,25 @@ public class TestVectorCastStatement {
 
     for (PrimitiveCategory targetPrimitiveCategory : PrimitiveCategory.values()) {
 
-      if (targetPrimitiveCategory == PrimitiveCategory.INTERVAL_YEAR_MONTH ||
-          targetPrimitiveCategory == PrimitiveCategory.INTERVAL_DAY_TIME) {
-        if (primitiveCategory != PrimitiveCategory.STRING) {
-          continue;
-        }
-      }
-
       if (targetPrimitiveCategory == PrimitiveCategory.VOID ||
+          targetPrimitiveCategory == PrimitiveCategory.INTERVAL_YEAR_MONTH ||
+          targetPrimitiveCategory == PrimitiveCategory.INTERVAL_DAY_TIME ||
           targetPrimitiveCategory == PrimitiveCategory.TIMESTAMPLOCALTZ ||
           targetPrimitiveCategory == PrimitiveCategory.UNKNOWN) {
         continue;
       }
 
-      // DATE conversions NOT supported by integers, floating point, and GenericUDFDecimal.
+      // BINARY conversions supported by GenericUDFDecimal, GenericUDFTimestamp.
+      if (primitiveCategory == PrimitiveCategory.BINARY) {
+        if (targetPrimitiveCategory == PrimitiveCategory.DECIMAL ||
+            targetPrimitiveCategory == PrimitiveCategory.TIMESTAMP) {
+          continue;
+        }
+      }
+
+      // DATE conversions supported by GenericUDFDecimal.
       if (primitiveCategory == PrimitiveCategory.DATE) {
-        if (targetPrimitiveCategory == PrimitiveCategory.BYTE ||
-            targetPrimitiveCategory == PrimitiveCategory.SHORT ||
-            targetPrimitiveCategory == PrimitiveCategory.INT ||
-            targetPrimitiveCategory == PrimitiveCategory.LONG ||
-            targetPrimitiveCategory == PrimitiveCategory.FLOAT ||
-            targetPrimitiveCategory == PrimitiveCategory.DOUBLE ||
-            targetPrimitiveCategory == PrimitiveCategory.DECIMAL) {
+        if (targetPrimitiveCategory == PrimitiveCategory.DECIMAL) {
           continue;
         }
       }
@@ -271,21 +281,19 @@ public class TestVectorCastStatement {
     }
 
     List<GenerationSpec> generationSpecList = new ArrayList<GenerationSpec>();
-    List<DataTypePhysicalVariation> explicitDataTypePhysicalVariationList =
-        new ArrayList<DataTypePhysicalVariation>();
+    List<DataTypePhysicalVariation> explicitDataTypePhysicalVariationList = new ArrayList<DataTypePhysicalVariation>();
     generationSpecList.add(generationSpec);
     explicitDataTypePhysicalVariationList.add(dataTypePhysicalVariation);
 
     VectorRandomRowSource rowSource = new VectorRandomRowSource();
 
     rowSource.initGenerationSpecSchema(
-        random, generationSpecList, /* maxComplexDepth */ 0,
-        /* allowNull */ true, /* isUnicodeOk */ true,
+        random, generationSpecList, /* maxComplexDepth */ 0, /* allowNull */ true,
         explicitDataTypePhysicalVariationList);
 
     List<String> columns = new ArrayList<String>();
-    columns.add("col1");
-    ExprNodeColumnDesc col1Expr = new ExprNodeColumnDesc(typeInfo, "col1", "table", false);
+    columns.add("col0");
+    ExprNodeColumnDesc col1Expr = new ExprNodeColumnDesc(typeInfo, "col0", "table", false);
 
     List<ExprNodeDesc> children = new ArrayList<ExprNodeDesc>();
     children.add(col1Expr);
@@ -356,10 +364,9 @@ public class TestVectorCastStatement {
                 " sourceTypeName " + typeName +
                 " targetTypeName " + targetTypeName +
                 " " + CastStmtTestMode.values()[v] +
-                " result is NULL " + (vectorResult == null ? "YES" : "NO result " + vectorResult.toString()) +
+                " result is NULL " + (vectorResult == null ? "YES" : "NO") +
                 " does not match row-mode expected result is NULL " +
-                (expectedResult == null ? "YES" : "NO result " + expectedResult.toString()) +
-                " row values " + Arrays.toString(randomRows[i]));
+                (expectedResult == null ? "YES" : "NO"));
           }
         } else {
 
@@ -380,8 +387,7 @@ public class TestVectorCastStatement {
                 " result " + vectorResult.toString() +
                 " (" + vectorResult.getClass().getSimpleName() + ")" +
                 " does not match row-mode expected result " + expectedResult.toString() +
-                " (" + expectedResult.getClass().getSimpleName() + ")" +
-                " row values " + Arrays.toString(randomRows[i]));
+                " (" + expectedResult.getClass().getSimpleName() + ")");
           }
         }
       }
@@ -443,12 +449,7 @@ public class TestVectorCastStatement {
     int[] selected = batch.selected;
     for (int logicalIndex = 0; logicalIndex < batch.size; logicalIndex++) {
       final int batchIndex = (selectedInUse ? selected[logicalIndex] : logicalIndex);
-
-      try {
       resultVectorExtractRow.extractRow(batch, batchIndex, scrqtchRow);
-      } catch (Exception e) {
-        System.out.println("here");
-      }
 
       // UNDONE: Need to copy the object.
       resultObjects[rowIndex++] = scrqtchRow[0];
@@ -487,17 +488,7 @@ public class TestVectorCastStatement {
             Arrays.asList(dataTypePhysicalVariations),
             hiveConf);
     VectorExpression vectorExpression = vectorizationContext.getVectorExpression(exprDesc);
-    vectorExpression.transientInit(hiveConf);
-
-    if (castStmtTestMode == CastStmtTestMode.VECTOR_EXPRESSION &&
-        vectorExpression instanceof VectorUDFAdaptor) {
-      System.out.println(
-          "*NO NATIVE VECTOR EXPRESSION* typeInfo " + typeInfo.toString() +
-          " castStmtTestMode " + castStmtTestMode +
-          " vectorExpression " + vectorExpression.toString());
-    }
-
-    // System.out.println("*VECTOR EXPRESSION* " + vectorExpression.getClass().getSimpleName());
+    vectorExpression.transientInit();
 
     /*
     System.out.println(

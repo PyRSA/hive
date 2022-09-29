@@ -12,90 +12,30 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 -->
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
     <groupId>org.apache.hive</groupId>
     <artifactId>hive</artifactId>
-    <version>4.0.0-alpha-2-SNAPSHOT</version>
+    <version>3.1.2</version>
     <relativePath>../pom.xml</relativePath>
   </parent>
+
   <artifactId>hive-exec</artifactId>
   <packaging>jar</packaging>
   <name>Hive Query Language</name>
+
   <properties>
     <hive.path.to.root>..</hive.path.to.root>
-    <powermock.version>2.0.2</powermock.version>
-    <reflections.version>0.10.2</reflections.version>
-    <atlas.version>2.1.0</atlas.version>
+    <powermock.version>1.6.6</powermock.version>
   </properties>
+
   <dependencies>
-    <!-- dependencies are always listed in sorted order by groupId, artifactId -->
+    <!-- dependencies are always listed in sorted order by groupId, artifectId -->
     <!-- intra-project -->
     <!-- used for vector code-gen -->
-    <dependency>
-      <groupId>org.apache.atlas</groupId>
-      <artifactId>atlas-client-v2</artifactId>
-      <version>${atlas.version}</version>
-      <exclusions>
-        <exclusion>
-          <groupId>org.slf4j</groupId>
-          <artifactId>slf4j-log4j12</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>org.slf4j</groupId>
-          <artifactId>jul-to-slf4j</artifactId>
-        </exclusion>
-      </exclusions>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.atlas</groupId>
-      <artifactId>atlas-client-common</artifactId>
-      <version>${atlas.version}</version>
-      <exclusions>
-        <exclusion>
-          <groupId>org.slf4j</groupId>
-          <artifactId>slf4j-log4j12</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>org.slf4j</groupId>
-          <artifactId>jul-to-slf4j</artifactId>
-        </exclusion>
-      </exclusions>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.atlas</groupId>
-      <artifactId>atlas-intg</artifactId>
-      <version>${atlas.version}</version>
-      <exclusions>
-        <exclusion>
-          <groupId>org.slf4j</groupId>
-          <artifactId>slf4j-log4j12</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>org.slf4j</groupId>
-          <artifactId>jul-to-slf4j</artifactId>
-        </exclusion>
-      </exclusions>
-    </dependency>
-    <dependency>
-      <groupId>commons-configuration</groupId>
-      <artifactId>commons-configuration</artifactId>
-      <version>${commons-configuration.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.commons</groupId>
-      <artifactId>commons-dbcp2</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.commons</groupId>
-      <artifactId>commons-math3</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.commons</groupId>
-      <artifactId>commons-pool2</artifactId>
-      <version>${commons-pool2.version}</version>
-    </dependency>
     <dependency>
       <groupId>org.apache.hive</groupId>
       <artifactId>hive-vector-code-gen</artifactId>
@@ -124,16 +64,6 @@
     </dependency>
     <dependency>
       <groupId>org.apache.hive</groupId>
-      <artifactId>hive-parser</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.hive</groupId>
-      <artifactId>hive-udf</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.hive</groupId>
       <artifactId>hive-service-rpc</artifactId>
       <version>${project.version}</version>
     </dependency>
@@ -154,94 +84,86 @@
     </dependency>
     <dependency>
       <groupId>org.apache.hive</groupId>
-      <artifactId>hive-storage-api</artifactId>
+      <artifactId>hive-spark-client</artifactId>
+      <version>${project.version}</version>
     </dependency>
     <!-- inter-project -->
     <dependency>
-      <groupId>com.amazonaws</groupId>
-      <artifactId>aws-java-sdk-bundle</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>com.amazonaws.secretsmanager</groupId>
-      <artifactId>aws-secretsmanager-caching-java</artifactId>
-    </dependency>
-    <dependency>
       <groupId>com.esotericsoftware</groupId>
-      <artifactId>kryo</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.esotericsoftware</groupId>
-      <artifactId>reflectasm</artifactId>
+      <artifactId>kryo-shaded</artifactId>
+      <version>${kryo.version}</version>
     </dependency>
     <dependency>
       <groupId>com.google.protobuf</groupId>
       <artifactId>protobuf-java</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.hbase</groupId>
-      <artifactId>hbase-common</artifactId>
-      <scope>provided</scope>
+      <version>${protobuf.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.parquet</groupId>
       <artifactId>parquet-hadoop-bundle</artifactId>
+      <version>${parquet.version}</version>
     </dependency>
     <dependency>
       <groupId>commons-codec</groupId>
       <artifactId>commons-codec</artifactId>
+      <version>${commons-codec.version}</version>
     </dependency>
     <dependency>
       <groupId>commons-io</groupId>
       <artifactId>commons-io</artifactId>
+      <version>${commons-io.version}</version>
     </dependency>
     <dependency>
-      <groupId>org.apache.commons</groupId>
-      <artifactId>commons-collections4</artifactId>
+       <groupId>org.apache.commons</groupId>
+       <artifactId>commons-lang3</artifactId>
+       <version>${commons-lang3.version}</version>
     </dependency>
     <dependency>
-      <groupId>org.apache.commons</groupId>
-      <artifactId>commons-lang3</artifactId>
-      <version>${commons-lang3.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.commons</groupId>
-      <artifactId>commons-text</artifactId>
-      <version>${commons-text.version}</version>
+      <groupId>commons-lang</groupId>
+      <artifactId>commons-lang</artifactId>
+      <version>${commons-lang.version}</version>
     </dependency>
     <dependency>
       <groupId>javolution</groupId>
       <artifactId>javolution</artifactId>
+      <version>${javolution.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.logging.log4j</groupId>
       <artifactId>log4j-1.2-api</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.logging.log4j</groupId>
-      <artifactId>log4j-core</artifactId>
       <version>${log4j2.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.logging.log4j</groupId>
       <artifactId>log4j-slf4j-impl</artifactId>
+      <version>${log4j2.version}</version>
     </dependency>
     <dependency>
       <groupId>org.antlr</groupId>
       <artifactId>antlr-runtime</artifactId>
+      <version>${antlr.version}</version>
     </dependency>
     <dependency>
       <groupId>org.antlr</groupId>
       <artifactId>ST4</artifactId>
+      <version>${ST4.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.avro</groupId>
       <artifactId>avro</artifactId>
+      <version>${avro.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.avro</groupId>
       <artifactId>avro-mapred</artifactId>
       <classifier>hadoop2</classifier>
+      <version>${avro.version}</version>
+      <exclusions>
+        <exclusion>
+          <groupId>org.mortbay.jetty</groupId>
+          <artifactId>servlet-api</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>org.apache.ant</groupId>
@@ -251,28 +173,27 @@
     <dependency>
       <groupId>org.apache.commons</groupId>
       <artifactId>commons-compress</artifactId>
+      <version>${commons-compress.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.thrift</groupId>
       <artifactId>libfb303</artifactId>
+      <version>${libfb303.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-common</artifactId>
+      <version>${hadoop.version}</version>
       <exclusions>
         <exclusion>
           <groupId>org.slf4j</groupId>
           <artifactId>slf4j-log4j12</artifactId>
         </exclusion>
         <exclusion>
-          <groupId>commons-beanutils</groupId>
-          <artifactId>commons-beanutils</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>commons-logging</groupId>
+          <groupId>commmons-logging</groupId>
           <artifactId>commons-logging</artifactId>
         </exclusion>
-        <exclusion>
+	<exclusion>
           <groupId>javax.servlet</groupId>
           <artifactId>servlet-api</artifactId>
         </exclusion>
@@ -288,31 +209,35 @@
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-yarn-registry</artifactId>
+      <version>${hadoop.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-mapreduce-client-core</artifactId>
+      <version>${hadoop.version}</version>
       <optional>true</optional>
     </dependency>
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-mapreduce-client-common</artifactId>
+      <version>${hadoop.version}</version>
       <optional>true</optional>
       <scope>test</scope>
-      <exclusions>
-        <exclusion>
-          <groupId>org.slf4j</groupId>
-          <artifactId>slf4j-log4j12</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>commons-logging</groupId>
-          <artifactId>commons-logging</artifactId>
-        </exclusion>
-      </exclusions>
-    </dependency>
+        <exclusions>
+             <exclusion>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-log4j12</artifactId>
+          </exclusion>
+          <exclusion>
+            <groupId>commmons-logging</groupId>
+            <artifactId>commons-logging</artifactId>
+          </exclusion>
+        </exclusions>
+   </dependency>
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-hdfs</artifactId>
+      <version>${hadoop.version}</version>
       <exclusions>
         <exclusion>
           <groupId>javax.servlet</groupId>
@@ -324,11 +249,13 @@
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-yarn-api</artifactId>
+      <version>${hadoop.version}</version>
       <optional>true</optional>
     </dependency>
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-yarn-common</artifactId>
+      <version>${hadoop.version}</version>
       <exclusions>
         <exclusion>
           <groupId>javax.servlet</groupId>
@@ -340,6 +267,7 @@
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-yarn-client</artifactId>
+      <version>${hadoop.version}</version>
       <optional>true</optional>
     </dependency>
     <dependency>
@@ -347,6 +275,7 @@
       <artifactId>orc-tools</artifactId>
       <version>${orc.version}</version>
     </dependency>
+
     <dependency>
       <groupId>org.apache.ivy</groupId>
       <artifactId>ivy</artifactId>
@@ -355,17 +284,20 @@
     <dependency>
       <groupId>org.apache.thrift</groupId>
       <artifactId>libthrift</artifactId>
+      <version>${libthrift.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.zookeeper</groupId>
       <artifactId>zookeeper</artifactId>
+      <version>${zookeeper.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.curator</groupId>
       <artifactId>curator-framework</artifactId>
+      <version>${curator.version}</version>
     </dependency>
     <dependency>
-      <groupId>org.apache.curator</groupId>
+    <groupId>org.apache.curator</groupId>
       <artifactId>apache-curator</artifactId>
       <version>${curator.version}</version>
       <type>pom</type>
@@ -377,11 +309,6 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>org.apache.datasketches</groupId>
-      <artifactId>datasketches-hive</artifactId>
-      <version>${datasketches.version}</version>
-    </dependency>
-    <dependency>
       <groupId>com.lmax</groupId>
       <artifactId>disruptor</artifactId>
       <version>${disruptor.version}</version>
@@ -390,35 +317,37 @@
     <dependency>
       <groupId>org.codehaus.groovy</groupId>
       <artifactId>groovy-all</artifactId>
+      <version>${groovy.version}</version>
     </dependency>
     <dependency>
       <groupId>org.jodd</groupId>
-      <artifactId>jodd-util</artifactId>
+      <artifactId>jodd-core</artifactId>
       <version>${jodd.version}</version>
     </dependency>
     <dependency>
-      <groupId>com.fasterxml.jackson.core</groupId>
-      <artifactId>jackson-annotations</artifactId>
+        <groupId>com.fasterxml.jackson.core</groupId>
+        <artifactId>jackson-annotations</artifactId>
+        <version>${jackson.version}</version>
     </dependency>
     <dependency>
-      <groupId>com.fasterxml.jackson.core</groupId>
-      <artifactId>jackson-core</artifactId>
+        <groupId>com.fasterxml.jackson.core</groupId>
+        <artifactId>jackson-core</artifactId>
+        <version>${jackson.version}</version>
     </dependency>
     <dependency>
-      <groupId>com.fasterxml.jackson.core</groupId>
-      <artifactId>jackson-databind</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.fasterxml.jackson.dataformat</groupId>
-      <artifactId>jackson-dataformat-yaml</artifactId>
+        <groupId>com.fasterxml.jackson.core</groupId>
+        <artifactId>jackson-databind</artifactId>
+        <version>${jackson.version}</version>
     </dependency>
     <dependency>
       <groupId>org.datanucleus</groupId>
       <artifactId>datanucleus-core</artifactId>
+      <version>${datanucleus-core.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.calcite</groupId>
       <artifactId>calcite-core</artifactId>
+      <version>${calcite.version}</version>
       <exclusions>
         <!-- hsqldb interferes with the use of derby as the default db
           in hive's use of datanucleus.
@@ -444,10 +373,6 @@
           <artifactId>jackson-core</artifactId>
         </exclusion>
         <exclusion>
-          <groupId>org.yaml</groupId>
-          <artifactId>snakeyaml</artifactId>
-        </exclusion>
-        <exclusion>
           <groupId>org.apache.calcite.avatica</groupId>
           <artifactId>avatica-core</artifactId>
         </exclusion>
@@ -456,20 +381,18 @@
     <dependency>
       <groupId>org.apache.calcite</groupId>
       <artifactId>calcite-druid</artifactId>
+      <version>${calcite.version}</version>
       <exclusions>
         <exclusion>
           <groupId>org.apache.calcite.avatica</groupId>
           <artifactId>avatica-core</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>org.yaml</groupId>
-          <artifactId>snakeyaml</artifactId>
         </exclusion>
       </exclusions>
     </dependency>
     <dependency>
       <groupId>org.apache.calcite.avatica</groupId>
       <artifactId>avatica</artifactId>
+      <version>${avatica.version}</version>
       <exclusions>
         <exclusion>
           <groupId>org.apache.calcite.avatica</groupId>
@@ -499,10 +422,12 @@
     <dependency>
       <groupId>com.google.guava</groupId>
       <artifactId>guava</artifactId>
+      <version>${guava.version}</version>
     </dependency>
     <dependency>
       <groupId>com.googlecode.javaewah</groupId>
       <artifactId>JavaEWAH</artifactId>
+      <version>${javaewah.version}</version>
     </dependency>
     <dependency>
       <groupId>com.google.code.gson</groupId>
@@ -516,31 +441,12 @@
     <dependency>
       <groupId>stax</groupId>
       <artifactId>stax-api</artifactId>
+      <version>${stax.version}</version>
     </dependency>
     <dependency>
       <groupId>net.sf.opencsv</groupId>
       <artifactId>opencsv</artifactId>
       <version>${opencsv.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.hive</groupId>
-      <artifactId>hive-standalone-metastore-server</artifactId>
-      <version>${standalone-metastore.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.arrow</groupId>
-      <artifactId>arrow-memory-netty</artifactId>
-      <version>${arrow.version}</version>
-      <exclusions>
-        <exclusion>
-          <groupId>io.netty</groupId>
-          <artifactId>netty-buffer</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>io.netty</groupId>
-          <artifactId>netty-common</artifactId>
-        </exclusion>
-      </exclusions>
     </dependency>
     <!-- test intra-project -->
     <dependency>
@@ -552,16 +458,9 @@
     </dependency>
     <dependency>
       <groupId>org.apache.hive</groupId>
-      <artifactId>hive-standalone-metastore-common</artifactId>
-      <version>${standalone-metastore.version}</version>
-      <classifier>tests</classifier>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.hive</groupId>
-      <artifactId>hive-standalone-metastore-server</artifactId>
-      <version>${standalone-metastore.version}</version>
-      <classifier>tests</classifier>
+      <artifactId>hive-standalone-metastore</artifactId>
+      <version>${project.version}</version>
+      <type>test-jar</type>
       <scope>test</scope>
     </dependency>
     <!-- test inter-project -->
@@ -574,26 +473,19 @@
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
+      <version>${junit.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter-engine</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter-params</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.junit.vintage</groupId>
-      <artifactId>junit-vintage-engine</artifactId>
+      <groupId>org.mockito</groupId>
+      <artifactId>mockito-all</artifactId>
+      <version>${mockito-all.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.apache.tez</groupId>
       <artifactId>tez-api</artifactId>
+      <version>${tez.version}</version>
       <optional>true</optional>
       <exclusions>
         <exclusion>
@@ -616,19 +508,20 @@
           <groupId>org.apache.hadoop</groupId>
           <artifactId>hadoop-hdfs</artifactId>
         </exclusion>
-        <exclusion>
-          <groupId>org.apache.hadoop</groupId>
-          <artifactId>hadoop-yarn-client</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>javax.servlet</groupId>
-          <artifactId>servlet-api</artifactId>
-        </exclusion>
+       <exclusion>
+         <groupId>org.apache.hadoop</groupId>
+         <artifactId>hadoop-yarn-client</artifactId>
+       </exclusion>
+       <exclusion>
+         <groupId>javax.servlet</groupId>
+         <artifactId>servlet-api</artifactId>
+       </exclusion>
       </exclusions>
     </dependency>
     <dependency>
       <groupId>org.apache.tez</groupId>
       <artifactId>tez-runtime-library</artifactId>
+      <version>${tez.version}</version>
       <optional>true</optional>
       <exclusions>
         <exclusion>
@@ -651,34 +544,35 @@
           <groupId>org.apache.hadoop</groupId>
           <artifactId>hadoop-hdfs</artifactId>
         </exclusion>
-        <exclusion>
-          <groupId>org.apache.hadoop</groupId>
-          <artifactId>hadoop-yarn-client</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>org.slf4j</groupId>
-          <artifactId>slf4j-log4j12</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>commons-logging</groupId>
-          <artifactId>commons-logging</artifactId>
-        </exclusion>
-      </exclusions>
+       <exclusion>
+         <groupId>org.apache.hadoop</groupId>
+         <artifactId>hadoop-yarn-client</artifactId>
+       </exclusion>
+               <exclusion>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-log4j12</artifactId>
+          </exclusion>
+          <exclusion>
+            <groupId>commmons-logging</groupId>
+            <artifactId>commons-logging</artifactId>
+          </exclusion>
+     </exclusions>
     </dependency>
     <dependency>
       <groupId>org.apache.tez</groupId>
       <artifactId>tez-runtime-internals</artifactId>
+      <version>${tez.version}</version>
       <optional>true</optional>
       <exclusions>
-        <exclusion>
-          <groupId>org.slf4j</groupId>
-          <artifactId>slf4j-log4j12</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>commons-logging</groupId>
-          <artifactId>commons-logging</artifactId>
-        </exclusion>
-        <exclusion>
+              <exclusion>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-log4j12</artifactId>
+          </exclusion>
+          <exclusion>
+            <groupId>commmons-logging</groupId>
+            <artifactId>commons-logging</artifactId>
+          </exclusion>
+       <exclusion>
           <groupId>org.apache.hadoop</groupId>
           <artifactId>hadoop-common</artifactId>
         </exclusion>
@@ -698,23 +592,24 @@
           <groupId>org.apache.hadoop</groupId>
           <artifactId>hadoop-hdfs</artifactId>
         </exclusion>
-        <exclusion>
-          <groupId>org.apache.hadoop</groupId>
-          <artifactId>hadoop-yarn-client</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>org.slf4j</groupId>
-          <artifactId>slf4j-log4j12</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>commons-logging</groupId>
-          <artifactId>commons-logging</artifactId>
-        </exclusion>
-      </exclusions>
+       <exclusion>
+         <groupId>org.apache.hadoop</groupId>
+         <artifactId>hadoop-yarn-client</artifactId>
+       </exclusion>
+             <exclusion>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-log4j12</artifactId>
+          </exclusion>
+          <exclusion>
+            <groupId>commmons-logging</groupId>
+            <artifactId>commons-logging</artifactId>
+          </exclusion>
+     </exclusions>
     </dependency>
     <dependency>
       <groupId>org.apache.tez</groupId>
       <artifactId>tez-mapreduce</artifactId>
+      <version>${tez.version}</version>
       <optional>true</optional>
       <exclusions>
         <exclusion>
@@ -737,24 +632,33 @@
           <groupId>org.apache.hadoop</groupId>
           <artifactId>hadoop-hdfs</artifactId>
         </exclusion>
-        <exclusion>
-          <groupId>org.apache.hadoop</groupId>
-          <artifactId>hadoop-yarn-client</artifactId>
-        </exclusion>
+       <exclusion>
+         <groupId>org.apache.hadoop</groupId>
+         <artifactId>hadoop-yarn-client</artifactId>
+       </exclusion>
       </exclusions>
     </dependency>
     <dependency>
       <groupId>org.apache.tez</groupId>
       <artifactId>tez-dag</artifactId>
+      <version>${tez.version}</version>
       <optional>true</optional>
       <scope>test</scope>
       <exclusions>
+           <exclusion>
+          <groupId>org.mortbay.jetty</groupId>
+          <artifactId>jetty-util</artifactId>
+        </exclusion>
         <exclusion>
+          <groupId>org.mortbay.jetty</groupId>
+          <artifactId>jetty</artifactId>
+        </exclusion>
+       <exclusion>
           <groupId>org.slf4j</groupId>
           <artifactId>slf4j-log4j12</artifactId>
         </exclusion>
         <exclusion>
-          <groupId>commons-logging</groupId>
+          <groupId>commmons-logging</groupId>
           <artifactId>commons-logging</artifactId>
         </exclusion>
         <exclusion>
@@ -786,10 +690,55 @@
           <artifactId>slf4j-log4j12</artifactId>
         </exclusion>
         <exclusion>
-          <groupId>commons-logging</groupId>
+          <groupId>commmons-logging</groupId>
           <artifactId>commons-logging</artifactId>
         </exclusion>
       </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.spark</groupId>
+      <artifactId>spark-core_${scala.binary.version}</artifactId>
+      <version>${spark.version}</version>
+      <optional>true</optional>
+      <exclusions>
+       <exclusion>
+         <groupId>com.esotericsoftware.kryo</groupId>
+         <artifactId>kryo</artifactId>
+       </exclusion>
+       <exclusion>
+         <groupId>org.slf4j</groupId>
+         <artifactId>slf4j-log4j12</artifactId>
+       </exclusion>
+       <exclusion>
+         <groupId>commmons-logging</groupId>
+         <artifactId>commons-logging</artifactId>
+       </exclusion>
+       <exclusion>
+         <groupId>org.glassfish.jersey.containers</groupId>
+         <artifactId>*</artifactId>
+       </exclusion>
+       <exclusion>
+         <groupId>org.glassfish.jersey.core</groupId>
+         <artifactId>*</artifactId>
+       </exclusion>
+     </exclusions>
+   </dependency>
+    <dependency>
+      <groupId>com.sun.jersey</groupId>
+      <artifactId>jersey-servlet</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.glassfish.jersey.core</groupId>
+      <artifactId>jersey-server</artifactId>
+      <version>${glassfish.jersey.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.glassfish.jersey.containers</groupId>
+      <artifactId>jersey-container-servlet-core</artifactId>
+      <version>${glassfish.jersey.version}</version>
+      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.hamcrest</groupId>
@@ -805,85 +754,31 @@
     </dependency>
     <dependency>
       <groupId>org.powermock</groupId>
-      <artifactId>powermock-api-mockito2</artifactId>
+      <artifactId>powermock-api-mockito</artifactId>
       <version>${powermock.version}</version>
       <scope>test</scope>
     </dependency>
-    <dependency>
-      <groupId>com.google.guava</groupId>
-      <artifactId>guava-testlib</artifactId>
-      <version>${guava.version}</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>com.google.re2j</groupId>
-      <artifactId>re2j</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.reflections</groupId>
-      <artifactId>reflections</artifactId>
-      <version>${reflections.version}</version>
-      <exclusions>
-        <exclusion>
-          <groupId>com.google.code.findbugs</groupId>
-          <artifactId>annotations</artifactId>
-        </exclusion>
-      </exclusions>
-    </dependency>
-    <dependency>
-      <groupId>com.jayway.jsonpath</groupId>
-      <artifactId>json-path</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.codehaus.janino</groupId>
-      <artifactId>commons-compiler</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.codehaus.janino</groupId>
-      <artifactId>janino</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.sun.jersey.contribs</groupId>
-      <artifactId>jersey-multipart</artifactId>
-      <version>${jersey.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.kafka</groupId>
-      <artifactId>kafka-clients</artifactId>
-      <version>${kafka.version}</version>
-      <exclusions>
-        <exclusion>
-          <groupId>org.apache.shiro</groupId>
-          <artifactId>shiro-crypto-cipher</artifactId>
-        </exclusion>
-      </exclusions>
-    </dependency>
-    <dependency>
-      <groupId>com.esri.geometry</groupId>
-      <artifactId>esri-geometry-api</artifactId>
-      <scope>compile</scope>
-      <version>${esri.version}</version>
-    </dependency>
   </dependencies>
+
   <profiles>
     <profile>
       <id>sources</id>
-      <build>
-        <plugins>
-          <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-source-plugin</artifactId>
-            <executions>
-              <execution>
-                <id>attach-sources</id>
-                <goals>
-                  <goal>test-jar</goal>
-                </goals>
-              </execution>
-            </executions>
-          </plugin>
-        </plugins>
-      </build>
+        <build>
+          <plugins>
+            <plugin>
+              <groupId>org.apache.maven.plugins</groupId>
+              <artifactId>maven-source-plugin</artifactId>
+              <executions>
+                <execution>
+                  <id>attach-sources</id>
+                  <goals>
+                    <goal>test-jar</goal>
+                  </goals>
+                </execution>
+              </executions>
+            </plugin>
+          </plugins>
+       </build>
     </profile>
     <profile>
       <id>protobuf</id>
@@ -898,8 +793,8 @@
                 <phase>generate-sources</phase>
                 <configuration>
                   <target>
-                    <property name="protobuf.src.dir" location="${basedir}/src/protobuf/java"/>
-                    <property name="protobuf.build.dir" location="${basedir}/src/gen/protobuf/gen-java"/>
+                    <property name="protobuf.src.dir"  location="${basedir}/src/protobuf"/>
+                    <property name="protobuf.build.dir"  location="${basedir}/src/gen/protobuf/gen-java"/>
                     <echo>Building ql Protobuf</echo>
                     <mkdir dir="${protobuf.build.dir}"/>
                     <exec executable="protoc" failonerror="true">
@@ -913,37 +808,37 @@
                   <goal>run</goal>
                 </goals>
               </execution>
-              <execution>
-                <id>generate-protobuf-test-sources</id>
-                <phase>generate-test-sources</phase>
-                <configuration>
-                  <target>
-                    <property name="protobuf.src.dir" location="${basedir}/src/protobuf/test"/>
-                    <property name="protobuf.build.dir" location="${basedir}/src/gen/protobuf/gen-test"/>
-                    <echo>Building ql test Protobuf</echo>
-                    <mkdir dir="${protobuf.build.dir}"/>
-                    <exec executable="protoc" failonerror="true">
-                      <arg value="--java_out=${protobuf.build.dir}"/>
-                      <arg value="-I=${protobuf.src.dir}"/>
-                      <arg value="${protobuf.src.dir}/SampleProtos.proto"/>
-                    </exec>
-                  </target>
-                </configuration>
-                <goals>
-                  <goal>run</goal>
-                </goals>
-              </execution>
             </executions>
           </plugin>
         </plugins>
       </build>
     </profile>
   </profiles>
+
   <build>
     <sourceDirectory>${basedir}/src/java</sourceDirectory>
     <testSourceDirectory>${basedir}/src/test</testSourceDirectory>
     <plugins>
-      <!-- plugins are always listed in sorted order by groupId, artifactId -->
+      <!-- plugins are always listed in sorted order by groupId, artifectId -->
+      <plugin>
+        <groupId>org.antlr</groupId>
+        <artifactId>antlr3-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <goals>
+              <goal>antlr</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <sourceDirectory>${basedir}/src/java</sourceDirectory>
+          <includes>
+            <include>**/HiveLexer.g</include>
+            <include>**/HiveParser.g</include>
+            <include>**/HintParser.g</include>
+          </includes>
+        </configuration>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-antrun-plugin</artifactId>
@@ -954,34 +849,17 @@
             <configuration>
               <target>
                 <property name="compile.classpath" refid="maven.compile.classpath"/>
-                <taskdef name="vectorcodegen" classname="org.apache.hadoop.hive.tools.GenVectorCode" classpath="${compile.classpath}"/>
+                <taskdef name="vectorcodegen" classname="org.apache.hadoop.hive.tools.GenVectorCode"
+                    classpath="${compile.classpath}"/>
                 <mkdir dir="${project.build.directory}/generated-sources/java/org/apache/hadoop/hive/ql/exec/vector/expressions/gen/"/>
                 <mkdir dir="${project.build.directory}/generated-sources/java/org/apache/hadoop/hive/ql/exec/vector/expressions/aggregates/gen/"/>
                 <mkdir dir="${project.build.directory}/generated-test-sources/java/org/apache/hadoop/hive/ql/exec/vector/expressions/gen/"/>
-                <vectorcodegen templateBaseDir="${basedir}/src/gen/vectorization/" buildDir="${project.build.directory}"/>
+                <vectorcodegen templateBaseDir="${basedir}/src/gen/vectorization/" buildDir="${project.build.directory}" />
               </target>
             </configuration>
             <goals>
               <goal>run</goal>
             </goals>
-          </execution>
-          <execution>
-            <id>setup-metastore-scripts</id>
-            <phase>process-test-resources</phase>
-            <goals>
-              <goal>run</goal>
-            </goals>
-            <configuration>
-              <target>
-                <mkdir dir="${test.tmp.dir}/scripts/metastore"/>
-                <copy todir="${test.tmp.dir}/scripts/metastore">
-                  <fileset dir="${basedir}/${hive.path.to.root}/metastore/scripts/"/>
-                </copy>
-                <copy todir="${test.tmp.dir}/scripts/metastore/upgrade" overwrite="true">
-                  <fileset dir="${basedir}/${hive.path.to.root}/standalone-metastore/metastore-server/src/main/sql/"/>
-                </copy>
-              </target>
-            </configuration>
           </execution>
         </executions>
       </plugin>
@@ -993,6 +871,26 @@
             <goals>
               <goal>test-jar</goal>
             </goals>
+          </execution>
+          <execution>
+            <!--this 'execution' will produce a hive-exec-$version-core.jar which has
+            all classes from ql module, i.e. the same contents as hive-exec-$version.jar would
+            have had if there was shade plugin below.  The way shade was configured since 0.13, is
+            to override the default jar for ql module with the saded one but keep the same name.
+            In other words, ql modules producesd a single uber jar under the module's coordinates,
+            i.e. w/o a classifier.  We also need a slim jar that only has classes from ql.  This
+            jar will now be with a 'core' classifier to ensure that prior behavior is preserved.
+            It would have been better to have a slim jar called hive-exec-$version.jar and a fat
+            jar called hive-exec-$version-shaded.jar but doing this now will cause backwards compat.
+            issues-->
+            <id>core-jar</id>
+            <phase>package</phase>
+            <goals>
+              <goal>jar</goal>
+            </goals>
+            <configuration>
+              <classifier>core</classifier>
+            </configuration>
           </execution>
           <execution>
             <id>fallbackauthorizer-jar</id>
@@ -1020,32 +918,27 @@
               <goal>shade</goal>
             </goals>
             <configuration>
+                <!--also see maven-jar-plugin execution.id=core-jar-->
               <artifactSet>
                 <includes>
                   <!-- order is meant to be the same as the ant build -->
-                  <include>org.antlr:antlr-runtime</include>
                   <include>org.apache.hive:hive-common</include>
-                  <include>org.apache.hive:hive-udf</include>
-                  <include>org.apache.hive:hive-parser</include>
                   <include>org.apache.hive:hive-exec</include>
                   <include>org.apache.hive:hive-serde</include>
                   <include>org.apache.hive:hive-llap-common</include>
                   <include>org.apache.hive:hive-llap-client</include>
                   <include>org.apache.hive:hive-metastore</include>
-                  <include>org.apache.hive:hive-standalone-metastore-common</include>
-                  <include>org.apache.hive:hive-standalone-metastore-server</include>
+                  <include>org.apache.hive:hive-standalone-metastore</include>
                   <include>org.apache.hive:hive-service-rpc</include>
-                  <include>com.esotericsoftware:kryo</include>
-                  <include>com.esotericsoftware:reflectasm</include>
+                  <include>com.esotericsoftware:kryo-shaded</include>
                   <include>com.esotericsoftware:minlog</include>
                   <include>org.objenesis:objenesis</include>
                   <include>org.apache.parquet:parquet-hadoop-bundle</include>
                   <include>org.apache.thrift:libthrift</include>
-                  <include>org.apache.thrift:libfb303</include>
-                  <include>org.datanucleus:javax.jdo</include>
+                  <include>javax.jdo:jdo-api</include>
                   <include>commons-lang:commons-lang</include>
                   <include>org.apache.commons:commons-lang3</include>
-                  <include>org.jodd:jodd-util</include>
+                  <include>org.jodd:jodd-core</include>
                   <include>com.tdunning:json</include>
                   <include>org.apache.avro:avro</include>
                   <include>org.apache.avro:avro-mapred</include>
@@ -1058,39 +951,16 @@
                   <include>io.airlift:aircompressor</include>
                   <include>org.codehaus.jackson:jackson-core-asl</include>
                   <include>org.codehaus.jackson:jackson-mapper-asl</include>
-                  <include>com.fasterxml.jackson.core:jackson-core</include>
-                  <include>com.fasterxml.jackson.core:jackson-annotations</include>
-                  <include>com.fasterxml.jackson.core:jackson-databind</include>
-                  <include>com.fasterxml.jackson.dataformat:jackson-dataformat-yaml</include>
                   <include>com.google.guava:guava</include>
                   <include>net.sf.opencsv:opencsv</include>
+                  <include>org.apache.hive:hive-spark-client</include>
                   <include>org.apache.hive:hive-storage-api</include>
-                  <include>org.threeten:threeten-extra</include>
                   <include>org.apache.orc:orc-core</include>
                   <include>org.apache.orc:orc-shims</include>
                   <include>org.apache.orc:orc-tools</include>
                   <include>joda-time:joda-time</include>
-                  <include>com.google.re2j:re2j</include>
-                  <include>io.dropwizard.metrics:metrics-core</include>
-                  <include>io.dropwizard.metrics:metrics-jvm</include>
-                  <include>io.dropwizard.metrics:metrics-json</include>
-                  <include>com.zaxxer:HikariCP</include>
-                  <include>org.apache.datasketches:*</include>
-                  <include>org.apache.calcite:*</include>
-                  <include>org.apache.calcite.avatica:avatica</include>
-                  <include>com.esri.geometry:esri-geometry-api</include>
                 </includes>
               </artifactSet>
-              <filters>
-                <filter>
-                  <artifact>org.apache.calcite.avatica:avatica</artifact>
-                  <excludes>
-                    <exclude>org/slf4j/**</exclude>
-                    <exclude>META-INF/maven/org.slf4j/**</exclude>
-                    <exclude>META-INF/licenses/slf4j*/**</exclude>
-                  </excludes>
-                </filter>
-              </filters>
               <relocations>
                 <relocation>
                   <pattern>com.esotericsoftware</pattern>
@@ -1099,30 +969,6 @@
                 <relocation>
                   <pattern>org.objenesis</pattern>
                   <shadedPattern>org.apache.hive.org.objenesis</shadedPattern>
-                </relocation>
-                <relocation>
-                  <pattern>com.fasterxml.jackson</pattern>
-                  <shadedPattern>org.apache.hive.com.fasterxml.jackson</shadedPattern>
-                </relocation>
-                <relocation>
-                  <pattern>com.codahale.metrics</pattern>
-                  <shadedPattern>org.apache.hive.com.codahale.metrics</shadedPattern>
-                </relocation>
-                <relocation>
-                  <pattern>com.zaxxer.hikari</pattern>
-                  <shadedPattern>org.apache.hive.com.zaxxer.hikari</shadedPattern>
-                </relocation>
-                <relocation>
-                  <pattern>com.google.common</pattern>
-                  <shadedPattern>org.apache.hive.com.google.common</shadedPattern>
-                </relocation>
-                <relocation>
-                  <pattern>com.google.thirdparty.publicsuffix</pattern>
-                  <shadedPattern>org.apache.hive.com.google.thirdparty.publicsuffix</shadedPattern>
-                </relocation>
-                <relocation>
-                  <pattern>org.apache.datasketches</pattern>
-                  <shadedPattern>org.apache.hive.org.apache.datasketches</shadedPattern>
                 </relocation>
               </relocations>
             </configuration>
@@ -1149,14 +995,13 @@
           </execution>
           <execution>
             <id>add-test-sources</id>
-            <phase>generate-sources</phase>
+            <phase>generate-test-sources</phase>
             <goals>
               <goal>add-test-source</goal>
             </goals>
             <configuration>
               <sources>
                 <source>${project.build.directory}/generated-test-sources/java</source>
-                <source>src/gen/protobuf/gen-test</source>
               </sources>
             </configuration>
           </execution>
@@ -1164,4 +1009,5 @@
       </plugin>
     </plugins>
   </build>
+
 </project>

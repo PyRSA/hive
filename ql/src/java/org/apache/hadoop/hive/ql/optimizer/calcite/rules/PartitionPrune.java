@@ -120,7 +120,9 @@ public class PartitionPrune {
           try {
             hiveUDF.close();
           } catch (IOException  e) {
-            LOG.debug("Exception in closing {}", hiveUDF, e);
+            if (LOG.isDebugEnabled()) {
+              LOG.debug("Exception in closing " + hiveUDF, e);
+            }
           }
         }
       }

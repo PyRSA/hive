@@ -47,10 +47,8 @@ public class KillMoveTriggerActionHandler implements TriggerActionHandler<WmTezS
           break;
         case MOVE_TO_POOL:
           String destPoolName = entry.getValue().getAction().getPoolName();
-          if (!wmTezSession.isDelayedMove()) {
-            Future<Boolean> moveFuture = wm.applyMoveSessionAsync(wmTezSession, destPoolName);
-            moveFutures.put(wmTezSession, moveFuture);
-          }
+          Future<Boolean> moveFuture = wm.applyMoveSessionAsync(wmTezSession, destPoolName);
+          moveFutures.put(wmTezSession, moveFuture);
           break;
         default:
           throw new RuntimeException("Unsupported action: " + entry.getValue());

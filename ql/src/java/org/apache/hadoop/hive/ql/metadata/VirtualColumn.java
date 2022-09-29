@@ -50,14 +50,9 @@ public enum VirtualColumn {
 
   RAWDATASIZE("RAW__DATA__SIZE", TypeInfoFactory.longTypeInfo),
   /**
-   * {@link org.apache.hadoop.hive.ql.io.RecordIdentifier}
+   * {@link org.apache.hadoop.hive.ql.io.RecordIdentifier} 
    */
   ROWID("ROW__ID", RecordIdentifier.StructInfo.typeInfo, true, RecordIdentifier.StructInfo.oi),
-  ROWISDELETED("ROW__IS__DELETED", TypeInfoFactory.booleanTypeInfo),
-  PARTITION_SPEC_ID("PARTITION__SPEC__ID", TypeInfoFactory.intTypeInfo),
-  PARTITION_HASH("PARTITION__HASH", TypeInfoFactory.longTypeInfo),
-  FILE_PATH("FILE__PATH", TypeInfoFactory.stringTypeInfo),
-  ROW_POSITION("ROW__POSITION", TypeInfoFactory.longTypeInfo),
 
   /**
    * GROUPINGID is used with GROUP BY GROUPINGS SETS, ROLLUP and CUBE.
@@ -70,8 +65,7 @@ public enum VirtualColumn {
 
   public static final ImmutableSet<String> VIRTUAL_COLUMN_NAMES =
       ImmutableSet.of(FILENAME.getName(), BLOCKOFFSET.getName(), ROWOFFSET.getName(),
-          RAWDATASIZE.getName(), GROUPINGID.getName(), ROWID.getName(), ROWISDELETED.getName(),
-          PARTITION_SPEC_ID.getName(), PARTITION_HASH.getName(), FILE_PATH.getName(), ROW_POSITION.getName());
+          RAWDATASIZE.getName(), GROUPINGID.getName(), ROWID.getName());
 
   public static final ImmutableMap<String, VirtualColumn> VIRTUAL_COLUMN_NAME_MAP =
        new ImmutableMap.Builder<String, VirtualColumn>().putAll(getColumnNameMap()).build();
@@ -115,7 +109,6 @@ public enum VirtualColumn {
       l.add(ROWOFFSET);
     }
     l.add(ROWID);
-    l.add(ROWISDELETED);
 
     return l;
   }

@@ -77,7 +77,7 @@ public class ObjectCacheFactory {
           return null;
         }
       }
-    } else { // mr
+    } else { // mr or spark
       return new ObjectCacheWrapper(
           new  org.apache.hadoop.hive.ql.exec.mr.ObjectCache(), queryId);
     }
@@ -96,14 +96,16 @@ public class ObjectCacheFactory {
     if (result != null) return result;
     result = new LlapObjectCache();
     ObjectCache old = llapQueryCaches.putIfAbsent(queryId, result);
-    if (old == null) {
+    if (old == null && LOG.isInfoEnabled()) {
       LOG.info("Created object cache for " + queryId);
     }
     return (old != null) ? old : result;
   }
 
   public static void removeLlapQueryCache(String queryId) {
-    LOG.info("Removing object cache for " + queryId);
+    if (LOG.isInfoEnabled()) {
+      LOG.info("Removing object cache for " + queryId);
+    }
     llapQueryCaches.remove(queryId);
   }
 }

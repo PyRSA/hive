@@ -18,15 +18,22 @@
 
 package org.apache.hadoop.hive.ql.exec;
 
+import java.io.IOException;
 import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
 
+import org.apache.hadoop.hive.common.JavaUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
 import org.apache.hadoop.hive.common.FileUtils;
-import org.apache.hadoop.hive.ql.exec.repl.util.ReplUtils;
-import org.apache.hadoop.hive.ql.metadata.HiveException;
+import org.apache.hadoop.hive.ql.DriverContext;
+import org.apache.hadoop.hive.ql.io.AcidUtils;
+import org.apache.hadoop.hive.ql.parse.repl.dump.io.FileOperations;
 import org.apache.hadoop.hive.ql.plan.CopyWork;
 import org.apache.hadoop.hive.ql.plan.api.StageType;
 import org.apache.hadoop.util.StringUtils;
@@ -37,36 +44,20 @@ import org.apache.hadoop.util.StringUtils;
 public class CopyTask extends Task<CopyWork> implements Serializable {
   private static final long serialVersionUID = 1L;
 
+  private static transient final Logger LOG = LoggerFactory.getLogger(CopyTask.class);
+
   public CopyTask() {
     super();
   }
 
   @Override
-  public int execute() {
-    try {
-      initializeWorkFromDeferredContext();
-    } catch (Exception e) {
-      console.printError("Failed with exception " + e.getMessage(), "\n"
-          + StringUtils.stringifyException(e));
-      LOG.error("CopyTask failed", e);
-      setException(e);
-      return ReplUtils.handleException(work.isReplication(), e, work.getDumpDirectory(), work.getMetricCollector(),
-          getName(), conf);
-    }
-
+  public int execute(DriverContext driverContext) {
     Path[] from = work.getFromPaths(), to = work.getToPaths();
     for (int i = 0; i < from.length; ++i) {
       int result = copyOnePath(from[i], to[i]);
-      if (result != 0)
-        return result;
+      if (result != 0) return result;
     }
     return 0;
-  }
-
-  private void initializeWorkFromDeferredContext() throws HiveException {
-    if (null != getDeferredWorkContext()) {
-      work.initializeFromDeferredContext(getDeferredWorkContext());
-    }
   }
 
   protected int copyOnePath(Path fromPath, Path toPath) {
@@ -111,7 +102,7 @@ public class CopyTask extends Task<CopyWork> implements Serializable {
         Utilities.FILE_OP_LOGGER.debug("Copying file {} to {}", oneSrcPathStr, toPath);
         if (!FileUtils.copy(srcFs, oneSrc.getPath(), dstFs, toPath,
             false, // delete source
-            work.isOverwrite(), // overwrite destination
+            true, // overwrite destination
             conf)) {
           console.printError("Failed to copy: '" + oneSrcPathStr
               + "to: '" + toPath.toString() + "'");
@@ -123,10 +114,7 @@ public class CopyTask extends Task<CopyWork> implements Serializable {
     } catch (Exception e) {
       console.printError("Failed with exception " + e.getMessage(), "\n"
           + StringUtils.stringifyException(e));
-      LOG.error("CopyTask failed", e);
-      setException(e);
-      return ReplUtils.handleException(work.isReplication(), e, work.getDumpDirectory(), work.getMetricCollector(),
-              getName(), conf);
+      return (1);
     }
   }
 

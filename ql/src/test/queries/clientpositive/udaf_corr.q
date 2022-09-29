@@ -1,5 +1,3 @@
---! qt:disabled:disabled in HIVE-20741
-
 set hive.mapred.mode=nonstrict;
 DROP TABLE covar_tab_n0;
 CREATE TABLE covar_tab_n0 (a INT, b INT, c INT)

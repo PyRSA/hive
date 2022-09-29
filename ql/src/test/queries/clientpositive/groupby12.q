@@ -1,4 +1,3 @@
---! qt:dataset:src
 set hive.map.aggr=false;
 
 CREATE TABLE dest1_n106(key INT, value STRING) STORED AS TEXTFILE;

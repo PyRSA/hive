@@ -15,7 +15,7 @@
  */
 package org.apache.hadoop.hive.ql.wm;
 
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import org.codehaus.jackson.map.annotate.JsonSerialize;
 
 /**
  * Trigger interface which gets mapped to CREATE TRIGGER .. queries. A trigger can have a name, expression and action.

@@ -18,9 +18,11 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.ptf;
 
-import org.apache.hadoop.hive.ql.exec.vector.ColumnVector.Type;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
+import org.apache.hadoop.hive.ql.exec.vector.ColumnVector.Type;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorExpression;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.plan.ptf.WindowFrameDef;
@@ -32,9 +34,16 @@ import com.google.common.base.Preconditions;
  *
  * Sum up non-null column values; group result is sum / non-null count.
  */
-public class VectorPTFEvaluatorLongAvg extends VectorPTFEvaluatorAbstractAvg<Long> {
+public class VectorPTFEvaluatorLongAvg extends VectorPTFEvaluatorBase {
 
-  protected double avg;
+  private static final long serialVersionUID = 1L;
+  private static final String CLASS_NAME = VectorPTFEvaluatorLongAvg.class.getName();
+  private static final Log LOG = LogFactory.getLog(CLASS_NAME);
+
+  protected boolean isGroupResultNull;
+  protected long sum;
+  private int nonNullGroupCount;
+  private double avg;
 
   public VectorPTFEvaluatorLongAvg(WindowFrameDef windowFrameDef, VectorExpression inputVecExpr,
       int outputColumnNum) {
@@ -42,8 +51,7 @@ public class VectorPTFEvaluatorLongAvg extends VectorPTFEvaluatorAbstractAvg<Lon
     resetEvaluator();
   }
 
-  @Override
-  public void evaluateGroupBatch(VectorizedRowBatch batch)
+  public void evaluateGroupBatch(VectorizedRowBatch batch, boolean isLastGroupBatch)
       throws HiveException {
 
     evaluateInputExpr(batch);
@@ -115,13 +123,17 @@ public class VectorPTFEvaluatorLongAvg extends VectorPTFEvaluatorAbstractAvg<Lon
         sum += varSum;
       }
     }
+
+    if (isLastGroupBatch) {
+      if (!isGroupResultNull) {
+        avg = ((double) sum) / nonNullGroupCount;
+      }
+    }
   }
 
   @Override
-  public void doLastBatchWork() {
-    if (!isGroupResultNull) {
-      avg = ((double) sum) / nonNullGroupCount;
-    }
+  public boolean isGroupResultNull() {
+    return isGroupResultNull;
   }
 
   @Override
@@ -130,35 +142,14 @@ public class VectorPTFEvaluatorLongAvg extends VectorPTFEvaluatorAbstractAvg<Lon
   }
 
   @Override
-  public Object getGroupResult() {
-    doLastBatchWork(); // make sure we have a fresh avg
+  public double getDoubleGroupResult() {
     return avg;
-  }
-
-  @Override
-  protected Long computeValue(Long number) {
-    return VectorPTFEvaluatorHelper.computeValue(number);
-  }
-
-  @Override
-  protected Long plus(Long number1, Long number2) {
-    return VectorPTFEvaluatorHelper.plus(number1, number2);
-  }
-
-  @Override
-  protected Long minus(Long number1, Long number2) {
-    return VectorPTFEvaluatorHelper.minus(number1, number2);
-  }
-
-  @Override
-  protected Double divide(Long number, long divisor) {
-    return VectorPTFEvaluatorHelper.divide(number, divisor);
   }
 
   @Override
   public void resetEvaluator() {
     isGroupResultNull = true;
-    sum = 0L;
+    sum = 0;
     nonNullGroupCount = 0;
     avg = 0.0;
   }

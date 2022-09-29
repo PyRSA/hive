@@ -36,12 +36,20 @@ import java.util.Arrays;
 public class CastStringToDate extends VectorExpression {
   private static final long serialVersionUID = 1L;
 
+  private final int inputColumn;
+
+  private transient final DateParser dateParser = new DateParser();
+
   public CastStringToDate() {
     super();
+
+    // Dummy final assignments.
+    inputColumn = -1;
   }
 
   public CastStringToDate(int inputColumn, int outputColumnNum) {
-    super(inputColumn, outputColumnNum);
+    super(outputColumnNum);
+    this.inputColumn = inputColumn;
   }
 
   @Override
@@ -51,7 +59,7 @@ public class CastStringToDate extends VectorExpression {
       super.evaluateChildren(batch);
     }
 
-    BytesColumnVector inV = (BytesColumnVector) batch.cols[inputColumnNum[0]];
+    BytesColumnVector inV = (BytesColumnVector) batch.cols[inputColumn];
     int[] sel = batch.selected;
     int n = batch.size;
     LongColumnVector outputColVector = (LongColumnVector) batch.cols[outputColumnNum];
@@ -143,17 +151,14 @@ public class CastStringToDate extends VectorExpression {
     }
   }
 
-  protected void evaluate(LongColumnVector outputColVector, BytesColumnVector inV, int i) {
+  private void evaluate(LongColumnVector outputColVector, BytesColumnVector inV, int i) {
     String dateString = new String(inV.vector[i], inV.start[i], inV.length[i], StandardCharsets.UTF_8);
-    Date hDate = DateParser.parseDate(dateString);
-    if (hDate != null) {
+    Date hDate = new Date();
+    if (dateParser.parseDate(dateString, hDate)) {
       outputColVector.vector[i] = DateWritableV2.dateToDays(hDate);
       return;
     }
-    setNull(outputColVector, i);
-  }
 
-  protected void setNull(LongColumnVector outputColVector, int i) {
     outputColVector.vector[i] = 1;
     outputColVector.isNull[i] = true;
     outputColVector.noNulls = false;
@@ -161,7 +166,7 @@ public class CastStringToDate extends VectorExpression {
 
   @Override
   public String vectorExpressionParameters() {
-    return getColumnParamString(0, inputColumnNum[0]);
+    return getColumnParamString(0, inputColumn);
   }
 
   @Override

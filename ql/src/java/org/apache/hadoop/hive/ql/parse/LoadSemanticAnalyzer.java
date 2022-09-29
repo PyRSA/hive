@@ -18,27 +18,29 @@
 
 package org.apache.hadoop.hive.ql.parse;
 
+import org.apache.commons.codec.DecoderException;
+import org.apache.commons.codec.net.URLCodec;
+import org.apache.hadoop.hive.conf.HiveConf.StrictChecks;
 import java.io.IOException;
+import java.io.Serializable;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
+import java.util.ArrayList;
+
 
 import org.antlr.runtime.tree.Tree;
-import org.apache.commons.codec.DecoderException;
-import org.apache.commons.codec.net.URLCodec;
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.conf.HiveConf.StrictChecks;
 import org.apache.hadoop.hive.metastore.TableType;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.ql.Context;
@@ -54,17 +56,18 @@ import org.apache.hadoop.hive.ql.lockmgr.LockException;
 import org.apache.hadoop.hive.ql.metadata.Hive;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.metadata.Partition;
+import org.apache.hadoop.hive.ql.plan.StatsWork;
 import org.apache.hadoop.hive.ql.metadata.Table;
-import org.apache.hadoop.hive.ql.plan.BasicStatsWork;
 import org.apache.hadoop.hive.ql.plan.LoadTableDesc;
 import org.apache.hadoop.hive.ql.plan.LoadTableDesc.LoadFileType;
 import org.apache.hadoop.hive.ql.plan.MoveWork;
-import org.apache.hadoop.hive.ql.plan.StatsWork;
+import org.apache.hadoop.hive.ql.plan.BasicStatsWork;
 import org.apache.hadoop.mapred.InputFormat;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Lists;
+import org.apache.hadoop.mapred.TextInputFormat;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * LoadSemanticAnalyzer.
@@ -164,8 +167,7 @@ public class LoadSemanticAnalyzer extends SemanticAnalyzer {
     // local mode implies that scheme should be "file"
     // we can change this going forward
     if (isLocal && !fromURI.getScheme().equals("file")) {
-      throw new SemanticException(ASTErrorUtils.getMsg(
-          ErrorMsg.ILLEGAL_PATH.getMsg(), fromTree,
+      throw new SemanticException(ErrorMsg.ILLEGAL_PATH.getMsg(fromTree,
           "Source file system should be \"file\" if \"local\" is specified"));
     }
 
@@ -173,8 +175,7 @@ public class LoadSemanticAnalyzer extends SemanticAnalyzer {
       FileSystem fileSystem = FileSystem.get(fromURI, conf);
       srcs = matchFilesOrDir(fileSystem, new Path(fromURI));
       if (srcs == null || srcs.length == 0) {
-        throw new SemanticException(ASTErrorUtils.getMsg(
-            ErrorMsg.INVALID_PATH.getMsg(), fromTree,
+        throw new SemanticException(ErrorMsg.INVALID_PATH.getMsg(fromTree,
             "No files matching path " + fromURI));
       }
 
@@ -184,7 +185,7 @@ public class LoadSemanticAnalyzer extends SemanticAnalyzer {
           return null;
         }
       }
-      AcidUtils.validateAcidFiles(table, srcs, fileSystem);
+      validateAcidFiles(table, srcs, fileSystem);
       // Do another loop if table is bucketed
       List<String> bucketCols = table.getBucketCols();
       if (bucketCols != null && !bucketCols.isEmpty()) {
@@ -215,13 +216,33 @@ public class LoadSemanticAnalyzer extends SemanticAnalyzer {
     } catch (IOException e) {
       // Has to use full name to make sure it does not conflict with
       // org.apache.commons.lang.StringUtils
-      throw new SemanticException(ASTErrorUtils.getMsg(
-          ErrorMsg.INVALID_PATH.getMsg(), fromTree), e);
+      throw new SemanticException(ErrorMsg.INVALID_PATH.getMsg(fromTree), e);
     }
 
     return Lists.newArrayList(srcs);
   }
 
+  /**
+   * Safety check to make sure a file take from one acid table is not added into another acid table
+   * since the ROW__IDs embedded as part a write to one table won't make sense in different
+   * table/cluster.
+   */
+  private static void validateAcidFiles(Table table, FileStatus[] srcs, FileSystem fs)
+      throws SemanticException {
+    if(!AcidUtils.isFullAcidTable(table)) {
+      return;
+    }
+    try {
+      for (FileStatus oneSrc : srcs) {
+        if (!AcidUtils.MetaDataFile.isRawFormatFile(oneSrc.getPath(), fs)) {
+          throw new SemanticException(ErrorMsg.LOAD_DATA_ACID_FILE, oneSrc.getPath().toString());
+        }
+      }
+    }
+    catch(IOException ex) {
+      throw new SemanticException(ex);
+    }
+  }
 
   @Override
   public void init(boolean clearPartsCache) {
@@ -283,8 +304,8 @@ public class LoadSemanticAnalyzer extends SemanticAnalyzer {
       String fromPath = stripQuotes(fromTree.getText());
       fromURI = initializeFromURI(fromPath, isLocal);
     } catch (IOException | URISyntaxException e) {
-      throw new SemanticException(ASTErrorUtils.getMsg(
-          ErrorMsg.INVALID_PATH.getMsg(), fromTree, e.getMessage()), e);
+      throw new SemanticException(ErrorMsg.INVALID_PATH.getMsg(fromTree, e
+          .getMessage()), e);
     }
 
     // initialize destination table/partition
@@ -320,9 +341,7 @@ public class LoadSemanticAnalyzer extends SemanticAnalyzer {
 
     // make sure the arguments make sense
     List<FileStatus> files = applyConstraintsAndGetFiles(fromURI, ts.tableHandle);
-    if (queryReWritten) {
-      return;
-    }
+    if (queryReWritten) return;
 
     // for managed tables, make sure the file formats match
     if (TableType.MANAGED_TABLE.equals(ts.tableHandle.getTableType())
@@ -390,8 +409,9 @@ public class LoadSemanticAnalyzer extends SemanticAnalyzer {
       loadTableWork.setInheritTableSpecs(false);
     }
 
-    Task<?> childTask = TaskFactory.get(
-        new MoveWork(getInputs(), getOutputs(), loadTableWork, null, true, isLocal)
+    Task<? extends Serializable> childTask = TaskFactory.get(
+        new MoveWork(getInputs(), getOutputs(), loadTableWork, null, true,
+            isLocal)
     );
 
     rootTasks.add(childTask);
@@ -400,7 +420,7 @@ public class LoadSemanticAnalyzer extends SemanticAnalyzer {
     // Some stats like number of rows require a scan of the data
     // However, some other stats, like number of files, do not require a complete scan
     // Update the stats which do not require a complete scan.
-    Task<?> statTask = null;
+    Task<? extends Serializable> statTask = null;
     if (conf.getBoolVar(HiveConf.ConfVars.HIVESTATSAUTOGATHER)) {
       BasicStatsWork basicStatsWork = new BasicStatsWork(loadTableWork);
       basicStatsWork.setNoStatsAggregator(true);
@@ -518,12 +538,7 @@ public class LoadSemanticAnalyzer extends SemanticAnalyzer {
     // Step 2 : create the Insert query
     StringBuilder rewrittenQueryStr = new StringBuilder();
 
-    if (isOverWrite) {
-      rewrittenQueryStr.append("insert overwrite table ");
-    } else {
-      rewrittenQueryStr.append("insert into table ");
-    }
-
+    rewrittenQueryStr.append("insert into table ");
     rewrittenQueryStr.append(getFullTableNameForSQL((ASTNode)(tableTree.getChild(0))));
     addPartitionColsToInsert(table.getPartCols(), inpPartSpec, rewrittenQueryStr);
     rewrittenQueryStr.append(" select * from ");
@@ -535,10 +550,14 @@ public class LoadSemanticAnalyzer extends SemanticAnalyzer {
     HiveConf.setVar(conf, HiveConf.ConfVars.DYNAMICPARTITIONINGMODE, "nonstrict");
     // Parse the rewritten query string
     Context rewrittenCtx;
-    rewrittenCtx = new Context(conf);
-    // We keep track of all the contexts that are created by this query
-    // so we can clear them when we finish execution
-    ctx.addSubContext(rewrittenCtx);
+    try {
+      rewrittenCtx = new Context(conf);
+      // We keep track of all the contexts that are created by this query
+      // so we can clear them when we finish execution
+      ctx.addRewrittenStatementContext(rewrittenCtx);
+    } catch (IOException e) {
+      throw new SemanticException(ErrorMsg.LOAD_DATA_LAUNCH_JOB_IO_ERROR.getMsg());
+    }
     rewrittenCtx.setExplainConfig(ctx.getExplainConfig());
     rewrittenCtx.setExplainPlan(ctx.isExplainPlan());
     rewrittenCtx.setCmd(rewrittenQueryStr.toString());
@@ -559,7 +578,7 @@ public class LoadSemanticAnalyzer extends SemanticAnalyzer {
   }
 
   @Override
-  public Set<WriteEntity> getAllOutputs() {
+  public HashSet<WriteEntity> getAllOutputs() {
     return outputs;
   }
 }

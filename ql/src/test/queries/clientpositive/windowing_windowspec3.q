@@ -1,5 +1,3 @@
--- SORT_QUERY_RESULTS
-
 -- Test value based windowing spec
 
 drop table if exists emp_n0;

@@ -1,4 +1,3 @@
---! qt:dataset:src1
 
 
 create table partition_test_partitioned_n8(key string, value string) partitioned by (dt string);

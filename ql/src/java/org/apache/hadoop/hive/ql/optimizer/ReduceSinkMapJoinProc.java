@@ -38,7 +38,7 @@ import org.apache.hadoop.hive.ql.exec.RowSchema;
 import org.apache.hadoop.hive.ql.exec.TableScanOperator;
 import org.apache.hadoop.hive.ql.exec.Utilities;
 import org.apache.hadoop.hive.ql.lib.Node;
-import org.apache.hadoop.hive.ql.lib.SemanticNodeProcessor;
+import org.apache.hadoop.hive.ql.lib.NodeProcessor;
 import org.apache.hadoop.hive.ql.lib.NodeProcessorCtx;
 import org.apache.hadoop.hive.ql.parse.GenTezProcContext;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
@@ -58,13 +58,12 @@ import org.apache.hadoop.hive.ql.plan.TezEdgeProperty.EdgeType;
 import org.apache.hadoop.hive.ql.plan.TezWork;
 import org.apache.hadoop.hive.ql.plan.TezWork.VertexType;
 import org.apache.hadoop.hive.ql.stats.StatsUtils;
-import org.apache.hadoop.hive.ql.util.NullOrdering;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Sets;
 
-public class ReduceSinkMapJoinProc implements SemanticNodeProcessor {
+public class ReduceSinkMapJoinProc implements NodeProcessor {
 
   private final static Logger LOG = LoggerFactory.getLogger(ReduceSinkMapJoinProc.class.getName());
 
@@ -178,7 +177,7 @@ public class ReduceSinkMapJoinProc implements SemanticNodeProcessor {
         keyCount = rowCount = Long.MAX_VALUE;
       }
       tableSize = stats.getDataSize();
-      List<String> keyCols = parentRS.getConf().getOutputKeyColumnNames();
+      ArrayList<String> keyCols = parentRS.getConf().getOutputKeyColumnNames();
       if (keyCols != null && !keyCols.isEmpty()) {
         // See if we can arrive at a smaller number using distinct stats from key columns.
         long maxKeyCount = 1;
@@ -335,6 +334,7 @@ public class ReduceSinkMapJoinProc implements SemanticNodeProcessor {
 
     // create an new operator: HashTableDummyOperator, which share the table desc
     HashTableDummyDesc desc = new HashTableDummyDesc();
+    @SuppressWarnings("unchecked")
     HashTableDummyOperator dummyOp = (HashTableDummyOperator) OperatorFactory.get(
         parentRS.getCompilationOpContext(), desc);
     TableDesc tbl;
@@ -350,7 +350,7 @@ public class ReduceSinkMapJoinProc implements SemanticNodeProcessor {
     StringBuilder keyNullOrder = new StringBuilder();
     for (ExprNodeDesc k: keyCols) {
       keyOrder.append("+");
-      keyNullOrder.append(NullOrdering.defaultNullOrder(context.conf).getSign());
+      keyNullOrder.append("a");
     }
     TableDesc keyTableDesc = PlanUtils.getReduceKeyTableDesc(PlanUtils
         .getFieldSchemasFromColumnList(keyCols, "mapjoinkey"), keyOrder.toString(),

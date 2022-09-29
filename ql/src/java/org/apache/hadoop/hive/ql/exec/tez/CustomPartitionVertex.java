@@ -147,7 +147,7 @@ public class CustomPartitionVertex extends VertexManagerPlugin {
     List<VertexManagerPluginContext.TaskWithLocationHint> scheduledTasks =
       new ArrayList<VertexManagerPluginContext.TaskWithLocationHint>(numTasks);
     for (int i = 0; i < numTasks; ++i) {
-      scheduledTasks.add(new VertexManagerPluginContext.TaskWithLocationHint(Integer.valueOf(i), null));
+      scheduledTasks.add(new VertexManagerPluginContext.TaskWithLocationHint(new Integer(i), null));
     }
     context.scheduleVertexTasks(scheduledTasks);
   }
@@ -194,6 +194,7 @@ public class CustomPartitionVertex extends VertexManagerPlugin {
           MRInputUserPayloadProto.newBuilder(protoPayload).setGroupingEnabled(true).build();
       inputDescriptor.setUserPayload(UserPayload.create(updatedPayload.toByteString().asReadOnlyByteBuffer()));
     } catch (IOException e) {
+      e.printStackTrace();
       throw new RuntimeException(e);
     }
 
@@ -238,7 +239,9 @@ public class CustomPartitionVertex extends VertexManagerPlugin {
       }
     }
 
-    LOG.debug("Path file splits map for input name: {} is {}", inputName, pathFileSplitsMap);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Path file splits map for input name: " + inputName + " is " + pathFileSplitsMap);
+    }
 
     Multimap<Integer, InputSplit> bucketToInitialSplitMap =
         getBucketSplitMapForPath(inputName, pathFileSplitsMap);
@@ -252,9 +255,10 @@ public class CustomPartitionVertex extends VertexManagerPlugin {
 
       int availableSlots = totalResource / taskResource;
 
-      LOG.debug("Grouping splits. {} available slots, {} waves. Bucket initial splits map: {}", availableSlots, waves,
-          bucketToInitialSplitMap);
-
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Grouping splits. " + availableSlots + " available slots, " + waves
+                + " waves. Bucket initial splits map: " + bucketToInitialSplitMap);
+      }
       JobConf jobConf = new JobConf(conf);
       ShimLoader.getHadoopShims().getMergedCredentials(jobConf);
 

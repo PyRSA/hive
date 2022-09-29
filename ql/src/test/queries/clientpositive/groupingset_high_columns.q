@@ -1,5 +1,3 @@
--- SORT_QUERY_RESULTS
-
 create table facts (val string);
 
 insert into facts values ('abcdefghijklmnopqrstuvwxyz0123456789');

@@ -116,7 +116,9 @@ public class SimpleFetchOptimizer extends Transform {
           pctx.setFetchTask(fetchTask);
         }
       } catch (Exception e) {
-        LOG.error("Failed to transform", e);
+        // Has to use full name to make sure it does not conflict with
+        // org.apache.commons.lang.StringUtils
+        LOG.error(org.apache.hadoop.util.StringUtils.stringifyException(e));
         if (e instanceof SemanticException) {
           throw (SemanticException) e;
         }
@@ -152,31 +154,27 @@ public class SimpleFetchOptimizer extends Transform {
   }
 
   private boolean checkThreshold(FetchData data, int limit, ParseContext pctx) throws Exception {
-    boolean cachingEnabled = HiveConf.getBoolVar(pctx.getConf(), HiveConf.ConfVars.HIVEFETCHTASKCACHING);
-    if (!cachingEnabled) {
-      if (limit > 0) {
-        if (data.hasOnlyPruningFilter()) {
-          // partitioned table + query has only pruning filters
-          return true;
-        } else if (data.isPartitioned() == false && data.isFiltered() == false) {
-          // unpartitioned table + no filters
-          return true;
-        }
-        // fall through
+    if (limit > 0) {
+      if (data.hasOnlyPruningFilter()) {
+        /* partitioned table + query has only pruning filters */
+        return true;
+      } else if (data.isPartitioned() == false && data.isFiltered() == false) {
+        /* unpartitioned table + no filters */
+        return true;
       }
-      Operator child = data.scanOp.getChildOperators().get(0);
-      if(child instanceof SelectOperator) {
-        // select *, constant and casts can be allowed without a threshold check
-        if (checkExpressions((SelectOperator)child)) {
-          return true;
-        }
-      }
+      /* fall through */
     }
-    // if caching is enabled we apply the treshold in all cases
     long threshold = HiveConf.getLongVar(pctx.getConf(),
         HiveConf.ConfVars.HIVEFETCHTASKCONVERSIONTHRESHOLD);
     if (threshold < 0) {
       return true;
+    }
+    Operator child = data.scanOp.getChildOperators().get(0);
+    if(child instanceof SelectOperator) {
+      // select *, constant and casts can be allowed without a threshold check
+      if (checkExpressions((SelectOperator)child)) {
+        return true;
+      }
     }
     return data.isDataLengthWithInThreshold(pctx, threshold);
   }
@@ -213,38 +211,11 @@ public class SimpleFetchOptimizer extends Transform {
         bypassFilter = !pctx.getPrunedPartitions(alias, ts).hasUnknownPartitions();
       }
     }
-
-    boolean onlyPruningFilter = bypassFilter;
-    Operator<?> op = ts;
-    while (onlyPruningFilter) {
-      if (op instanceof FileSinkOperator || op.getChildOperators() == null) {
-        break;
-      } else if (op.getChildOperators().size() != 1) {
-        onlyPruningFilter = false;
-        break;
-      } else {
-        op = op.getChildOperators().get(0);
-      }
-
-      if (op instanceof FilterOperator) {
-        ExprNodeDesc predicate = ((FilterOperator) op).getConf().getPredicate();
-        if (predicate instanceof ExprNodeConstantDesc
-                && "boolean".equals(predicate.getTypeInfo().getTypeName())) {
-          continue;
-        } else if (PartitionPruner.onlyContainsPartnCols(table, predicate)) {
-          continue;
-        } else {
-          onlyPruningFilter = false;
-        }
-      }
-    }
-
-    if (!aggressive && !onlyPruningFilter) {
+    if (!aggressive && !bypassFilter) {
       return null;
     }
-
     PrunedPartitionList partitions = pctx.getPrunedPartitions(alias, ts);
-    FetchData fetch = new FetchData(ts, parent, table, partitions, splitSample, onlyPruningFilter);
+    FetchData fetch = new FetchData(ts, parent, table, partitions, splitSample, bypassFilter);
     return checkOperators(fetch, aggressive, bypassFilter);
   }
 
@@ -485,7 +456,9 @@ public class SimpleFetchOptimizer extends Transform {
           PlanUtils.configureInputJobPropertiesForStorageHandler(tableDesc);
           Utilities.copyTableJobPropertiesToConf(tableDesc, jobConf);
           long len = estimator.estimate(jobConf, scanOp, threshold).getTotalLength();
-          LOG.debug("Threshold {} exceeded for pseudoMR mode", len);
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Threshold " + len + " exceeded for pseudoMR mode");
+          }
           return (threshold - len) > 0;
         }
         if (table.isNonNative()) {
@@ -493,7 +466,9 @@ public class SimpleFetchOptimizer extends Transform {
         }
         if (!table.isPartitioned()) {
           long len = getPathLength(jobConf, table.getPath(), table.getInputFormatClass(), threshold);
-          LOG.debug("Threshold {} exceeded for pseudoMR mode", len);
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Threshold " + len + " exceeded for pseudoMR mode");
+          }
           return (threshold - len) > 0;
         }
         final AtomicLong total = new AtomicLong(0);
@@ -543,7 +518,7 @@ public class SimpleFetchOptimizer extends Transform {
     }
 
     // This method gets the basic stats from metastore for table/partitions. This will make use of the statistics from
-    // AnnotateWithStatistics optimizer when available. If execution engine is tez, AnnotateWithStatistics
+    // AnnotateWithStatistics optimizer when available. If execution engine is tez or spark, AnnotateWithStatistics
     // optimization is applied only during physical compilation because of DPP changing the stats. In such case, we
     // we will get the basic stats from metastore. When statistics is absent in metastore we will use the fallback of
     // scanning the filesystem to get file lengths.

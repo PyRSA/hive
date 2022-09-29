@@ -20,7 +20,6 @@ package org.apache.hadoop.hive.ql.exec.vector.expressions;
 
 import java.util.Arrays;
 
-import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorExpression;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.MathExpr;
 import org.apache.hadoop.hive.ql.exec.vector.*;
@@ -31,10 +30,13 @@ import org.apache.hadoop.hive.serde2.typeinfo.PrimitiveTypeInfo;
 public class CastTimestampToLong extends VectorExpression {
   private static final long serialVersionUID = 1L;
 
+  private int colNum;
+
   private transient PrimitiveCategory integerPrimitiveCategory;
 
   public CastTimestampToLong(int colNum, int outputColumnNum) {
-    super(colNum, outputColumnNum);
+    super(outputColumnNum);
+    this.colNum = colNum;
   }
 
   public CastTimestampToLong() {
@@ -42,7 +44,7 @@ public class CastTimestampToLong extends VectorExpression {
   }
 
   @Override
-  public void transientInit(Configuration conf) throws HiveException {
+  public void transientInit() throws HiveException {
     integerPrimitiveCategory = ((PrimitiveTypeInfo) outputTypeInfo).getPrimitiveCategory();
   }
 
@@ -83,7 +85,7 @@ public class CastTimestampToLong extends VectorExpression {
       this.evaluateChildren(batch);
     }
 
-    TimestampColumnVector inputColVector = (TimestampColumnVector) batch.cols[inputColumnNum[0]];
+    TimestampColumnVector inputColVector = (TimestampColumnVector) batch.cols[colNum];
     LongColumnVector outputColVector = (LongColumnVector) batch.cols[outputColumnNum];
     int[] sel = batch.selected;
     boolean[] inputIsNull = inputColVector.isNull;
@@ -173,7 +175,7 @@ public class CastTimestampToLong extends VectorExpression {
 
   @Override
   public String vectorExpressionParameters() {
-    return getColumnParamString(0, inputColumnNum[0]);
+    return getColumnParamString(0, colNum);
   }
 
   @Override

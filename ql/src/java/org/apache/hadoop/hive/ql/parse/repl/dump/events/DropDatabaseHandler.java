@@ -18,25 +18,19 @@
 package org.apache.hadoop.hive.ql.parse.repl.dump.events;
 
 import org.apache.hadoop.hive.metastore.api.NotificationEvent;
-import org.apache.hadoop.hive.metastore.messaging.DropDatabaseMessage;
 import org.apache.hadoop.hive.ql.parse.repl.DumpType;
 import org.apache.hadoop.hive.ql.parse.repl.load.DumpMetaData;
 
-class DropDatabaseHandler extends AbstractEventHandler<DropDatabaseMessage> {
+class DropDatabaseHandler extends AbstractEventHandler {
   DropDatabaseHandler(NotificationEvent event) {
     super(event);
   }
 
   @Override
-  DropDatabaseMessage eventMessage(String stringRepresentation) {
-    return deserializer.getDropDatabaseMessage(stringRepresentation);
-  }
-
-  @Override
   public void handle(Context withinContext) throws Exception {
-    LOG.info("Processing#{} DROP_DATABASE message : {}", fromEventId(), eventMessageAsJSON);
+    LOG.info("Processing#{} DROP_DATABASE message : {}", fromEventId(), event.getMessage());
     DumpMetaData dmd = withinContext.createDmd(this);
-    dmd.setPayload(eventMessageAsJSON);
+    dmd.setPayload(event.getMessage());
     dmd.write();
   }
 

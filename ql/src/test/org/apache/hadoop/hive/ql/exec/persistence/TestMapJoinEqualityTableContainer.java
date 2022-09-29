@@ -21,7 +21,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 
-import org.junit.Assert;
+import junit.framework.Assert;
 
 import org.apache.hadoop.io.Text;
 import org.junit.Before;

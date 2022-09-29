@@ -37,34 +37,34 @@ public class VectorColumnSetInfo {
   /**
    * indices of LONG primitive keys.
    */
-  public int[] longIndices;
+  protected int[] longIndices;
 
   /**
    * indices of DOUBLE primitive keys.
    */
-  public int[] doubleIndices;
+  protected int[] doubleIndices;
 
   /**
    * indices of string (byte[]) primitive keys.
    */
-  public int[] stringIndices;
+  protected int[] stringIndices;
 
   /**
    * indices of decimal primitive keys.
    */
-  public int[] decimalIndices;
+  protected int[] decimalIndices;
 
   /**
    * indices of TIMESTAMP primitive keys.
    */
-  public int[] timestampIndices;
+  protected int[] timestampIndices;
 
   /**
    * indices of INTERVAL_DAY_TIME primitive keys.
    */
-  public int[] intervalDayTimeIndices;
+  protected int[] intervalDayTimeIndices;
 
-  final public int keyCount;
+  final protected int keyCount;
   private int addKeyIndex;
 
   private int addLongIndex;
@@ -77,9 +77,9 @@ public class VectorColumnSetInfo {
   // Given the keyIndex these arrays return:
   //   The ColumnVector.Type,
   //   The type specific index into longIndices, doubleIndices, etc...
-  public TypeInfo[] typeInfos;
-  public ColumnVector.Type[] columnVectorTypes;
-  public int[] columnTypeSpecificIndices;
+  protected TypeInfo[] typeInfos;
+  protected ColumnVector.Type[] columnVectorTypes;
+  protected int[] columnTypeSpecificIndices;
 
   protected VectorColumnSetInfo(int keyCount) {
     this.keyCount = keyCount;

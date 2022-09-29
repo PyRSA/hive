@@ -17,7 +17,7 @@
  */
 package org.apache.hadoop.hive.ql.optimizer.listbucketingpruner;
 
-import org.junit.Assert;
+import junit.framework.Assert;
 import junit.framework.TestCase;
 
 import org.junit.Test;
@@ -27,7 +27,7 @@ import org.junit.Test;
  * Test {@link ListBucketingPruner}
  *
  */
-public class TestListBucketingPrunner {
+public class TestListBucketingPrunner extends TestCase {
 
   @Test
   public void testSkipSkewedDirectory1() {

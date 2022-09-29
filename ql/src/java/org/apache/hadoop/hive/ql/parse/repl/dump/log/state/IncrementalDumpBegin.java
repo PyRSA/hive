@@ -17,12 +17,9 @@
  */
 package org.apache.hadoop.hive.ql.parse.repl.dump.log.state;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
-
-import org.apache.hadoop.hive.ql.exec.repl.util.ReplUtils;
-import org.apache.hadoop.hive.ql.parse.repl.DumpType;
 import org.apache.hadoop.hive.ql.parse.repl.ReplState;
+import org.apache.hadoop.hive.ql.parse.repl.DumpType;
+import org.codehaus.jackson.annotate.JsonProperty;
 
 public class IncrementalDumpBegin extends ReplState {
   @JsonProperty
@@ -35,26 +32,12 @@ public class IncrementalDumpBegin extends ReplState {
   private Long estimatedNumEvents;
 
   @JsonProperty
-  @JsonSerialize(using = ReplUtils.TimeSerializer.class)
   private Long dumpStartTime;
 
-  @JsonProperty
-  private Long fromEventId;
-
-  @JsonProperty
-  private Long toEventId;
-
-  @JsonProperty
-  private Long maxEvents;
-
-  public IncrementalDumpBegin(String dbName, long estimatedNumEvents, Long fromEventId,
-                              Long toEventId, Long maxEvents) {
+  public IncrementalDumpBegin(String dbName, long estimatedNumEvents) {
     this.dbName = dbName;
     this.dumpType = DumpType.INCREMENTAL;
     this.estimatedNumEvents = estimatedNumEvents;
     this.dumpStartTime = System.currentTimeMillis() / 1000;
-    this.fromEventId = fromEventId;
-    this.toEventId = toEventId;
-    this.maxEvents = maxEvents;
   }
 }

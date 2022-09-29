@@ -21,13 +21,12 @@ package org.apache.hadoop.hive.ql.exec.repl.bootstrap;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.exec.Task;
 import org.apache.hadoop.hive.ql.exec.TaskFactory;
-import org.apache.hadoop.hive.ql.exec.repl.util.AddDependencyToLeaves;
 import org.apache.hadoop.hive.ql.exec.util.DAGTraversal;
 import org.apache.hadoop.hive.ql.plan.DependencyCollectionWork;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.runners.MockitoJUnitRunner;
 
 import java.io.Serializable;
 import java.util.Arrays;
@@ -53,21 +52,21 @@ public class AddDependencyToLeavesTest {
     Task<DependencyCollectionWork> collectionWorkTaskThree =
         TaskFactory.get(new DependencyCollectionWork());
 
-    @SuppressWarnings("unchecked") Task<?> rootTask = mock(Task.class);
+    @SuppressWarnings("unchecked") Task<? extends Serializable> rootTask = mock(Task.class);
     when(rootTask.getDependentTasks())
         .thenReturn(
             Arrays.asList(collectionWorkTaskOne, collectionWorkTaskTwo, collectionWorkTaskThree));
-    @SuppressWarnings("unchecked") List<Task<?>> tasksPostCurrentGraph =
+    @SuppressWarnings("unchecked") List<Task<? extends Serializable>> tasksPostCurrentGraph =
         Arrays.asList(mock(Task.class), mock(Task.class));
 
     DAGTraversal.traverse(Collections.singletonList(rootTask),
         new AddDependencyToLeaves(tasksPostCurrentGraph));
 
-    List<Task<?>> dependentTasksForOne =
+    List<Task<? extends Serializable>> dependentTasksForOne =
         collectionWorkTaskOne.getDependentTasks();
-    List<Task<?>> dependentTasksForTwo =
+    List<Task<? extends Serializable>> dependentTasksForTwo =
         collectionWorkTaskTwo.getDependentTasks();
-    List<Task<?>> dependentTasksForThree =
+    List<Task<? extends Serializable>> dependentTasksForThree =
         collectionWorkTaskThree.getDependentTasks();
 
     assertEquals(dependentTasksForOne.size(), 2);

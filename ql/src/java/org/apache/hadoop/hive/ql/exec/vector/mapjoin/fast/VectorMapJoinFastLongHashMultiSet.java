@@ -20,7 +20,6 @@ package org.apache.hadoop.hive.ql.exec.vector.mapjoin.fast;
 
 import java.io.IOException;
 
-import org.apache.hadoop.hive.ql.plan.TableDesc;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.ql.exec.JoinUtil;
@@ -28,6 +27,7 @@ import org.apache.hadoop.hive.ql.exec.vector.mapjoin.hashtable.VectorMapJoinHash
 import org.apache.hadoop.hive.ql.exec.vector.mapjoin.hashtable.VectorMapJoinLongHashMultiSet;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.plan.VectorMapJoinDesc.HashTableKeyType;
+import org.apache.hadoop.hive.serde2.SerDeException;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hive.common.util.HashCodeUtil;
 
@@ -42,30 +42,9 @@ public class VectorMapJoinFastLongHashMultiSet
 
   public static final Logger LOG = LoggerFactory.getLogger(VectorMapJoinFastLongHashMultiSet.class);
 
-  private long fullOuterNullKeyValueCount;
-
   @Override
   public VectorMapJoinHashMultiSetResult createHashMultiSetResult() {
     return new VectorMapJoinFastHashMultiSet.HashMultiSetResult();
-  }
-
-  @Override
-  public void putRow(long hashCode, BytesWritable currentKey, BytesWritable currentValue)
-      throws HiveException, IOException {
-
-    if (!adaptPutRow(hashCode, currentKey, currentValue)) {
-
-      // Ignore NULL keys, except for FULL OUTER.
-      if (isFullOuter) {
-        fullOuterNullKeyValueCount++;
-      }
-
-    }
-  }
-
-  @Override
-  public boolean containsLongKey(long currentKey) {
-    return containsKey(currentKey);
   }
 
   /*
@@ -74,8 +53,7 @@ public class VectorMapJoinFastLongHashMultiSet
    */
   @VisibleForTesting
   public void testPutRow(long currentKey) throws HiveException, IOException {
-    long hashCode = HashCodeUtil.calculateLongHashCode(currentKey);
-    add(hashCode, currentKey, null);
+    add(currentKey, null);
   }
 
   @Override
@@ -102,19 +80,12 @@ public class VectorMapJoinFastLongHashMultiSet
     optimizedHashMultiSetResult.forget();
 
     long hashCode = HashCodeUtil.calculateLongHashCode(key);
-    int pairIndex = findReadSlot(key, hashCode);
+    long count = findReadSlot(key, hashCode);
     JoinUtil.JoinResult joinResult;
-    if (pairIndex == -1) {
+    if (count == -1) {
       joinResult = JoinUtil.JoinResult.NOMATCH;
     } else {
-      /*
-       * NOTE: Support for trackMatched not needed yet for Set.
-
-      if (matchTracker != null) {
-        matchTracker.trackMatch(pairIndex / 2);
-      }
-      */
-      optimizedHashMultiSetResult.set(slotPairs[pairIndex]);
+      optimizedHashMultiSetResult.set(count);
       joinResult = JoinUtil.JoinResult.MATCH;
     }
 
@@ -124,15 +95,10 @@ public class VectorMapJoinFastLongHashMultiSet
   }
 
   public VectorMapJoinFastLongHashMultiSet(
-      boolean isFullOuter,
-      boolean minMaxEnabled,
-      HashTableKeyType hashTableKeyType,
-      int initialCapacity, float loadFactor, int writeBuffersSize, long estimatedKeyCount, TableDesc tableDesc) {
-    super(
-        isFullOuter,
-        minMaxEnabled, hashTableKeyType,
-        initialCapacity, loadFactor, writeBuffersSize, estimatedKeyCount, tableDesc);
-    fullOuterNullKeyValueCount = 0;
+      boolean minMaxEnabled, boolean isOuterJoin, HashTableKeyType hashTableKeyType,
+      int initialCapacity, float loadFactor, int writeBuffersSize, long estimatedKeyCount) {
+    super(minMaxEnabled, isOuterJoin, hashTableKeyType,
+        initialCapacity, loadFactor, writeBuffersSize, estimatedKeyCount);
   }
 
   @Override

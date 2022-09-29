@@ -45,6 +45,7 @@ import org.apache.hadoop.hive.ql.plan.TezEdgeProperty;
 import org.apache.hadoop.hive.ql.plan.TezWork;
 import org.apache.hadoop.hive.ql.plan.UnionWork;
 
+import java.io.Serializable;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -60,14 +61,14 @@ import java.util.concurrent.atomic.AtomicInteger;
  * to break them into TezTasks.
  *
  */
-public class GenTezProcContext implements NodeProcessorCtx {
+public class GenTezProcContext implements NodeProcessorCtx{
 
   public final ParseContext parseContext;
   public final HiveConf conf;
   public final List<Task<MoveWork>> moveTask;
 
   // rootTasks is the entry point for all generated tasks
-  public final List<Task<?>> rootTasks;
+  public final List<Task<? extends Serializable>> rootTasks;
 
   public final Set<ReadEntity> inputs;
   public final Set<WriteEntity> outputs;
@@ -163,7 +164,7 @@ public class GenTezProcContext implements NodeProcessorCtx {
 
   @SuppressWarnings("unchecked")
   public GenTezProcContext(HiveConf conf, ParseContext parseContext,
-      List<Task<MoveWork>> moveTask, List<Task<?>> rootTasks,
+      List<Task<MoveWork>> moveTask, List<Task<? extends Serializable>> rootTasks,
       Set<ReadEntity> inputs, Set<WriteEntity> outputs) {
 
     this.conf = conf;

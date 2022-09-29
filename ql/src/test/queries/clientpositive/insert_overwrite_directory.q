@@ -1,4 +1,3 @@
---! qt:dataset:src
 insert overwrite directory '../../data/files/src_table_1'
 select * from src ;
 dfs -cat ../../data/files/src_table_1/000000_0;
@@ -124,15 +123,6 @@ select key,value from rctable;
 
 dfs -cat ../../data/files/rctable_out/000000_0;
 
--- test iow directory when query result cache is enabled
-set hive.query.results.cache.enabled=true;
-insert overwrite directory '../../data/files/iowd_out'
-ROW FORMAT DELIMITED
-FIELDS TERMINATED BY '\t'
-select key,value from rctable;
-
-dfs -cat ../../data/files/iowd_out/000000_0;
-
 drop table rctable;
 drop table array_table_n1;
 drop table map_table_n2;
@@ -149,4 +139,3 @@ dfs -rmr ../../data/files/rctable;
 dfs -rmr ../../data/files/rctable_out;
 dfs -rmr ../../data/files/src_table_1;
 dfs -rmr ../../data/files/src_table_2;
-dfs -rmr ../../data/files/iowd_out;

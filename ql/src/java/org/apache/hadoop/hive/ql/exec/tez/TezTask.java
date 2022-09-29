@@ -18,12 +18,9 @@
 
 package org.apache.hadoop.hive.ql.exec.tez;
 
-import org.apache.hadoop.hive.metastore.conf.MetastoreConf;
-import org.apache.hadoop.hive.ql.session.SessionStateUtil;
 import org.apache.hive.common.util.Ref;
 import org.apache.hadoop.hive.ql.exec.tez.UserPoolMapping.MappingInput;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -33,18 +30,17 @@ import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import javax.annotation.Nullable;
 import org.apache.hadoop.classification.InterfaceAudience.Private;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.hive.common.ServerUtils;
 import org.apache.hadoop.hive.common.metrics.common.Metrics;
 import org.apache.hadoop.hive.common.metrics.common.MetricsConstant;
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.conf.HiveConfUtil;
 import org.apache.hadoop.hive.ql.Context;
+import org.apache.hadoop.hive.ql.DriverContext;
 import org.apache.hadoop.hive.ql.exec.FileSinkOperator;
 import org.apache.hadoop.hive.ql.exec.Operator;
 import org.apache.hadoop.hive.ql.exec.Task;
@@ -87,11 +83,7 @@ import org.apache.tez.dag.api.client.DAGClient;
 import org.apache.tez.dag.api.client.DAGStatus;
 import org.apache.tez.dag.api.client.StatusGetOpts;
 import org.apache.tez.dag.api.client.VertexStatus;
-import org.apache.tez.runtime.library.api.TezRuntimeConfiguration;
 import org.json.JSONObject;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.google.common.annotations.VisibleForTesting;
 
 /**
@@ -104,10 +96,6 @@ import com.google.common.annotations.VisibleForTesting;
 public class TezTask extends Task<TezWork> {
 
   private static final String CLASS_NAME = TezTask.class.getName();
-  private static final String JOB_ID_TEMPLATE = "job_%s%d_%s";
-  private static final String ICEBERG_PROPERTY_PREFIX = "iceberg.mr.";
-  private static final String ICEBERG_SERIALIZED_TABLE_PREFIX = "iceberg.mr.serialized.table.";
-  private static transient Logger LOG = LoggerFactory.getLogger(CLASS_NAME);
   private final PerfLogger perfLogger = SessionState.getPerfLogger();
   private static final String TEZ_MEMORY_RESERVE_FRACTION = "tez.task.scale.memory.reserve-fraction";
 
@@ -135,27 +123,23 @@ public class TezTask extends Task<TezWork> {
     return counters;
   }
 
-  public void setTezCounters(final TezCounters counters) {
-    this.counters = counters;
-  }
 
   @Override
-  public int execute() {
+  public int execute(DriverContext driverContext) {
     int rc = 1;
     boolean cleanContext = false;
     Context ctx = null;
     Ref<TezSessionState> sessionRef = Ref.from(null);
 
-    final String queryId = HiveConf.getVar(conf, HiveConf.ConfVars.HIVEQUERYID);
-
     try {
       // Get or create Context object. If we create it we have to clean it later as well.
-      ctx = context;
+      ctx = driverContext.getCtx();
       if (ctx == null) {
         ctx = new Context(conf);
         cleanContext = true;
         // some DDL task that directly executes a TezTask does not setup Context and hence TriggerContext.
         // Setting queryId is messed up. Some DDL tasks have executionId instead of proper queryId.
+        String queryId = HiveConf.getVar(conf, HiveConf.ConfVars.HIVEQUERYID);
         WmContext wmContext = new WmContext(System.currentTimeMillis(), queryId);
         ctx.setWmContext(wmContext);
       }
@@ -186,12 +170,8 @@ public class TezTask extends Task<TezWork> {
           ss.getHiveVariables().get("wmpool"), ss.getHiveVariables().get("wmapp"));
 
       WmContext wmContext = ctx.getWmContext();
-      // jobConf will hold all the configuration for hadoop, tez, and hive, which are not set in AM defaults
-      JobConf jobConf = utils.createConfiguration(conf, false);
-
-      // Setup the job specific keystore path if exists and put the password into the environment variables of tez am/tasks.
-      HiveConfUtil.updateJobCredentialProviders(jobConf);
-
+      // jobConf will hold all the configuration for hadoop, tez, and hive
+      JobConf jobConf = utils.createConfiguration(conf);
       // Get all user jars from work (e.g. input format stuff).
       String[] allNonConfFiles = work.configureJobConfAndExtractJars(jobConf);
       // DAG scratch dir. We get a session from the pool so it may be different from Tez one.
@@ -200,10 +180,10 @@ public class TezTask extends Task<TezWork> {
       CallerContext callerContext = CallerContext.create(
           "HIVE", queryPlan.getQueryId(), "HIVE_QUERY_ID", queryPlan.getQueryStr());
 
-      perfLogger.perfLogBegin(CLASS_NAME, PerfLogger.TEZ_GET_SESSION);
+      perfLogger.PerfLogBegin(CLASS_NAME, PerfLogger.TEZ_GET_SESSION);
       session = sessionRef.value = WorkloadManagerFederation.getSession(
           sessionRef.value, conf, mi, getWork().getLlapMode(), wmContext);
-      perfLogger.perfLogEnd(CLASS_NAME, PerfLogger.TEZ_GET_SESSION);
+      perfLogger.PerfLogEnd(CLASS_NAME, PerfLogger.TEZ_GET_SESSION);
 
       try {
         ss.setTezSession(session);
@@ -233,7 +213,7 @@ public class TezTask extends Task<TezWork> {
         if (this.isShutdown) {
           throw new HiveException("Operation cancelled");
         }
-        DAGClient dagClient = submit(dag, sessionRef);
+        DAGClient dagClient = submit(jobConf, dag, sessionRef);
         session = sessionRef.value;
         boolean wasShutdown = false;
         synchronized (dagClientLock) {
@@ -248,35 +228,22 @@ public class TezTask extends Task<TezWork> {
           throw new HiveException("Operation cancelled");
         }
 
-        // Log all the info required to find the various logs for this query
-        LOG.info("HS2 Host: [{}], Query ID: [{}], Dag ID: [{}], DAG Session ID: [{}]", ServerUtils.hostname(), queryId,
-            this.dagClient.getDagIdentifierString(), this.dagClient.getSessionIdentifierString());
-
         // finally monitor will print progress until the job is done
-        TezJobMonitor monitor = new TezJobMonitor(work.getAllWork(), dagClient, conf, dag, ctx, counters);
+        TezJobMonitor monitor = new TezJobMonitor(work.getAllWork(), dagClient, conf, dag, ctx);
         rc = monitor.monitorExecution();
 
         if (rc != 0) {
           this.setException(new HiveException(monitor.getDiagnostics()));
         }
 
+        // fetch the counters
         try {
-          // fetch the counters
           Set<StatusGetOpts> statusGetOpts = EnumSet.of(StatusGetOpts.GET_COUNTERS);
-          TezCounters dagCounters = dagClient.getDAGStatus(statusGetOpts).getDAGCounters();
-
-          // if initial counters exists, merge it with dag counters to get aggregated view
-          TezCounters mergedCounters = counters == null ? dagCounters : Utils.mergeTezCounters(dagCounters, counters);
-          counters = mergedCounters;
+          counters = dagClient.getDAGStatus(statusGetOpts).getDAGCounters();
         } catch (Exception err) {
           // Don't fail execution due to counters - just don't print summary info
-          LOG.warn("Failed to get counters. Ignoring, summary info will be incomplete.", err);
+          LOG.warn("Failed to get counters. Ignoring, summary info will be incomplete. " + err, err);
           counters = null;
-        }
-
-        // save useful commit information into query state, e.g. for custom commit hooks, like Iceberg
-        if (rc == 0) {
-          collectCommitInformation(work);
         }
       } finally {
         // Note: due to TEZ-3846, the session may actually be invalid in case of some errors.
@@ -313,10 +280,8 @@ public class TezTask extends Task<TezWork> {
           }
         }
       }
-      updateNumRows();
     } catch (Exception e) {
       LOG.error("Failed to execute tez graph.", e);
-      setException(e);
       // rc will be 1 at this point indicating failure.
     } finally {
       Utilities.clearWork(conf);
@@ -352,51 +317,6 @@ public class TezTask extends Task<TezWork> {
       }
     }
     return rc;
-  }
-
-  private void collectCommitInformation(TezWork work) throws IOException, TezException {
-    for (BaseWork w : work.getAllWork()) {
-      JobConf jobConf = workToConf.get(w);
-      Vertex vertex = workToVertex.get(w);
-      boolean hasIcebergCommitter = Optional.ofNullable(jobConf).map(JobConf::getOutputCommitter)
-          .map(Object::getClass).map(Class::getName)
-          .filter(name -> name.endsWith("HiveIcebergNoJobCommitter")).isPresent();
-      // we should only consider jobs with Iceberg output committer and a data sink
-      if (hasIcebergCommitter && !vertex.getDataSinks().isEmpty()) {
-        VertexStatus status = dagClient.getVertexStatus(vertex.getName(), EnumSet.of(StatusGetOpts.GET_COUNTERS));
-        String[] jobIdParts = status.getId().split("_");
-        // status.getId() returns something like: vertex_1617722404520_0001_1_00
-        // this should be transformed to a parsable JobID: job_16177224045200_0001
-        int vertexId = Integer.parseInt(jobIdParts[jobIdParts.length - 1]);
-        String jobId = String.format(JOB_ID_TEMPLATE, jobIdParts[1], vertexId, jobIdParts[2]);
-
-        List<String> tables = new ArrayList<>();
-        Map<String, String> icebergProperties = new HashMap<>();
-        for (Map.Entry<String, String> entry : jobConf) {
-          if (entry.getKey().startsWith(ICEBERG_SERIALIZED_TABLE_PREFIX)) {
-            // get all target tables this vertex wrote to
-            tables.add(entry.getKey().substring(ICEBERG_SERIALIZED_TABLE_PREFIX.length()));
-          } else if (entry.getKey().startsWith(ICEBERG_PROPERTY_PREFIX)) {
-            // find iceberg props in jobConf as they can be needed, but not available, during job commit
-            icebergProperties.put(entry.getKey(), entry.getValue());
-          }
-        }
-
-        // save information for each target table
-        tables.forEach(table -> SessionStateUtil.addCommitInfo(jobConf, table, jobId,
-            status.getProgress().getSucceededTaskCount(), icebergProperties));
-      }
-    }
-  }
-
-  private void updateNumRows() {
-    if (counters != null) {
-      TezCounter counter = counters.findCounter(
-        conf.getVar(HiveConf.ConfVars.HIVECOUNTERGROUP), FileSinkOperator.TOTAL_TABLE_ROWS_WRITTEN);
-      if (counter != null) {
-        queryState.setNumModifiedRows(counter.getValue());
-      }
-    }
   }
 
   private String getUserNameForGroups(SessionState ss) {
@@ -460,20 +380,22 @@ public class TezTask extends Task<TezWork> {
     }
   }
 
-  DAG build(JobConf conf, TezWork tezWork, Path scratchDir, Context ctx,
+  DAG build(JobConf conf, TezWork work, Path scratchDir, Context ctx,
       Map<String, LocalResource> vertexResources) throws Exception {
 
-    perfLogger.perfLogBegin(CLASS_NAME, PerfLogger.TEZ_BUILD_DAG);
+    perfLogger.PerfLogBegin(CLASS_NAME, PerfLogger.TEZ_BUILD_DAG);
 
     // getAllWork returns a topologically sorted list, which we use to make
     // sure that vertices are created before they are used in edges.
-    List<BaseWork> topologicalWorkList = tezWork.getAllWork();
-    Collections.reverse(topologicalWorkList);
+    List<BaseWork> ws = work.getAllWork();
+    Collections.reverse(ws);
+
+    FileSystem fs = scratchDir.getFileSystem(conf);
 
     // the name of the dag is what is displayed in the AM/Job UI
     String dagName = utils.createDagName(conf, queryPlan);
 
-    LOG.info("Dag name: {}", dagName);
+    LOG.info("Dag name: " + dagName);
     DAG dag = DAG.create(dagName);
 
     // set some info for the query
@@ -481,22 +403,21 @@ public class TezTask extends Task<TezWork> {
         .put("description", ctx.getCmd());
     String dagInfo = json.toString();
 
-    String queryId = HiveConf.getVar(conf, HiveConf.ConfVars.HIVEQUERYID);
-    dag.setConf(HiveConf.ConfVars.HIVEQUERYID.varname, queryId);
-
-    LOG.debug("DagInfo: {}", dagInfo);
-
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("DagInfo: " + dagInfo);
+    }
     dag.setDAGInfo(dagInfo);
 
     dag.setCredentials(conf.getCredentials());
     setAccessControlsForCurrentUser(dag, queryPlan.getQueryId(), conf);
 
-    for (BaseWork workUnit: topologicalWorkList) {
+    for (BaseWork w: ws) {
+      boolean isFinal = work.getLeaves().contains(w);
 
       // translate work to vertex
-      perfLogger.perfLogBegin(CLASS_NAME, PerfLogger.TEZ_CREATE_VERTEX + workUnit.getName());
+      perfLogger.PerfLogBegin(CLASS_NAME, PerfLogger.TEZ_CREATE_VERTEX + w.getName());
 
-      if (workUnit instanceof UnionWork) {
+      if (w instanceof UnionWork) {
         // Special case for unions. These items translate to VertexGroups
 
         List<BaseWork> unionWorkItems = new LinkedList<BaseWork>();
@@ -504,8 +425,8 @@ public class TezTask extends Task<TezWork> {
 
         // split the children into vertices that make up the union and vertices that are
         // proper children of the union
-        for (BaseWork v: tezWork.getChildren(workUnit)) {
-          EdgeType type = tezWork.getEdgeProperty(workUnit, v).getEdgeType();
+        for (BaseWork v: work.getChildren(w)) {
+          EdgeType type = work.getEdgeProperty(w, v).getEdgeType();
           if (type == EdgeType.CONTAINS) {
             unionWorkItems.add(v);
           } else {
@@ -513,7 +434,7 @@ public class TezTask extends Task<TezWork> {
           }
         }
         JobConf parentConf = workToConf.get(unionWorkItems.get(0));
-        checkOutputSpec(workUnit, parentConf);
+        checkOutputSpec(w, parentConf);
 
         // create VertexGroup
         Vertex[] vertexArray = new Vertex[unionWorkItems.size()];
@@ -522,7 +443,7 @@ public class TezTask extends Task<TezWork> {
         for (BaseWork v: unionWorkItems) {
           vertexArray[i++] = workToVertex.get(v);
         }
-        VertexGroup group = dag.createVertexGroup(workUnit.getName(), vertexArray);
+        VertexGroup group = dag.createVertexGroup(w.getName(), vertexArray);
 
         // For a vertex group, all Outputs use the same Key-class, Val-class and partitioner.
         // Pick any one source vertex to figure out the Edge configuration.
@@ -531,54 +452,42 @@ public class TezTask extends Task<TezWork> {
         for (BaseWork v: children) {
           // finally we can create the grouped edge
           GroupInputEdge e = utils.createEdge(group, parentConf,
-               workToVertex.get(v), tezWork.getEdgeProperty(workUnit, v), v, tezWork);
+               workToVertex.get(v), work.getEdgeProperty(w, v), v, work);
 
           dag.addEdge(e);
         }
       } else {
         // Regular vertices
-        JobConf wxConf = utils.initializeVertexConf(conf, ctx, workUnit);
-        checkOutputSpec(workUnit, wxConf);
-        Vertex wx = utils.createVertex(wxConf, workUnit, scratchDir,
-            tezWork, vertexResources);
-        if (tezWork.getChildren(workUnit).size() > 1) {
-          String tezRuntimeSortMb = wxConf.get(TezRuntimeConfiguration.TEZ_RUNTIME_IO_SORT_MB);
-          int originalValue = 0;
-          if(tezRuntimeSortMb == null) {
-            originalValue = TezRuntimeConfiguration.TEZ_RUNTIME_IO_SORT_MB_DEFAULT;
-          } else {
-            originalValue = Integer.valueOf(tezRuntimeSortMb);
-          }
-          int newValue = originalValue / tezWork.getChildren(workUnit).size();
-          wxConf.set(TezRuntimeConfiguration.TEZ_RUNTIME_IO_SORT_MB, Integer.toString(newValue));
-          LOG.info("Modified " + TezRuntimeConfiguration.TEZ_RUNTIME_IO_SORT_MB + " to " + newValue);
-        }
-        if (workUnit.getReservedMemoryMB() > 0) {
+        JobConf wxConf = utils.initializeVertexConf(conf, ctx, w);
+        checkOutputSpec(w, wxConf);
+        Vertex wx = utils.createVertex(wxConf, w, scratchDir, fs, ctx, !isFinal,
+            work, work.getVertexType(w), vertexResources);
+        if (w.getReservedMemoryMB() > 0) {
           // If reversedMemoryMB is set, make memory allocation fraction adjustment as needed
-          double frac = DagUtils.adjustMemoryReserveFraction(workUnit.getReservedMemoryMB(), super.conf);
+          double frac = DagUtils.adjustMemoryReserveFraction(w.getReservedMemoryMB(), super.conf);
           LOG.info("Setting " + TEZ_MEMORY_RESERVE_FRACTION + " to " + frac);
           wx.setConf(TEZ_MEMORY_RESERVE_FRACTION, Double.toString(frac));
         } // Otherwise just leave it up to Tez to decide how much memory to allocate
         dag.addVertex(wx);
-        utils.addCredentials(workUnit, dag, conf);
-        perfLogger.perfLogEnd(CLASS_NAME, PerfLogger.TEZ_CREATE_VERTEX + workUnit.getName());
-        workToVertex.put(workUnit, wx);
-        workToConf.put(workUnit, wxConf);
+        utils.addCredentials(w, dag);
+        perfLogger.PerfLogEnd(CLASS_NAME, PerfLogger.TEZ_CREATE_VERTEX + w.getName());
+        workToVertex.put(w, wx);
+        workToConf.put(w, wxConf);
 
         // add all dependencies (i.e.: edges) to the graph
-        for (BaseWork v: tezWork.getChildren(workUnit)) {
+        for (BaseWork v: work.getChildren(w)) {
           assert workToVertex.containsKey(v);
           Edge e = null;
 
-          TezEdgeProperty edgeProp = tezWork.getEdgeProperty(workUnit, v);
-          e = utils.createEdge(wxConf, wx, workToVertex.get(v), edgeProp, v, tezWork);
+          TezEdgeProperty edgeProp = work.getEdgeProperty(w, v);
+          e = utils.createEdge(wxConf, wx, workToVertex.get(v), edgeProp, v, work);
           dag.addEdge(e);
         }
       }
     }
     // Clear the work map after build. TODO: remove caching instead?
     Utilities.clearWorkMap(conf);
-    perfLogger.perfLogEnd(CLASS_NAME, PerfLogger.TEZ_BUILD_DAG);
+    perfLogger.PerfLogEnd(CLASS_NAME, PerfLogger.TEZ_BUILD_DAG);
     return dag;
   }
 
@@ -601,9 +510,11 @@ public class TezTask extends Task<TezWork> {
     String modifyStr = Utilities.getAclStringWithHiveModification(conf,
             TezConfiguration.TEZ_AM_MODIFY_ACLS, addHs2User, user, loginUser);
 
-    LOG.debug("Setting Tez DAG access for queryId={} with viewAclString={}, modifyStr={}", queryId, viewStr, modifyStr);
-
-      // set permissions for current user on DAG
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Setting Tez DAG access for queryId={} with viewAclString={}, modifyStr={}",
+          queryId, viewStr, modifyStr);
+    }
+    // set permissions for current user on DAG
     DAGAccessControls ac = new DAGAccessControls(viewStr, modifyStr);
     dag.setAccessControls(ac);
   }
@@ -617,8 +528,8 @@ public class TezTask extends Task<TezWork> {
     return newSession;
   }
 
-  DAGClient submit(DAG dag, Ref<TezSessionState> sessionStateRef) throws Exception {
-    perfLogger.perfLogBegin(CLASS_NAME, PerfLogger.TEZ_SUBMIT_DAG);
+  DAGClient submit(JobConf conf, DAG dag, Ref<TezSessionState> sessionStateRef) throws Exception {
+    perfLogger.PerfLogBegin(CLASS_NAME, PerfLogger.TEZ_SUBMIT_DAG);
     DAGClient dagClient = null;
     TezSessionState sessionState = sessionStateRef.value;
     try {
@@ -627,43 +538,29 @@ public class TezTask extends Task<TezWork> {
         dagClient = sessionState.getSession().submitDAG(dag);
       } catch (SessionNotRunning nr) {
         console.printInfo("Tez session was closed. Reopening...");
+        sessionStateRef.value = null;
         sessionStateRef.value = sessionState = getNewTezSessionOnError(sessionState);
         console.printInfo("Session re-established.");
         dagClient = sessionState.getSession().submitDAG(dag);
       }
     } catch (Exception e) {
-      if (this.isShutdown) {
-        // Incase of taskShutdown, no need to retry
-        sessionDestroyOrReturnToPool(sessionStateRef, sessionState);
-        throw e;
-      }
       // In case of any other exception, retry. If this also fails, report original error and exit.
       try {
         console.printInfo("Dag submit failed due to " + e.getMessage() + " stack trace: "
             + Arrays.toString(e.getStackTrace()) + " retrying...");
+        sessionStateRef.value = null;
         sessionStateRef.value = sessionState = getNewTezSessionOnError(sessionState);
         dagClient = sessionState.getSession().submitDAG(dag);
       } catch (Exception retryException) {
-        // we failed to submit after retrying.
-        // If this is a non-pool session, destroy it.
-        // Otherwise move it to sessionPool, reopen will retry.
-        sessionDestroyOrReturnToPool(sessionStateRef, sessionState);
+        // we failed to submit after retrying. Destroy session and bail.
+        sessionStateRef.value = null;
+        sessionState.destroy();
         throw retryException;
       }
     }
 
-    perfLogger.perfLogEnd(CLASS_NAME, PerfLogger.TEZ_SUBMIT_DAG);
+    perfLogger.PerfLogEnd(CLASS_NAME, PerfLogger.TEZ_SUBMIT_DAG);
     return new SyncDagClient(dagClient);
-  }
-
-  private void sessionDestroyOrReturnToPool(Ref<TezSessionState> sessionStateRef,
-      TezSessionState sessionState) throws Exception{
-    sessionStateRef.value = null;
-    if (sessionState.isDefault() && sessionState instanceof TezSessionPoolSession) {
-      sessionState.returnToSessionManager();
-    } else {
-      sessionState.destroy();
-    }
   }
 
   /*
@@ -727,11 +624,6 @@ public class TezTask extends Task<TezWork> {
   @Override
   public String getName() {
     return "TEZ";
-  }
-
-  @Override
-  public boolean canExecuteInParallel() {
-    return false;
   }
 
   @Override
@@ -803,11 +695,13 @@ public class TezTask extends Task<TezWork> {
     }
 
     public String getDagIdentifierString() {
-      return dagClient.getDagIdentifierString();
+      // TODO: Implement this when tez is upgraded. TEZ-3550
+      return null;
     }
 
     public String getSessionIdentifierString() {
-      return dagClient.getSessionIdentifierString();
+      // TODO: Implement this when tez is upgraded. TEZ-3550
+      return null;
     }
 
 
@@ -865,13 +759,6 @@ public class TezTask extends Task<TezWork> {
         throws IOException, TezException, InterruptedException {
       synchronized (dagClient) {
         return dagClient.waitForCompletionWithStatusUpdates(statusGetOpts);
-      }
-    }
-
-    @Override
-    public String getWebUIAddress() throws IOException, TezException {
-      synchronized (dagClient) {
-        return dagClient.getWebUIAddress();
       }
     }
   }

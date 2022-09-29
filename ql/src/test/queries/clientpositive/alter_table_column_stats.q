@@ -1,5 +1,3 @@
---! qt:dataset:src
---! qt:dataset:part
 set hive.mapred.mode=nonstrict;
 
 set hive.metastore.try.direct.sql=true;

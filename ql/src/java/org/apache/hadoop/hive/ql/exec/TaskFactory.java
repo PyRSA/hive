@@ -23,53 +23,38 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.ql.ddl.DDLTask;
-import org.apache.hadoop.hive.ql.ddl.DDLWork;
 import org.apache.hadoop.hive.ql.exec.mr.MapRedTask;
 import org.apache.hadoop.hive.ql.exec.mr.MapredLocalTask;
-import org.apache.hadoop.hive.ql.exec.repl.AtlasDumpTask;
-import org.apache.hadoop.hive.ql.exec.repl.AtlasDumpWork;
-import org.apache.hadoop.hive.ql.exec.repl.AtlasLoadTask;
-import org.apache.hadoop.hive.ql.exec.repl.AtlasLoadWork;
 import org.apache.hadoop.hive.ql.exec.repl.ReplDumpTask;
 import org.apache.hadoop.hive.ql.exec.repl.ReplDumpWork;
-import org.apache.hadoop.hive.ql.exec.repl.ReplLoadTask;
-import org.apache.hadoop.hive.ql.exec.repl.ReplLoadWork;
-import org.apache.hadoop.hive.ql.exec.repl.AckTask;
-import org.apache.hadoop.hive.ql.exec.repl.AckWork;
 import org.apache.hadoop.hive.ql.exec.repl.ReplStateLogTask;
 import org.apache.hadoop.hive.ql.exec.repl.ReplStateLogWork;
-import org.apache.hadoop.hive.ql.exec.repl.DirCopyTask;
-import org.apache.hadoop.hive.ql.exec.repl.DirCopyWork;
-import org.apache.hadoop.hive.ql.exec.repl.RangerLoadWork;
-import org.apache.hadoop.hive.ql.exec.repl.RangerLoadTask;
-import org.apache.hadoop.hive.ql.exec.repl.RangerDumpWork;
-import org.apache.hadoop.hive.ql.exec.repl.RangerDumpTask;
-import org.apache.hadoop.hive.ql.exec.repl.RangerDenyTask;
-import org.apache.hadoop.hive.ql.exec.repl.RangerDenyWork;
-import org.apache.hadoop.hive.ql.exec.schq.ScheduledQueryMaintenanceTask;
+import org.apache.hadoop.hive.ql.exec.repl.bootstrap.ReplLoadTask;
+import org.apache.hadoop.hive.ql.exec.repl.bootstrap.ReplLoadWork;
+import org.apache.hadoop.hive.ql.exec.spark.SparkTask;
 import org.apache.hadoop.hive.ql.exec.tez.TezTask;
 import org.apache.hadoop.hive.ql.io.merge.MergeFileTask;
 import org.apache.hadoop.hive.ql.io.merge.MergeFileWork;
 import org.apache.hadoop.hive.ql.plan.ColumnStatsUpdateWork;
+import org.apache.hadoop.hive.ql.plan.StatsWork;
 import org.apache.hadoop.hive.ql.plan.ConditionalWork;
 import org.apache.hadoop.hive.ql.plan.CopyWork;
+import org.apache.hadoop.hive.ql.plan.DDLWork;
 import org.apache.hadoop.hive.ql.plan.DependencyCollectionWork;
 import org.apache.hadoop.hive.ql.plan.ExplainSQRewriteWork;
 import org.apache.hadoop.hive.ql.plan.ExplainWork;
 import org.apache.hadoop.hive.ql.plan.ExportWork;
 import org.apache.hadoop.hive.ql.plan.FetchWork;
+import org.apache.hadoop.hive.ql.plan.FunctionWork;
 import org.apache.hadoop.hive.ql.plan.MapredLocalWork;
 import org.apache.hadoop.hive.ql.plan.MapredWork;
 import org.apache.hadoop.hive.ql.plan.MoveWork;
 import org.apache.hadoop.hive.ql.plan.ReplCopyWork;
 import org.apache.hadoop.hive.ql.plan.ReplTxnWork;
-import org.apache.hadoop.hive.ql.plan.StatsWork;
+import org.apache.hadoop.hive.ql.plan.SparkWork;
 import org.apache.hadoop.hive.ql.plan.TezWork;
-import org.apache.hadoop.hive.ql.scheduled.ScheduledQueryMaintenanceWork;
 
 import com.google.common.annotations.VisibleForTesting;
-
 
 /**
  * TaskFactory implementation.
@@ -99,6 +84,11 @@ public final class TaskFactory {
     taskvec.add(new TaskTuple<CopyWork>(CopyWork.class, CopyTask.class));
     taskvec.add(new TaskTuple<ReplCopyWork>(ReplCopyWork.class, ReplCopyTask.class));
     taskvec.add(new TaskTuple<DDLWork>(DDLWork.class, DDLTask.class));
+    taskvec.add(new TaskTuple<MaterializedViewDesc>(
+        MaterializedViewDesc.class,
+        MaterializedViewTask.class));
+    taskvec.add(new TaskTuple<FunctionWork>(FunctionWork.class,
+        FunctionTask.class));
     taskvec
         .add(new TaskTuple<ExplainWork>(ExplainWork.class, ExplainTask.class));
     taskvec
@@ -117,20 +107,12 @@ public final class TaskFactory {
     taskvec.add(new TaskTuple<DependencyCollectionWork>(DependencyCollectionWork.class,
         DependencyCollectionTask.class));
     taskvec.add(new TaskTuple<TezWork>(TezWork.class, TezTask.class));
+    taskvec.add(new TaskTuple<SparkWork>(SparkWork.class, SparkTask.class));
     taskvec.add(new TaskTuple<>(ReplDumpWork.class, ReplDumpTask.class));
     taskvec.add(new TaskTuple<>(ReplLoadWork.class, ReplLoadTask.class));
     taskvec.add(new TaskTuple<>(ReplStateLogWork.class, ReplStateLogTask.class));
-    taskvec.add(new TaskTuple<AckWork>(AckWork.class, AckTask.class));
-    taskvec.add(new TaskTuple<RangerDumpWork>(RangerDumpWork.class, RangerDumpTask.class));
-    taskvec.add(new TaskTuple<RangerLoadWork>(RangerLoadWork.class, RangerLoadTask.class));
-    taskvec.add(new TaskTuple<RangerDenyWork>(RangerDenyWork.class, RangerDenyTask.class));
-    taskvec.add(new TaskTuple<AtlasDumpWork>(AtlasDumpWork.class, AtlasDumpTask.class));
-    taskvec.add(new TaskTuple<AtlasLoadWork>(AtlasLoadWork.class, AtlasLoadTask.class));
     taskvec.add(new TaskTuple<ExportWork>(ExportWork.class, ExportTask.class));
     taskvec.add(new TaskTuple<ReplTxnWork>(ReplTxnWork.class, ReplTxnTask.class));
-    taskvec.add(new TaskTuple<DirCopyWork>(DirCopyWork.class, DirCopyTask.class));
-    taskvec.add(new TaskTuple<ScheduledQueryMaintenanceWork>(ScheduledQueryMaintenanceWork.class,
-            ScheduledQueryMaintenanceTask.class));
   }
 
   private static ThreadLocal<Integer> tid = new ThreadLocal<Integer>() {
@@ -142,7 +124,7 @@ public final class TaskFactory {
 
   public static int getAndIncrementId() {
     int curValue = tid.get().intValue();
-    tid.set(Integer.valueOf(curValue + 1));
+    tid.set(new Integer(curValue + 1));
     return curValue;
   }
 
@@ -199,12 +181,12 @@ public final class TaskFactory {
 
   @SafeVarargs
   public static  void makeChild(Task<?> ret,
-      Task<?>... tasklist) {
+      Task<? extends Serializable>... tasklist) {
     // Add the new task as child of each of the passed in tasks
-    for (Task<?> tsk : tasklist) {
-      List<Task<?>> children = tsk.getChildTasks();
+    for (Task<? extends Serializable> tsk : tasklist) {
+      List<Task<? extends Serializable>> children = tsk.getChildTasks();
       if (children == null) {
-        children = new ArrayList<Task<?>>();
+        children = new ArrayList<Task<? extends Serializable>>();
       }
       children.add(ret);
       tsk.setChildTasks(children);

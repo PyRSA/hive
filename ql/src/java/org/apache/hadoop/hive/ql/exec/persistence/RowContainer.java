@@ -541,8 +541,9 @@ public class RowContainer<ROW extends List<Object>>
       HiveOutputFormat<?, ?> hiveOutputFormat = HiveFileFormatUtils.getHiveOutputFormat(jc, tblDesc);
       tempOutPath = new Path(tmpFile.toString());
       JobConf localJc = getLocalFSJobConfClone(jc);
-      rw = hiveOutputFormat.getHiveRecordWriter(localJc, tempOutPath, serde.getSerializedClass(),
-          false, tblDesc.getProperties(), reporter);
+      rw = HiveFileFormatUtils.getRecordWriter(this.jobCloneUsingLocalFs,
+          hiveOutputFormat, serde.getSerializedClass(), false,
+          tblDesc.getProperties(), tempOutPath, reporter);
     } catch (Exception e) {
       clearRows();
       LOG.error(e.toString(), e);

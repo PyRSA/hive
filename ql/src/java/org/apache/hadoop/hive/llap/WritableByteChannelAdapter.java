@@ -18,15 +18,13 @@
 
 package org.apache.hadoop.hive.llap;
 
-import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.WritableByteChannel;
 import java.util.concurrent.Semaphore;
-import org.apache.arrow.memory.ArrowByteBufAllocator;
-import org.apache.arrow.memory.BufferAllocator;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,12 +48,11 @@ public class WritableByteChannelAdapter implements WritableByteChannel {
   private final Semaphore writeResources;
   private boolean closed = false;
   private final String id;
-  private BufferAllocator allocator;
 
   private ChannelFutureListener writeListener = new ChannelFutureListener() {
     @Override
     public void operationComplete(ChannelFuture future) {
-      //Async write completed
+      //Asynch write completed
       //Up the semaphore
       writeResources.release();
 
@@ -85,19 +82,12 @@ public class WritableByteChannelAdapter implements WritableByteChannel {
     this.id = id;
   }
 
-  public void setAllocator(BufferAllocator allocator) {
-    this.allocator = allocator;
-  }
-
   @Override
   public int write(ByteBuffer src) throws IOException {
     int size = src.remaining();
     //Down the semaphore or block until available
     takeWriteResources(1);
-    ArrowByteBufAllocator abba = new ArrowByteBufAllocator(allocator);
-    ByteBuf buf = abba.buffer(size);
-    buf.writeBytes(src);
-    chc.writeAndFlush(buf).addListener(writeListener);
+    chc.writeAndFlush(Unpooled.wrappedBuffer(src)).addListener(writeListener);
     return size;
   }
 

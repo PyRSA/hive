@@ -17,11 +17,14 @@
  */
 package org.apache.hadoop.hive.ql.io.orc;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
+import java.nio.charset.Charset;
+import java.nio.charset.CharsetDecoder;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.conf.Configuration;
@@ -32,16 +35,21 @@ import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoUtils;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapred.JobConf;
 import org.apache.orc.OrcFile.WriterContext;
+import org.apache.orc.impl.AcidStats;
 import org.apache.orc.impl.OrcAcidUtils;
+import org.apache.orc.impl.WriterImpl;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import static org.junit.Assert.*;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TestName;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import static org.junit.Assert.assertTrue;
 
 public class TestFixAcidKeyIndex {
   public final static Logger LOG = LoggerFactory.getLogger(TestFixAcidKeyIndex.class);
@@ -65,6 +73,9 @@ public class TestFixAcidKeyIndex {
   static abstract class TestKeyIndexBuilder
       extends OrcRecordUpdater.KeyIndexBuilder
       implements OrcFile.WriterCallback {
+    public TestKeyIndexBuilder(String name) {
+      super(name);
+    }
 
     // Will be called before closing the ORC file to stop writing any additional information
     // to the acid key index.
@@ -232,27 +243,6 @@ public class TestFixAcidKeyIndex {
     checkInvalidKeyIndex(testFilePath);
     // Try fixing, this should result in new fixed file.
     fixInvalidIndex(testFilePath);
-
-    // Multiple stripes
-    createTestAcidFile(testFilePath, 12000, new FaultyKeyIndexBuilder());
-    checkInvalidKeyIndex(testFilePath);
-    // Try fixing, this should result in new fixed file.
-    fixInvalidIndex(testFilePath);
-  }
-
-  @Test
-  public void testMissingKeyIndex() throws Exception {
-    // Try single stripe
-    createTestAcidFile(testFilePath, 100, new MissingKeyIndexBuilder());
-    checkInvalidKeyIndex(testFilePath);
-    // Try fixing, this should result in new fixed file.
-    fixInvalidIndex(testFilePath);
-
-    // Multiple stripes
-    createTestAcidFile(testFilePath, 12000, new MissingKeyIndexBuilder());
-    checkInvalidKeyIndex(testFilePath);
-    // Try fixing, this should result in new fixed file.
-    fixInvalidIndex(testFilePath);
   }
 
   @Test
@@ -273,30 +263,13 @@ public class TestFixAcidKeyIndex {
   }
 
   /**
-   * Version of KeyIndexBuilder that does not generate any key index
-   */
-  static class MissingKeyIndexBuilder extends TestKeyIndexBuilder {
-
-    @Override
-    public void stopWritingKeyIndex() {
-      // Do nothing - this should generate proper index.
-    }
-
-    @Override
-    public void preFooterWrite(OrcFile.WriterContext context) throws IOException {
-      if(numKeysCurrentStripe > 0) {
-        preStripeWrite(context);
-      }
-      context.getWriter().addUserMetadata(
-          OrcAcidUtils.ACID_STATS, StandardCharsets.UTF_8.encode(acidStats.serialize()));
-      // here we don't generate the "hive.acid.key.index" metadata entry
-    }
-  }
-
-  /**
    * Version of KeyIndexBuilder that generates a valid key index
    */
   static class GoodKeyIndexBuilder extends TestKeyIndexBuilder {
+
+    GoodKeyIndexBuilder() {
+      super("GoodKeyIndexBuilder");
+    }
 
     @Override
     public void stopWritingKeyIndex() {
@@ -312,6 +285,10 @@ public class TestFixAcidKeyIndex {
 
     boolean writeAcidIndexInfo = true;
 
+    BadKeyIndexBuilder() {
+      super("BadKeyIndexBuilder");
+    }
+
     public void stopWritingKeyIndex() {
       LOG.info("*** Stop writing index!");
       writeAcidIndexInfo = false;
@@ -325,24 +302,6 @@ public class TestFixAcidKeyIndex {
       }
 
       super.preStripeWrite(context);
-    }
-  }
-
-  /**
-   * Another bad version of KeyIndexBuilder which builds an invalid acid key index
-   * by inserting wrong values.
-   */
-  static class FaultyKeyIndexBuilder extends TestKeyIndexBuilder {
-
-    @Override
-    public void preStripeWrite(WriterContext context) throws IOException {
-      this.lastRowId = lastRowId - 5;
-      super.preStripeWrite(context);
-    }
-
-    @Override
-    void stopWritingKeyIndex() {
-      //NOOP
     }
   }
 }

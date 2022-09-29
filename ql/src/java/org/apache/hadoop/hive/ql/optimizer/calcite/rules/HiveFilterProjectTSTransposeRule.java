@@ -36,8 +36,6 @@ import org.apache.calcite.rex.RexUtil;
 import org.apache.hadoop.hive.ql.optimizer.calcite.HiveRelFactories;
 import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveProject;
 
-import java.util.Collections;
-
 //TODO: Remove this once Calcite FilterProjectTransposeRule can take rule operand
 public class HiveFilterProjectTSTransposeRule extends RelOptRule {
 
@@ -120,7 +118,7 @@ public class HiveFilterProjectTSTransposeRule extends RelOptRule {
 
     RelNode newProjRel = projectFactory == null ? project.copy(project.getTraitSet(), newFilterRel,
         project.getProjects(), project.getRowType()) : projectFactory.createProject(newFilterRel,
-        Collections.emptyList(), project.getProjects(), project.getRowType().getFieldNames());
+        project.getProjects(), project.getRowType().getFieldNames());
 
     call.transformTo(newProjRel);
   }

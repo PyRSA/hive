@@ -35,13 +35,16 @@ import org.apache.calcite.linq4j.function.Predicate1;
 import org.apache.calcite.plan.RelOptPredicateList;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.core.Aggregate;
 import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.core.Project;
+import org.apache.calcite.rel.core.SemiJoin;
 import org.apache.calcite.rel.core.Union;
 import org.apache.calcite.rel.metadata.BuiltInMetadata;
 import org.apache.calcite.rel.metadata.ChainedRelMetadataProvider;
 import org.apache.calcite.rel.metadata.MetadataDef;
+import org.apache.calcite.rel.metadata.MetadataHandler;
 import org.apache.calcite.rel.metadata.ReflectiveRelMetadataProvider;
 import org.apache.calcite.rel.metadata.RelMdPredicates;
 import org.apache.calcite.rel.metadata.RelMetadataProvider;
@@ -73,7 +76,7 @@ import com.google.common.collect.Maps;
 
 
 //TODO: Move this to calcite
-public class HiveRelMdPredicates extends RelMdPredicates {
+public class HiveRelMdPredicates implements MetadataHandler<BuiltInMetadata.Predicates> {
 
   public static final RelMetadataProvider SOURCE =
           ChainedRelMetadataProvider.of(
@@ -114,7 +117,6 @@ public class HiveRelMdPredicates extends RelMdPredicates {
    *
    * </ol>
    */
-  @Override
   public RelOptPredicateList getPredicates(Project project, RelMetadataQuery mq) {
 
     RelNode child = project.getInput();
@@ -167,7 +169,6 @@ public class HiveRelMdPredicates extends RelMdPredicates {
   }
 
   /** Infers predicates for a {@link org.apache.calcite.rel.core.Join}. */
-  @Override
   public RelOptPredicateList getPredicates(Join join, RelMetadataQuery mq) {
     RexBuilder rB = join.getCluster().getRexBuilder();
     RelNode left = join.getInput(0);
@@ -184,7 +185,96 @@ public class HiveRelMdPredicates extends RelMdPredicates {
 
     return jI.inferPredicates(false);
   }
-  
+
+  /**
+   * Infers predicates for an Aggregate.
+   *
+   * <p>Pulls up predicates that only contains references to columns in the
+   * GroupSet. For e.g.
+   *
+   * <pre>
+   * inputPullUpExprs : { a &gt; 7, b + c &lt; 10, a + e = 9}
+   * groupSet         : { a, b}
+   * pulledUpExprs    : { a &gt; 7}
+   * </pre>
+   */
+  public RelOptPredicateList getPredicates(Aggregate agg, RelMetadataQuery mq) {
+    final RelNode input = agg.getInput();
+    final RelOptPredicateList inputInfo = mq.getPulledUpPredicates(input);
+    final List<RexNode> aggPullUpPredicates = new ArrayList<>();
+    final RexBuilder rexBuilder = agg.getCluster().getRexBuilder();
+
+    ImmutableBitSet groupKeys = agg.getGroupSet();
+    Mapping m = Mappings.create(MappingType.PARTIAL_FUNCTION,
+        input.getRowType().getFieldCount(), agg.getRowType().getFieldCount());
+
+    int i = 0;
+    for (int j : groupKeys) {
+      m.set(j, i++);
+    }
+
+    for (RexNode r : inputInfo.pulledUpPredicates) {
+      ImmutableBitSet rCols = RelOptUtil.InputFinder.bits(r);
+      if (!rCols.isEmpty() && groupKeys.contains(rCols)) {
+        r = r.accept(new RexPermuteInputsShuttle(m, input));
+        aggPullUpPredicates.add(r);
+      }
+    }
+    return RelOptPredicateList.of(rexBuilder, aggPullUpPredicates);
+  }
+
+  /**
+   * Infers predicates for a Union.
+   */
+  public RelOptPredicateList getPredicates(Union union, RelMetadataQuery mq) {
+    RexBuilder rB = union.getCluster().getRexBuilder();
+
+    Map<String, RexNode> finalPreds = new HashMap<>();
+    List<RexNode> finalResidualPreds = new ArrayList<>();
+    for (int i = 0; i < union.getInputs().size(); i++) {
+      RelNode input = union.getInputs().get(i);
+      RelOptPredicateList info = mq.getPulledUpPredicates(input);
+      if (info.pulledUpPredicates.isEmpty()) {
+        return RelOptPredicateList.EMPTY;
+      }
+      Map<String, RexNode> preds = new HashMap<>();
+      List<RexNode> residualPreds = new ArrayList<>();
+      for (RexNode pred : info.pulledUpPredicates) {
+        final String predString = pred.toString();
+        if (i == 0) {
+          preds.put(predString, pred);
+          continue;
+        }
+        if (finalPreds.containsKey(predString)) {
+          preds.put(predString, pred);
+        } else {
+          residualPreds.add(pred);
+        }
+      }
+      // Add new residual preds
+      finalResidualPreds.add(RexUtil.composeConjunction(rB, residualPreds, false));
+      // Add those that are not part of the final set to residual
+      for (Entry<String, RexNode> e : finalPreds.entrySet()) {
+        if (!preds.containsKey(e.getKey())) {
+          // This node was in previous union inputs, but it is not in this one
+          for (int j = 0; j < i; j++) {
+            finalResidualPreds.set(j, RexUtil.composeConjunction(rB, Lists.newArrayList(
+                    finalResidualPreds.get(j), e.getValue()), false));
+          }
+        }
+      }
+      // Final preds
+      finalPreds = preds;
+    }
+
+    List<RexNode> preds = new ArrayList<>(finalPreds.values());
+    RexNode disjPred = RexUtil.composeDisjunction(rB, finalResidualPreds, false);
+    if (!disjPred.isAlwaysTrue()) {
+      preds.add(disjPred);
+    }
+    return RelOptPredicateList.of(rB, preds);
+  }
+
   /**
    * Utility to infer predicates from one side of the join that apply on the
    * other side.
@@ -226,7 +316,7 @@ public class HiveRelMdPredicates extends RelMdPredicates {
 
     public JoinConditionBasedPredicateInference(Join joinRel,
             RexNode lPreds, RexNode rPreds) {
-      this(joinRel, ((Join) joinRel).isSemiJoin(), lPreds, rPreds);
+      this(joinRel, joinRel instanceof SemiJoin, lPreds, rPreds);
     }
 
     private JoinConditionBasedPredicateInference(Join joinRel, boolean isSemiJoin,
@@ -326,8 +416,6 @@ public class HiveRelMdPredicates extends RelMdPredicates {
       switch (joinType) {
       case INNER:
       case LEFT:
-      case SEMI:
-      case ANTI:
         infer(leftPreds, allExprsDigests, inferredPredicates,
             nonFieldsPredicates, includeEqualityInference,
             joinType == JoinRelType.LEFT ? rightFieldsBitSet
@@ -337,7 +425,6 @@ public class HiveRelMdPredicates extends RelMdPredicates {
       switch (joinType) {
       case INNER:
       case RIGHT:
-      case SEMI:
         infer(rightPreds, allExprsDigests, inferredPredicates,
             nonFieldsPredicates, includeEqualityInference,
             joinType == JoinRelType.RIGHT ? leftFieldsBitSet
@@ -366,8 +453,7 @@ public class HiveRelMdPredicates extends RelMdPredicates {
         }
       }
 
-      if ((joinType == JoinRelType.INNER || joinType == JoinRelType.SEMI) &&
-              !nonFieldsPredicates.isEmpty()) {
+      if (joinType == JoinRelType.INNER && !nonFieldsPredicates.isEmpty()) {
         // Predicates without field references can be pushed to both inputs
         final Set<String> leftPredsSet = new HashSet<String>(
                 Lists.transform(leftPreds, HiveCalciteUtil.REX_STR_FN));
@@ -385,15 +471,16 @@ public class HiveRelMdPredicates extends RelMdPredicates {
 
       switch (joinType) {
       case INNER:
-        Iterable<RexNode> pulledUpPredicates = Iterables.concat(leftPreds, rightPreds,
+        Iterable<RexNode> pulledUpPredicates;
+        if (isSemiJoin) {
+          pulledUpPredicates = Iterables.concat(leftPreds, leftInferredPredicates);
+        } else {
+          pulledUpPredicates = Iterables.concat(leftPreds, rightPreds,
                 RelOptUtil.conjunctions(joinRel.getCondition()), inferredPredicates);
+        }
         return RelOptPredicateList.of(rexBuilder,
           pulledUpPredicates, leftInferredPredicates, rightInferredPredicates);
-      case SEMI:
-        return RelOptPredicateList.of(rexBuilder, Iterables.concat(leftPreds, leftInferredPredicates),
-          leftInferredPredicates, rightInferredPredicates);
       case LEFT:
-      case ANTI:
         return RelOptPredicateList.of(rexBuilder,
           leftPreds, EMPTY_LIST, rightInferredPredicates);
       case RIGHT:

@@ -104,6 +104,16 @@ public abstract class JDBCAbstractSplitFilterRule extends RelOptRule {
     return visitor.canBeSplit();
   }
 
+  public boolean matches(RelOptRuleCall call, SqlDialect dialect) {
+    LOGGER.debug("MySplitFilter.matches has been called");
+
+    final HiveFilter filter = call.rel(0);
+
+    RexNode cond = filter.getCondition();
+
+    return canSplitFilter(cond, dialect);
+  }
+
   public void onMatch(RelOptRuleCall call, SqlDialect dialect) {
     LOGGER.debug("MySplitFilter.onMatch has been called");
 
@@ -158,20 +168,17 @@ public abstract class JDBCAbstractSplitFilterRule extends RelOptRule {
     public boolean matches(RelOptRuleCall call) {
       LOGGER.debug("MyUpperJoinFilterFilter.matches has been called");
 
-      final HiveFilter filter = call.rel(0);
       final HiveJoin join = call.rel(1);
       final HiveJdbcConverter conv = call.rel(2);
 
       RexNode joinCond = join.getCondition();
-      SqlDialect dialect = conv.getJdbcDialect();
 
-      return canSplitFilter(filter.getCondition(), dialect)
-        && JDBCRexCallValidator.isValidJdbcOperation(joinCond, dialect);
+      return super.matches(call) && JDBCRexCallValidator.isValidJdbcOperation(joinCond, conv.getJdbcDialect());
     }
 
     @Override
     public void onMatch(RelOptRuleCall call) {
-      final HiveJdbcConverter conv = call.rel(2);
+      final HiveJdbcConverter conv = call.rel(0);
       super.onMatch(call, conv.getJdbcDialect());
     }
   }
@@ -187,9 +194,8 @@ public abstract class JDBCAbstractSplitFilterRule extends RelOptRule {
 
     @Override
     public boolean matches(RelOptRuleCall call) {
-      final HiveFilter filter = call.rel(0);
       final HiveJdbcConverter conv = call.rel(1);
-      return canSplitFilter(filter.getCondition(), conv.getJdbcDialect());
+      return super.matches(call, conv.getJdbcDialect());
     }
 
     @Override

@@ -121,9 +121,6 @@ class MaskTransformer extends AbstractTransformer {
 
   @Override
   Byte transform(final Byte value) {
-    if (value == 0) {
-      return (byte) maskedNumber;
-    }
     byte val = value;
 
     if(value < 0) {
@@ -148,9 +145,6 @@ class MaskTransformer extends AbstractTransformer {
 
   @Override
   Short transform(final Short value) {
-    if (value == 0) {
-      return (short) maskedNumber;
-    }
     short val = value;
 
     if(value < 0) {
@@ -175,9 +169,6 @@ class MaskTransformer extends AbstractTransformer {
 
   @Override
   Integer transform(final Integer value) {
-    if (value == 0) {
-      return maskedNumber;
-    }
     int val = value;
 
     if(value < 0) {
@@ -202,9 +193,6 @@ class MaskTransformer extends AbstractTransformer {
 
   @Override
   Long transform(final Long value) {
-    if (value == 0) {
-      return (long) maskedNumber;
-    }
     long val = value;
 
     if(value < 0) {

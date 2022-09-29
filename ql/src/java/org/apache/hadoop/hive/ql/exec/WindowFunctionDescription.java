@@ -31,6 +31,7 @@ import org.apache.hadoop.hive.ql.udf.ptf.WindowingTableFunction;
 @Target(ElementType.TYPE)
 @Documented
 public @interface WindowFunctionDescription {
+  Description description ();
   /**
    * controls whether this function can be applied to a Window.
    * <p>
@@ -50,47 +51,15 @@ public @interface WindowFunctionDescription {
   boolean pivotResult() default false;
 
   /**
-   * Used in translations process to validate arguments.
+   * Used in translations process to validate arguments
    * @return true if ranking function
    */
   boolean rankingFunction() default false;
 
-  /**
-  * Using in analytical functions to specify that UDF implies an ordering.
-  * @return true if the function implies order
-  */
-  boolean impliesOrder() default false;
-
-  /**
-   * This property specifies whether the UDAF is an Ordered-set aggregate function.
-   * &lt;ordered-set aggregate functions&gt; ::=
-   *   &lt;hypothetical set function&gt; |
-   *   &lt;inverse distribution function&gt;
-   *
-   * &lt;hypothetical set function&gt; ::=
-   *   &lt;rank function type&gt; &lt;left paren&gt;
-   *   &lt;hypothetical set function value expression list&gt; &lt;right paren&gt;
-   *   &lt;within group specification&gt;
-   *
-   * &lt;rank function type&gt; ::= RANK | DENSE_RANK | PERCENT_RANK | CUME_DIST
-   *
-   * &lt;inverse distribution function&gt; ::=
-   *   &lt;inverse distribution function type&gt; &lt;left paren&gt;
-   *   &lt;inverse distribution function argument&gt; &lt;right paren&gt;
-   *   &lt;within group specification&gt;
-   *
-   * &lt;inverse distribution function type&gt; ::= PERCENTILE_CONT | PERCENTILE_DISC
-   *
-   * @return true if the function can be used as an ordered-set aggregate
-   */
-  boolean orderedAggregate() default false;
-
-  /**
-   * Some aggregate functions allow specifying null treatment.
-   * Example:
-   *   SELECT last_value(b) IGNORE NULLS OVER (ORDER BY b) FROM table1;
-   *
-   * @return true if this aggregate functions support null treatment.
-   */
-  boolean supportsNullTreatment() default false;
+   /**
+    * Using in analytical functions to specify that UDF implies an ordering
+    * @return true if the function implies order
+    */
+   boolean impliesOrder() default false;
 }
+

@@ -1,4 +1,5 @@
 set hive.fetch.task.conversion = none;
+set hive.exec.dynamic.partition.mode = nonstrict;
 set hive.strict.checks.cartesian.product=false;
 SET hive.vectorized.execution.enabled=true;
 

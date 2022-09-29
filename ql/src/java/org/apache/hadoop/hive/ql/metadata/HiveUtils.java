@@ -21,8 +21,6 @@ package org.apache.hadoop.hive.ql.metadata;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.hive.ql.parse.Quotation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -275,12 +273,19 @@ public final class HiveUtils {
   /**
    * Regenerate an identifier as part of unparsing it back to SQL text.
    */
+  public static String unparseIdentifier(String identifier) {
+    return unparseIdentifier(identifier, null);
+  }
+
   public static String unparseIdentifier(String identifier, Configuration conf) {
-    // We support arbitrary characters in
-    // identifiers, then we need to escape any backticks
+    // In the future, if we support arbitrary characters in
+    // identifiers, then we'll need to escape any backticks
     // in identifier by doubling them up.
-    Quotation quotation = Quotation.from(conf);
-    if (quotation != Quotation.NONE) {
+
+    // the time has come
+    String qIdSupport = conf == null ? null :
+      HiveConf.getVar(conf, HiveConf.ConfVars.HIVE_QUOTEDID_SUPPORT);
+    if ( qIdSupport != null && !"none".equals(qIdSupport) ) {
       identifier = identifier.replaceAll("`", "``");
     }
     return "`" + identifier + "`";
@@ -424,19 +429,13 @@ public final class HiveUtils {
     return null;
   }
 
-  public static String getReplPolicy(String dbName) {
+  public static String getReplPolicy(String dbName, String tableName) {
     if ((dbName == null) || (dbName.isEmpty())) {
-      return "*.*";
-    } else {
+      return null;
+    } else if ((tableName == null) || (tableName.isEmpty())) {
       return dbName.toLowerCase() + ".*";
+    } else {
+      return dbName.toLowerCase() + "." + tableName.toLowerCase();
     }
-  }
-
-  public static Path getDumpPath(Path root, String dbName, String tableName) {
-    assert (dbName != null);
-    if ((tableName != null) && (!tableName.isEmpty())) {
-      return new Path(root, dbName + "." + tableName);
-    }
-    return new Path(root, dbName);
   }
 }

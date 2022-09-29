@@ -6,7 +6,6 @@ POSTHOOK: query: create table t1 (a decimal (3,1))
 POSTHOOK: type: CREATETABLE
 POSTHOOK: Output: database:default
 POSTHOOK: Output: default@t1
-WARNING: Comparing decimal(3,1) and string may result in loss of information.
 PREHOOK: query: explain select * from t1 where a = '22.3'
 PREHOOK: type: QUERY
 PREHOOK: Input: default@t1
@@ -25,7 +24,6 @@ STAGE PLANS:
       Processor Tree:
         TableScan
           alias: t1
-          filterExpr: (a = 22.3) (type: boolean)
           Filter Operator
             predicate: (a = 22.3) (type: boolean)
             Select Operator
@@ -33,7 +31,6 @@ STAGE PLANS:
               outputColumnNames: _col0
               ListSink
 
-WARNING: Comparing decimal(3,1) and string may result in loss of information.
 PREHOOK: query: explain select * from t1 where a = '2.3'
 PREHOOK: type: QUERY
 PREHOOK: Input: default@t1
@@ -52,7 +49,6 @@ STAGE PLANS:
       Processor Tree:
         TableScan
           alias: t1
-          filterExpr: (a = 2.3) (type: boolean)
           Filter Operator
             predicate: (a = 2.3) (type: boolean)
             Select Operator
@@ -60,7 +56,6 @@ STAGE PLANS:
               outputColumnNames: _col0
               ListSink
 
-WARNING: Comparing decimal(3,1) and string may result in loss of information.
 PREHOOK: query: explain select * from t1 where a = '213.223'
 PREHOOK: type: QUERY
 PREHOOK: Input: default@t1
@@ -79,7 +74,6 @@ STAGE PLANS:
       Processor Tree:
         TableScan
           alias: t1
-          filterExpr: (a = 213.223) (type: boolean)
           Filter Operator
             predicate: (a = 213.223) (type: boolean)
             Select Operator
@@ -87,7 +81,6 @@ STAGE PLANS:
               outputColumnNames: _col0
               ListSink
 
-WARNING: Comparing decimal(3,1) and string may result in loss of information.
 PREHOOK: query: explain select * from t1 where a = ''
 PREHOOK: type: QUERY
 PREHOOK: Input: default@t1
@@ -102,11 +95,17 @@ STAGE DEPENDENCIES:
 STAGE PLANS:
   Stage: Stage-0
     Fetch Operator
-      limit: 0
+      limit: -1
       Processor Tree:
-        ListSink
+        TableScan
+          alias: t1
+          Filter Operator
+            predicate: (a = null) (type: boolean)
+            Select Operator
+              expressions: null (type: decimal(3,1))
+              outputColumnNames: _col0
+              ListSink
 
-WARNING: Comparing decimal(3,1) and string may result in loss of information.
 PREHOOK: query: explain select * from t1 where a = 'ab'
 PREHOOK: type: QUERY
 PREHOOK: Input: default@t1
@@ -121,7 +120,14 @@ STAGE DEPENDENCIES:
 STAGE PLANS:
   Stage: Stage-0
     Fetch Operator
-      limit: 0
+      limit: -1
       Processor Tree:
-        ListSink
+        TableScan
+          alias: t1
+          Filter Operator
+            predicate: (a = null) (type: boolean)
+            Select Operator
+              expressions: null (type: decimal(3,1))
+              outputColumnNames: _col0
+              ListSink
 

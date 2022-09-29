@@ -23,8 +23,6 @@ import java.util.List;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.common.ValidTxnList;
 import org.apache.hadoop.hive.metastore.api.AlreadyExistsException;
-import org.apache.hadoop.hive.metastore.api.CmRecycleResponse;
-import org.apache.hadoop.hive.metastore.api.CmRecycleRequest;
 import org.apache.hadoop.hive.metastore.api.EnvironmentContext;
 import org.apache.hadoop.hive.metastore.api.FireEventRequest;
 import org.apache.hadoop.hive.metastore.api.FireEventResponse;
@@ -37,8 +35,6 @@ import org.apache.hadoop.hive.metastore.api.Partition;
 import org.apache.hadoop.hive.metastore.api.ShowLocksRequest;
 import org.apache.hadoop.hive.metastore.api.ShowLocksResponse;
 import org.apache.hadoop.hive.metastore.api.UnknownTableException;
-import org.apache.hadoop.hive.metastore.api.WriteNotificationLogRequest;
-import org.apache.hadoop.hive.metastore.api.WriteNotificationLogBatchRequest;
 import org.apache.thrift.TException;
 
 
@@ -81,20 +77,9 @@ public final class SynchronizedMetaStoreClient {
     return client.add_partition(partition);
   }
 
-  public synchronized int add_partitions(List<Partition> partitions) throws TException {
-    return client.add_partitions(partitions);
-  }
-
-  public synchronized void alter_partition(String catName, String dbName, String tblName,
-      Partition newPart, EnvironmentContext environmentContext, String writeIdList) throws TException {
-    client.alter_partition(catName, dbName, tblName, newPart, environmentContext, writeIdList);
-  }
-
-  public void alter_partitions(String catName, String dbName, String tblName,
-                               List<Partition> partitions, EnvironmentContext environmentContext,
-                               String writeIdList, long writeId) throws TException {
-    client.alter_partitions(catName, dbName, tblName, partitions, environmentContext, writeIdList,
-            writeId);
+  public synchronized void alter_partition(String dbName, String tblName,
+      Partition newPart, EnvironmentContext environmentContext) throws TException {
+    client.alter_partition(dbName, tblName, newPart, environmentContext);
   }
 
   public synchronized LockResponse checkLock(long lockid) throws TException {
@@ -122,18 +107,6 @@ public final class SynchronizedMetaStoreClient {
 
   public synchronized FireEventResponse fireListenerEvent(FireEventRequest rqst) throws TException {
     return client.fireListenerEvent(rqst);
-  }
-
-  public synchronized void addWriteNotificationLog(WriteNotificationLogRequest rqst) throws TException {
-    client.addWriteNotificationLog(rqst);
-  }
-
-  public synchronized void addWriteNotificationLogInBatch(WriteNotificationLogBatchRequest rqst) throws TException {
-    client.addWriteNotificationLogInBatch(rqst);
-  }
-
-  public synchronized CmRecycleResponse recycleDirToCmPath(CmRecycleRequest request) throws MetaException, TException {
-    return client.recycleDirToCmPath(request);
   }
 
   public synchronized void close() {

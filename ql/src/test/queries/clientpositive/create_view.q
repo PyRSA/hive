@@ -1,6 +1,3 @@
---! qt:dataset:srcbucket
---! qt:dataset:src1
---! qt:dataset:src
 set hive.mapred.mode=nonstrict;
 DROP VIEW view1;
 DROP VIEW view2;
@@ -41,8 +38,7 @@ CREATE VIEW view0(valoo) AS SELECT upper(value) FROM src WHERE key=86;
 EXPLAIN
 SELECT * from view2 where key=18;
 
-SHOW TABLES 'view%';
-SHOW VIEWS 'view%';
+SHOW TABLES 'view.*';
 DESCRIBE view1;
 DESCRIBE EXTENDED view1;
 DESCRIBE FORMATTED view1;
@@ -237,22 +233,6 @@ select * from view17;
 create view view18 as select v+1 from (select 1 as v) t;
 select * from view18;
 
--- create view if not exists
-create view if not exists view18 as select "should be ignored";
-show create table view18;
-
--- 'create or replace'
-create or replace view view18 as select "should replace";
-show create table view18;
-
--- create a partitioned view
-DROP VIEW IF EXISTS view19;
-create view view19 partitioned on (key) as select value, key from src;
-show create table view19;
-
--- create or replace partitioned view
-create or replace view view19 partitioned on (key) as select value, key from src;
-show create table view19;
 
 DROP VIEW view1;
 DROP VIEW view2;
@@ -272,7 +252,6 @@ DROP VIEW view15;
 DROP VIEW view16;
 DROP VIEW view17;
 DROP VIEW view18;
-DROP VIEW view19;
 DROP TEMPORARY FUNCTION test_translate;
 DROP TEMPORARY FUNCTION test_max;
 DROP TEMPORARY FUNCTION test_explode;

@@ -1,4 +1,3 @@
---! qt:dataset:src
 SET hive.vectorized.execution.enabled=false;
 set hive.test.vectorized.execution.enabled.override=disable;
 

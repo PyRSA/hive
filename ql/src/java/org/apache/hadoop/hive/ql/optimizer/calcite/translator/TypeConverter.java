@@ -29,7 +29,6 @@ import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.rex.RexBuilder;
-import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.sql.SqlCollation;
 import org.apache.calcite.sql.SqlIntervalQualifier;
 import org.apache.calcite.sql.parser.SqlParserPos;
@@ -128,29 +127,25 @@ public class TypeConverter {
     RexBuilder rexBuilder = cluster.getRexBuilder();
     RelDataTypeFactory dtFactory = rexBuilder.getTypeFactory();
     RowSchema rs = rr.getRowSchema();
-    List<RelDataType> fieldTypes = new LinkedList<>();
-    List<String> fieldNames = new LinkedList<>();
+    List<RelDataType> fieldTypes = new LinkedList<RelDataType>();
+    List<String> fieldNames = new LinkedList<String>();
 
     for (ColumnInfo ci : rs.getSignature()) {
       if (neededCols == null || neededCols.contains(ci.getInternalName())) {
-        fieldTypes.add(convert(ci.getType(), ci.isNullable(), dtFactory));
+        fieldTypes.add(convert(ci.getType(), dtFactory));
         fieldNames.add(ci.getInternalName());
       }
     }
     return dtFactory.createStructType(fieldTypes, fieldNames);
   }
 
-  public static RelDataType convert(TypeInfo type, RelDataTypeFactory dtFactory) throws CalciteSemanticException {
-    return convert(type, true, dtFactory);
-  }
-
-  public static RelDataType convert(TypeInfo type, boolean nullable, RelDataTypeFactory dtFactory)
-      throws CalciteSemanticException {
+  public static RelDataType convert(TypeInfo type, RelDataTypeFactory dtFactory)
+    throws CalciteSemanticException{
     RelDataType convertedType = null;
 
     switch (type.getCategory()) {
     case PRIMITIVE:
-      convertedType = convert((PrimitiveTypeInfo) type, nullable, dtFactory);
+      convertedType = convert((PrimitiveTypeInfo) type, dtFactory);
       break;
     case LIST:
       convertedType = convert((ListTypeInfo) type, dtFactory);
@@ -165,15 +160,10 @@ public class TypeConverter {
       convertedType = convert((UnionTypeInfo) type, dtFactory);
       break;
     }
-    // hive does not have concept of not nullable types
-    return dtFactory.createTypeWithNullability(convertedType, nullable);
+    return convertedType;
   }
 
   public static RelDataType convert(PrimitiveTypeInfo type, RelDataTypeFactory dtFactory) {
-    return convert(type, true, dtFactory);
-  }
-
-  public static RelDataType convert(PrimitiveTypeInfo type, boolean nullable, RelDataTypeFactory dtFactory) {
     RelDataType convertedType = null;
 
     switch (type.getPrimitiveCategory()) {
@@ -250,7 +240,7 @@ public class TypeConverter {
       throw new RuntimeException("Unsupported Type : " + type.getTypeName());
     }
 
-    return dtFactory.createTypeWithNullability(convertedType, nullable);
+    return dtFactory.createTypeWithNullability(convertedType, true);
   }
 
   public static RelDataType convert(ListTypeInfo lstType,
@@ -279,10 +269,6 @@ public class TypeConverter {
     throws CalciteSemanticException{
     // Union type is not supported in Calcite.
     throw new CalciteSemanticException("Union type is not supported", UnsupportedFeature.Union_type);
-  }
-
-  public static TypeInfo convertLiteralType(RexLiteral literal) {
-    return TypeConverter.convertPrimitiveType(literal.getType());
   }
 
   public static TypeInfo convert(RelDataType rType) {

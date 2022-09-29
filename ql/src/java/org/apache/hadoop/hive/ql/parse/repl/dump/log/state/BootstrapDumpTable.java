@@ -17,12 +17,9 @@
  */
 package org.apache.hadoop.hive.ql.parse.repl.dump.log.state;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
-
 import org.apache.hadoop.hive.metastore.TableType;
-import org.apache.hadoop.hive.ql.exec.repl.util.ReplUtils;
 import org.apache.hadoop.hive.ql.parse.repl.ReplState;
+import org.codehaus.jackson.annotate.JsonProperty;
 
 public class BootstrapDumpTable extends ReplState {
   @JsonProperty
@@ -38,7 +35,6 @@ public class BootstrapDumpTable extends ReplState {
   private String tablesDumpProgress;
 
   @JsonProperty
-  @JsonSerialize(using = ReplUtils.TimeSerializer.class)
   private Long dumpTime;
 
   public BootstrapDumpTable(String dbName,

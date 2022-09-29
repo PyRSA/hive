@@ -1,5 +1,3 @@
---! qt:dataset:src1
---! qt:dataset:src
 -- SORT_QUERY_RESULTS
 
 CREATE TABLE dest_j1_n0(key INT, cnt INT);

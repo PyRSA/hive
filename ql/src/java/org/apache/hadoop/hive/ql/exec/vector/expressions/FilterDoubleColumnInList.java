@@ -18,7 +18,6 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.expressions;
 
-import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.common.type.HiveDecimal;
 import org.apache.hadoop.hive.ql.exec.vector.DoubleColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorExpressionDescriptor.Descriptor;
@@ -64,8 +63,8 @@ public class FilterDoubleColumnInList extends VectorExpression implements IDoubl
   }
 
   @Override
-  public void transientInit(Configuration conf) throws HiveException {
-    super.transientInit(conf);
+  public void transientInit() throws HiveException {
+    super.transientInit();
 
     inSet = new CuckooSetDouble(inListValues.length);
     inSet.load(inListValues);

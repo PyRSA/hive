@@ -32,11 +32,11 @@ import org.apache.thrift.TBase;
 import org.apache.thrift.TDeserializer;
 import org.apache.thrift.TException;
 import org.apache.thrift.protocol.TJSONProtocol;
-import org.apache.thrift.transport.TTransportException;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -47,7 +47,7 @@ public class MetadataJson {
   private final TDeserializer deserializer;
   private final String tableDesc;
 
-  public MetadataJson(String message) throws JSONException, SemanticException, TTransportException {
+  public MetadataJson(String message) throws JSONException, SemanticException {
     deserializer = new TDeserializer(new TJSONProtocol.Factory());
     json = new JSONObject(message);
     checkCompatibility();
@@ -99,7 +99,14 @@ public class MetadataJson {
   }
 
   private ReplicationSpec readReplicationSpec() {
-    return new ReplicationSpec(this::jsonEntry);
+    com.google.common.base.Function<String, String> keyFetcher =
+        new com.google.common.base.Function<String, String>() {
+          @Override
+          public String apply(@Nullable String s) {
+            return jsonEntry(s);
+          }
+        };
+    return new ReplicationSpec(keyFetcher);
   }
 
   private void checkCompatibility() throws SemanticException, JSONException {

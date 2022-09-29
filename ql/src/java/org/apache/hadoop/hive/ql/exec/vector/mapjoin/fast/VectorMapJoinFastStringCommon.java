@@ -21,12 +21,10 @@ package org.apache.hadoop.hive.ql.exec.vector.mapjoin.fast;
 import java.io.IOException;
 
 import org.apache.hadoop.hive.ql.metadata.HiveException;
-import org.apache.hadoop.hive.ql.plan.TableDesc;
 import org.apache.hadoop.hive.serde2.binarysortable.fast.BinarySortableDeserializeRead;
 import org.apache.hadoop.hive.serde2.typeinfo.PrimitiveTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
 import org.apache.hadoop.io.BytesWritable;
-import org.apache.hive.common.util.HashCodeUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,50 +35,40 @@ public class VectorMapJoinFastStringCommon {
 
   public static final Logger LOG = LoggerFactory.getLogger(VectorMapJoinFastStringCommon.class);
 
+  private boolean isOuterJoin;
+
   private BinarySortableDeserializeRead keyBinarySortableDeserializeRead;
 
-  public boolean adaptPutRow(VectorMapJoinFastBytesHashTable hashTable,
-      BytesWritable currentKey, BytesWritable currentValue, long hashCode) throws HiveException, IOException {
+  public void adaptPutRow(VectorMapJoinFastBytesHashTable hashTable,
+          BytesWritable currentKey, BytesWritable currentValue) throws HiveException, IOException {
 
     byte[] keyBytes = currentKey.getBytes();
     int keyLength = currentKey.getLength();
     keyBinarySortableDeserializeRead.set(keyBytes, 0, keyLength);
     try {
       if (!keyBinarySortableDeserializeRead.readNextField()) {
-        return false;
+        return;
       }
     } catch (Exception e) {
-      throw new HiveException("DeserializeRead details: " +
-          keyBinarySortableDeserializeRead.getDetailedReadPositionString(), e);
+      throw new HiveException(
+          "\nDeserializeRead details: " +
+              keyBinarySortableDeserializeRead.getDetailedReadPositionString() +
+          "\nException: " + e.toString());
     }
 
     hashTable.add(
         keyBinarySortableDeserializeRead.currentBytes,
         keyBinarySortableDeserializeRead.currentBytesStart,
         keyBinarySortableDeserializeRead.currentBytesLength,
-        currentValue, hashCode);
-    return true;
+        currentValue);
   }
 
-  public long calculateLongHashCode(BytesWritable currentKey) throws HiveException, IOException {
-    byte[] keyBytes = currentKey.getBytes();
-    int keyLength = currentKey.getLength();
-    keyBinarySortableDeserializeRead.set(keyBytes, 0, keyLength);
-    try {
-      if (!keyBinarySortableDeserializeRead.readNextField()) {
-        return 0;
-      }
-    } catch (Exception e) {
-      throw new HiveException("DeserializeRead details: " +
-          keyBinarySortableDeserializeRead.getDetailedReadPositionString(), e);
-    }
-    return HashCodeUtil.murmurHash(keyBinarySortableDeserializeRead.currentBytes, keyBinarySortableDeserializeRead.currentBytesStart,
-            keyBinarySortableDeserializeRead.currentBytesLength);
-  }
-
-  public VectorMapJoinFastStringCommon(TableDesc tableDesc) {
+  public VectorMapJoinFastStringCommon(boolean isOuterJoin) {
+    this.isOuterJoin = isOuterJoin;
     PrimitiveTypeInfo[] primitiveTypeInfos = { TypeInfoFactory.stringTypeInfo };
-    keyBinarySortableDeserializeRead = BinarySortableDeserializeRead.with(
-            primitiveTypeInfos, false, tableDesc.getProperties());
+    keyBinarySortableDeserializeRead =
+        new BinarySortableDeserializeRead(
+            primitiveTypeInfos,
+            /* useExternalBuffer */ false);
   }
 }

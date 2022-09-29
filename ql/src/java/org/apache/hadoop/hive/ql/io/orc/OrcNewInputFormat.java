@@ -54,7 +54,7 @@ public class OrcNewInputFormat extends InputFormat<NullWritable, OrcStruct>{
     return new OrcRecordReader(OrcFile.createReader(path,
                                                    OrcFile.readerOptions(conf)),
         ShimLoader.getHadoopShims().getConfiguration(context),
-        fileSplit.getStart(), fileSplit.getLength(), inputSplit);
+        fileSplit.getStart(), fileSplit.getLength());
   }
 
   private static class OrcRecordReader
@@ -65,15 +65,12 @@ public class OrcNewInputFormat extends InputFormat<NullWritable, OrcStruct>{
     private float progress = 0.0f;
 
     OrcRecordReader(Reader file, Configuration conf,
-                    long offset, long length, InputSplit inputSplit) throws IOException {
-      numColumns = file.getSchema().getChildren().size();
+                    long offset, long length) throws IOException {
+      List<OrcProto.Type> types = file.getTypes();
+      numColumns = (types.size() == 0) ? 0 : types.get(0).getSubtypesCount();
       value = new OrcStruct(numColumns);
-      if (inputSplit instanceof OrcNewSplit) {
-        this.reader = OrcInputFormat.createReaderFromFile(file, conf, offset,
-                length, ((OrcNewSplit)inputSplit).isOriginal());
-      } else {
-        this.reader = OrcInputFormat.createReaderFromFile(file, conf, offset, length);
-      }
+      this.reader = OrcInputFormat.createReaderFromFile(file, conf, offset,
+          length);
     }
 
     @Override
@@ -123,14 +120,18 @@ public class OrcNewInputFormat extends InputFormat<NullWritable, OrcStruct>{
   @Override
   public List<InputSplit> getSplits(JobContext jobContext)
       throws IOException, InterruptedException {
-    LOG.debug("getSplits started");
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("getSplits started");
+    }
     Configuration conf = ShimLoader.getHadoopShims().getConfiguration(jobContext);
     List<OrcSplit> splits = OrcInputFormat.generateSplitsInfo(conf, createContext(conf, -1));
     List<InputSplit> result = new ArrayList<InputSplit>(splits.size());
     for(OrcSplit split: splits) {
       result.add(new OrcNewSplit(split));
     }
-    LOG.debug("getSplits finished");
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("getSplits finished");
+    }
     return result;
   }
 

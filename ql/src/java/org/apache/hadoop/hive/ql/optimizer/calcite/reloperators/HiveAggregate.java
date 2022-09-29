@@ -53,9 +53,14 @@ public class HiveAggregate extends Aggregate implements HiveRelNode {
 
   @Override
   public Aggregate copy(RelTraitSet traitSet, RelNode input,
-          ImmutableBitSet groupSet,
+          boolean indicator, ImmutableBitSet groupSet,
           List<ImmutableBitSet> groupSets, List<AggregateCall> aggCalls) {
-    return new HiveAggregate(getCluster(), traitSet, input, groupSet, groupSets, aggCalls);
+      if (indicator) {
+        throw new IllegalStateException("Hive does not support indicator columns but tried "
+                + "to create an Aggregate operator containing them");
+      }
+      return new HiveAggregate(getCluster(), traitSet, input,
+              groupSet, groupSets, aggCalls);
   }
 
   @Override
@@ -70,19 +75,19 @@ public class HiveAggregate extends Aggregate implements HiveRelNode {
 
   public boolean isBucketedInput() {
     final RelMetadataQuery mq = this.getInput().getCluster().getMetadataQuery();
-    return mq.distribution(this).getKeys().
+    return mq.distribution(this.getInput()).getKeys().
             containsAll(groupSet.asList());
   }
 
   @Override
   protected RelDataType deriveRowType() {
     return deriveRowType(getCluster().getTypeFactory(), getInput().getRowType(),
-        indicator, groupSet, aggCalls);
+        indicator, groupSet, groupSets, aggCalls);
   }
 
   public static RelDataType deriveRowType(RelDataTypeFactory typeFactory,
       final RelDataType inputRowType, boolean indicator,
-      ImmutableBitSet groupSet,
+      ImmutableBitSet groupSet, List<ImmutableBitSet> groupSets,
       final List<AggregateCall> aggCalls) {
     final List<Integer> groupList = groupSet.asList();
     assert groupList.size() == groupSet.cardinality();
@@ -100,11 +105,10 @@ public class HiveAggregate extends Aggregate implements HiveRelNode {
                 typeFactory.createSqlType(SqlTypeName.BOOLEAN), false);
         String name = "i$" + fieldList.get(groupKey).getName();
         int i = 0;
-        StringBuilder nameBuilder = new StringBuilder(name);
         while (containedNames.contains(name)) {
-          nameBuilder.append('_').append(i++);
+          name += "_" + i++;
         }
-        containedNames.add(nameBuilder.toString());
+        containedNames.add(name);
         builder.add(name, booleanType);
       }
     }

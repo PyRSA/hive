@@ -184,7 +184,7 @@ public class UDFLike extends UDF {
 
       parseSimplePattern(strLikePattern);
       if (type == PatternType.COMPLEX) {
-        p = Pattern.compile(likePatternToRegExp(strLikePattern), Pattern.DOTALL);
+        p = Pattern.compile(likePatternToRegExp(strLikePattern));
       }
     }
 

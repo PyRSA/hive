@@ -23,18 +23,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.security.PrivilegedExceptionAction;
-import java.util.ArrayList;
-import java.util.Arrays;
 
 import org.apache.commons.io.IOUtils;
-import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.authentication.client.AuthenticatedURL;
 import org.apache.hadoop.security.authentication.client.AuthenticationException;
-import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.http.HttpStatus;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -49,68 +44,15 @@ public class YarnQueueHelper {
 
   private final String[] rmNodes;
   private int lastKnownGoodUrl;
-  private boolean sslForYarn;
-  private boolean isHA;
-  private static String webapp_conf_key = YarnConfiguration.RM_WEBAPP_ADDRESS;
-  private static String webapp_ssl_conf_key = YarnConfiguration.RM_WEBAPP_HTTPS_ADDRESS;
-  private static String yarn_HA_enabled = YarnConfiguration.RM_HA_ENABLED;
-  private static String yarn_HA_rmids = YarnConfiguration.RM_HA_IDS;
 
   public YarnQueueHelper(HiveConf conf) {
-    ArrayList<String> nodeList = new ArrayList<>();
-    sslForYarn = YarnConfiguration.useHttps(conf);
-    isHA = conf.getBoolean(yarn_HA_enabled, false);
-    LOG.info(String.format("Yarn is using SSL: %s", sslForYarn));
-    LOG.info(String.format("Yarn HA is enabled: %s", isHA));
-
-    if (isHA) {
-      String[] rmids = conf.getStrings(yarn_HA_rmids);
-      if (sslForYarn == true) {
-        for (String rmid : rmids) {
-          nodeList.addAll(Arrays.asList(conf.getTrimmedStrings(webapp_ssl_conf_key + "."+rmid)));
-        }
-        Preconditions.checkArgument(nodeList.size() > 0,
-            "yarn.resourcemanager.ha.rm-ids must be set to enable queue access checks in Yarn HA mode");
-      }else{
-        for (String rmid : rmids) {
-          nodeList.addAll(Arrays.asList(conf.getTrimmedStrings(webapp_conf_key + "."+rmid)));
-          Preconditions.checkArgument(nodeList.size() > 0,
-              "yarn.resourcemanager.ha.rm-ids must be set to enable queue access checks in Yarn HA mode");
-        }
-      }
-      rmNodes = nodeList.toArray(new String[nodeList.size()]);
-    }else {
-      if (sslForYarn == true) {
-        rmNodes = conf.getTrimmedStrings(webapp_ssl_conf_key);
-        Preconditions.checkArgument((rmNodes != null && rmNodes.length > 0),
-            "yarn.resourcemanager.webapp.https.address must be set to enable queue access checks using TLS");
-      } else {
-        rmNodes = conf.getTrimmedStrings(webapp_conf_key);
-        Preconditions.checkArgument((rmNodes != null && rmNodes.length > 0),
-            "yarn.resourcemanager.webapp.address must be set to enable queue access checks");
-      }
-    }
+    rmNodes = conf.getTrimmedStrings("yarn.resourcemanager.webapp.address");
+    Preconditions.checkArgument((rmNodes != null && rmNodes.length > 0),
+        "yarn.resourcemanager.webapp.address must be set to enable queue access checks");
     lastKnownGoodUrl = 0;
   }
 
   public void checkQueueAccess(
-      String queueName, String userName) throws IOException, InterruptedException {
-    UserGroupInformation ugi = UserGroupInformation.getCurrentUser();
-    try {
-      ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
-        checkQueueAccessInternal(queueName, userName);
-        return null;
-      });
-    } finally {
-      try {
-        FileSystem.closeAllForUGI(ugi);
-      } catch (IOException exception) {
-        LOG.error("Could not clean up file-system handles for UGI: " + ugi, exception);
-      }
-    }
-  }
-
-  private void checkQueueAccessInternal(
       String queueName, String userName) throws IOException, HiveException {
     String urlSuffix = String.format(PERMISSION_PATH, queueName, userName);
     // TODO: if we ever use this endpoint for anything else, refactor cycling into a separate class.
@@ -120,14 +62,8 @@ public class YarnQueueHelper {
       String node = rmNodes[urlIx];
       String error = null;
       boolean isCallOk = false;
-      String urlToCheck;
-      if (sslForYarn){
-        urlToCheck = "https://" + node + urlSuffix;
-      }else{
-        urlToCheck = "http://" + node + urlSuffix;
-      }
       try {
-        error = checkQueueAccessFromSingleRm(urlToCheck);
+        error = checkQueueAccessFromSingleRm("http://" + node + urlSuffix);
         isCallOk = true;
       } catch (Exception ex) {
         LOG.warn("Cannot check queue access against RM " + node, ex);

@@ -17,11 +17,8 @@
  */
 package org.apache.hadoop.hive.ql.parse.repl.load.log.state;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
-
-import org.apache.hadoop.hive.ql.exec.repl.util.ReplUtils;
 import org.apache.hadoop.hive.ql.parse.repl.ReplState;
+import org.codehaus.jackson.annotate.JsonProperty;
 
 public class BootstrapLoadFunction extends ReplState {
   @JsonProperty
@@ -34,7 +31,6 @@ public class BootstrapLoadFunction extends ReplState {
   private String functionsLoadProgress;
 
   @JsonProperty
-  @JsonSerialize(using = ReplUtils.TimeSerializer.class)
   private Long loadTime;
 
   public BootstrapLoadFunction(String dbName, String funcName,

@@ -32,12 +32,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.common.StatsSetupConst;
-import org.apache.hadoop.hive.common.TableName;
 import org.apache.hadoop.hive.common.ValidReaderWriteIdList;
-import org.apache.hadoop.hive.conf.Constants;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.MetaStoreThread;
-import org.apache.hadoop.hive.metastore.ObjectStore;
 import org.apache.hadoop.hive.metastore.RawStore;
 import org.apache.hadoop.hive.metastore.RawStoreProxy;
 import org.apache.hadoop.hive.metastore.Warehouse;
@@ -53,10 +50,9 @@ import org.apache.hadoop.hive.metastore.api.Table;
 import org.apache.hadoop.hive.metastore.conf.MetastoreConf;
 import org.apache.hadoop.hive.metastore.conf.MetastoreConf.ConfVars;
 import org.apache.hadoop.hive.metastore.conf.MetastoreConf.StatsUpdateMode;
-import org.apache.hadoop.hive.metastore.txn.TxnCommonUtils;
 import org.apache.hadoop.hive.metastore.txn.TxnStore;
 import org.apache.hadoop.hive.metastore.txn.TxnUtils;
-import org.apache.hadoop.hive.metastore.utils.MetaStoreUtils;
+import org.apache.hadoop.hive.metastore.utils.MetaStoreUtils.FullTableName;
 import org.apache.hadoop.hive.ql.DriverUtils;
 import org.apache.hadoop.hive.ql.io.AcidUtils;
 import org.apache.hadoop.hive.ql.session.SessionState;
@@ -69,7 +65,6 @@ import com.google.common.collect.Lists;
 
 public class StatsUpdaterThread extends Thread implements MetaStoreThread {
   public static final String SKIP_STATS_AUTOUPDATE_PROPERTY = "skip.stats.autoupdate";
-  public static final String WORKER_NAME_PREFIX = "Stats updater worker ";
   private static final Logger LOG = LoggerFactory.getLogger(StatsUpdaterThread.class);
 
   protected Configuration conf;
@@ -80,13 +75,13 @@ public class StatsUpdaterThread extends Thread implements MetaStoreThread {
   private RawStore rs;
   private TxnStore txnHandler;
   /** Full tables, and partitions that currently have analyze commands queued or in progress. */
-  private ConcurrentHashMap<TableName, Boolean> tablesInProgress = new ConcurrentHashMap<>();
+  private ConcurrentHashMap<FullTableName, Boolean> tablesInProgress = new ConcurrentHashMap<>();
   private ConcurrentHashMap<String, Boolean> partsInProgress = new ConcurrentHashMap<>();
   private AtomicInteger itemsInProgress = new AtomicInteger(0);
 
   // Configuration
   /** Whether to only update stats that already exist and are out of date. */
-  private boolean isExistingOnly, areTxnStatsEnabled;
+  private boolean isExistingOnly;
   private long noUpdatesWaitMs;
   private int batchSize;
 
@@ -105,7 +100,6 @@ public class StatsUpdaterThread extends Thread implements MetaStoreThread {
     }
     noUpdatesWaitMs = MetastoreConf.getTimeVar(
         conf, ConfVars.STATS_AUTO_UPDATE_NOOP_WAIT, TimeUnit.MILLISECONDS);
-    areTxnStatsEnabled = MetastoreConf.getBoolVar(conf, ConfVars.HIVE_TXN_STATS_ENABLED);
     batchSize = MetastoreConf.getIntVar(conf, ConfVars.BATCH_RETRIEVE_MAX);
     int workerCount = MetastoreConf.getIntVar(conf, ConfVars.STATS_AUTO_UPDATE_WORKER_COUNT);
     if (workerCount <= 0) {
@@ -125,8 +119,14 @@ public class StatsUpdaterThread extends Thread implements MetaStoreThread {
   }
 
   @Override
-  public void init(AtomicBoolean stop) throws MetaException {
+  public void setThreadId(int threadId) {
+    this.threadId = threadId;
+  }
+
+  @Override
+  public void init(AtomicBoolean stop, AtomicBoolean looped) throws MetaException {
     this.stop = stop;
+    this.looped = looped;
     setPriority(MIN_PRIORITY);
     setDaemon(true);
     String user = "anonymous";
@@ -137,17 +137,16 @@ public class StatsUpdaterThread extends Thread implements MetaStoreThread {
     }
     txnHandler = TxnUtils.getTxnStore(conf);
     rs = RawStoreProxy.getProxy(conf, conf,
-        MetastoreConf.getVar(conf, MetastoreConf.ConfVars.RAW_STORE_IMPL));
+        MetastoreConf.getVar(conf, MetastoreConf.ConfVars.RAW_STORE_IMPL), threadId);
     for (int i = 0; i < workers.length; ++i) {
       workers[i] = new Thread(new WorkerRunnable(conf, user));
       workers[i].setDaemon(true);
-      workers[i].setName(WORKER_NAME_PREFIX + i);
+      workers[i].setName("Stats updater worker " + i);
     }
   }
 
   @Override
   public void run() {
-    LOG.info("Stats updater thread started");
     startWorkers();
     while (!stop.get()) {
       boolean hadUpdates = runOneIteration();
@@ -165,14 +164,13 @@ public class StatsUpdaterThread extends Thread implements MetaStoreThread {
   @VisibleForTesting
   void startWorkers() {
     for (int i = 0; i < workers.length; ++i) {
-      LOG.info("Stats updater worker thread " + workers[i].getName() + " started");
       workers[i].start();
     }
   }
 
   @VisibleForTesting
-  public boolean runOneIteration() {
-    List<TableName> fullTableNames;
+  boolean runOneIteration() {
+    List<FullTableName> fullTableNames;
     try {
       fullTableNames = getTablesToCheck();
     } catch (Throwable t) {
@@ -182,10 +180,9 @@ public class StatsUpdaterThread extends Thread implements MetaStoreThread {
     }
     LOG.debug("Processing {}", fullTableNames);
     boolean hadUpdates = false;
-    Map<String, Boolean> dbsToSkip = new HashMap<>();
-    for (TableName fullTableName : fullTableNames) {
+    for (FullTableName fullTableName : fullTableNames) {
       try {
-        List<AnalyzeWork> commands = processOneTable(fullTableName, dbsToSkip);
+        List<AnalyzeWork> commands = processOneTable(fullTableName);
         hadUpdates = hadUpdates || commands != null;
         if (commands != null) {
           for (AnalyzeWork req : commands) {
@@ -206,18 +203,10 @@ public class StatsUpdaterThread extends Thread implements MetaStoreThread {
     }
   }
 
-  private List<AnalyzeWork> processOneTable(TableName fullTableName, Map<String, Boolean> dbsToSkip)
+  private List<AnalyzeWork> processOneTable(FullTableName fullTableName)
       throws MetaException, NoSuchTxnException, NoSuchObjectException {
     if (isAnalyzeTableInProgress(fullTableName)) return null;
-    String cat = fullTableName.getCat(), db = fullTableName.getDb(), tbl = fullTableName.getTable();
-    String dbName = MetaStoreUtils.prependCatalogToDbName(cat,db, conf);
-    if (!dbsToSkip.containsKey(dbName)) {
-      dbsToSkip.put(dbName, MetaStoreUtils.checkIfDbNeedsToBeSkipped(rs.getDatabase(cat, db)));
-    }
-    if (dbsToSkip.get(dbName)) {
-      LOG.debug("Skipping table {}", tbl);
-      return null;
-    }
+    String cat = fullTableName.catalog, db = fullTableName.db, tbl = fullTableName.table;
     Table table = rs.getTable(cat, db, tbl);
     LOG.debug("Processing table {}", table);
 
@@ -225,18 +214,11 @@ public class StatsUpdaterThread extends Thread implements MetaStoreThread {
     String skipParam = table.getParameters().get(SKIP_STATS_AUTOUPDATE_PROPERTY);
     if ("true".equalsIgnoreCase(skipParam)) return null;
 
-    // Note: ideally we should take a lock here to pretend to be a real reader.
-    //       For now, this check is going to have race potential; it may run a spurious analyze.
-    String writeIdString = null;
-    boolean isTxn = AcidUtils.isTransactionalTable(table);
-    if (isTxn) {
-      if (!areTxnStatsEnabled) return null; // Skip transactional tables.
-      ValidReaderWriteIdList writeIds = getWriteIds(fullTableName);
-      if (writeIds == null) {
-        LOG.error("Cannot get writeIds for transactional table " + fullTableName + "; skipping");
-        return null;
-      }
-      writeIdString = writeIds.writeToString();
+    // TODO: when txn stats are implemented, use writeIds to determine stats accuracy
+    @SuppressWarnings("unused")
+    ValidReaderWriteIdList writeIds = null;
+    if (AcidUtils.isTransactionalTable(table)) {
+      writeIds = getWriteIds(fullTableName);
     }
     List<String> allCols = new ArrayList<>(table.getSd().getColsSize());
     for (FieldSchema fs : table.getSd().getCols()) {
@@ -245,16 +227,9 @@ public class StatsUpdaterThread extends Thread implements MetaStoreThread {
     Collections.sort(allCols);
     if (table.getPartitionKeysSize() == 0) {
       Map<String, String> params = table.getParameters();
-      List<String> colsToUpdate = null;
-      long writeId = isTxn ? table.getWriteId() : -1;
-      if (isExistingOnly) {
-        // Get the existing stats, including the txn state if any, to see if we need to update.
-        colsToUpdate = getExistingNonPartTableStatsToUpdate(
-            fullTableName, cat, db, tbl, params, writeId, allCols, writeIdString);
-      } else {
-        colsToUpdate = getAnyStatsToUpdate(db, tbl, allCols, params, writeId, writeIdString);
-      }
-
+      List<String> colsToUpdate = isExistingOnly
+          ? getExistingNonPartTableStatsToUpdate(fullTableName, cat, db, tbl, params, allCols)
+          : getAnyStatsToUpdate(allCols, params);
       LOG.debug("Columns to update are {}; existing only: {}, out of: {} based on {}",
           colsToUpdate, isExistingOnly, allCols, params);
 
@@ -266,7 +241,7 @@ public class StatsUpdaterThread extends Thread implements MetaStoreThread {
     } else {
       Map<String, List<String>> partsToAnalyze = new HashMap<>();
       List<String> colsForAllParts = findPartitionsToAnalyze(
-          fullTableName, cat, db, tbl, allCols, partsToAnalyze, writeIdString);
+          fullTableName, cat, db, tbl, allCols, partsToAnalyze);
       LOG.debug("Columns to update are {} for all partitions; {} individual partitions."
           + " Existing only: {}, out of: {}", colsForAllParts, partsToAnalyze.size(),
           isExistingOnly, allCols);
@@ -287,31 +262,19 @@ public class StatsUpdaterThread extends Thread implements MetaStoreThread {
     }
   }
 
-  private List<String> findPartitionsToAnalyze(TableName fullTableName, String cat, String db,
-      String tbl, List<String> allCols, Map<String, List<String>> partsToAnalyze,
-      String writeIdString) throws MetaException, NoSuchObjectException {
+  private List<String> findPartitionsToAnalyze(FullTableName fullTableName, String cat, String db,
+      String tbl, List<String> allCols, Map<String, List<String>> partsToAnalyze)
+          throws MetaException, NoSuchObjectException {
     // TODO: ideally when col-stats-accurate stuff is stored in some sane structure, this should
-    //       retrieve partsToUpdate in a single query; no checking partition params in java.
+    //       to retrieve partsToUpdate in a single query; no checking partition params in java.
     List<String> partNames = null;
     Map<String, List<String>> colsPerPartition = null;
     boolean isAllParts = true;
     if (isExistingOnly) {
-      // Make sure the number of partitions we get, and the number of stats objects, is consistent.
-      rs.openTransaction();
-      boolean isOk = false;
-      try {
-        colsPerPartition = rs.getPartitionColsWithStats(cat, db, tbl);
-        partNames = Lists.newArrayList(colsPerPartition.keySet());
-        int partitionCount = rs.getNumPartitionsByFilter(cat, db, tbl, "");
-        isAllParts = partitionCount == partNames.size();
-        isOk = true;
-      } finally {
-        if (isOk) {
-          rs.commitTransaction();
-        } else {
-          rs.rollbackTransaction();
-        }
-      }
+      colsPerPartition = rs.getPartitionColsWithStats(cat, db, tbl);
+      partNames = Lists.newArrayList(colsPerPartition.keySet());
+      int partitionCount = rs.getNumPartitionsByFilter(cat, db, tbl, "");
+      isAllParts = partitionCount == partNames.size();
     } else {
       partNames = rs.listPartitionNames(cat, db, tbl, (short) -1);
       isAllParts = true;
@@ -363,10 +326,9 @@ public class StatsUpdaterThread extends Thread implements MetaStoreThread {
         colsToMaybeUpdate = colsPerPartition.get(partName);
         Collections.sort(colsToMaybeUpdate);
       }
-      List<String> colsToUpdate = getAnyStatsToUpdate(db, tbl, colsToMaybeUpdate, params,
-          writeIdString == null ? -1 : part.getWriteId(), writeIdString);
-
+      List<String> colsToUpdate = getAnyStatsToUpdate(colsToMaybeUpdate, params);
       LOG.debug("Updating {} based on {} and {}", colsToUpdate, colsToMaybeUpdate, params);
+
 
       if (colsToUpdate == null || colsToUpdate.isEmpty()) {
         if (isAllParts) {
@@ -442,27 +404,22 @@ public class StatsUpdaterThread extends Thread implements MetaStoreThread {
     return partColStr;
   }
 
-  private List<String> getExistingNonPartTableStatsToUpdate(TableName fullTableName,
-      String cat, String db, String tbl, Map<String, String> params, long statsWriteId,
-      List<String> allCols, String writeIdString) throws MetaException {
+  private List<String> getExistingNonPartTableStatsToUpdate(FullTableName fullTableName,
+      String cat, String db, String tbl, Map<String, String> params,
+      List<String> allCols) throws MetaException {
     ColumnStatistics existingStats = null;
     try {
-      // Note: this should NOT do txn verification - we want to get outdated stats, to
-      //       see if we need to update anything.
-      existingStats = rs.getTableColumnStatistics(cat, db, tbl, allCols, Constants.HIVE_ENGINE);
+      existingStats = rs.getTableColumnStatistics(cat, db, tbl, allCols);
     } catch (NoSuchObjectException e) {
       LOG.error("Cannot retrieve existing stats, skipping " + fullTableName, e);
       return null;
     }
-    // TODO: we should probably skip updating if writeId is from an active txn
-    boolean isTxnValid = (writeIdString == null) || ObjectStore.isCurrentStatsValidForTheQuery(
-        params, statsWriteId, writeIdString, false);
-    return getExistingStatsToUpdate(existingStats, params, isTxnValid);
+    return getExistingStatsToUpdate(existingStats, params);
   }
 
   private List<String> getExistingStatsToUpdate(
-      ColumnStatistics existingStats, Map<String, String> params, boolean isTxnValid) {
-    boolean hasAnyAccurate = isTxnValid && StatsSetupConst.areBasicStatsUptoDate(params);
+      ColumnStatistics existingStats, Map<String, String> params) {
+    boolean hasAnyAccurate = StatsSetupConst.areBasicStatsUptoDate(params);
     List<String> colsToUpdate = new ArrayList<>();
     for (ColumnStatisticsObj obj : existingStats.getStatsObj()) {
       String col = obj.getColName();
@@ -473,15 +430,10 @@ public class StatsUpdaterThread extends Thread implements MetaStoreThread {
     return colsToUpdate;
   }
 
-  private List<String> getAnyStatsToUpdate(String db, String tbl, List<String> allCols,
-      Map<String, String> params, long statsWriteId, String writeIdString) throws MetaException {
+  private List<String> getAnyStatsToUpdate(
+      List<String> allCols, Map<String, String> params) {
     // Note: we only run "for columns" command and assume no basic stats means no col stats.
     if (!StatsSetupConst.areBasicStatsUptoDate(params)) {
-      return allCols;
-    }
-    // TODO: we should probably skip updating if writeId is from an active txn
-    if (writeIdString != null && !ObjectStore.isCurrentStatsValidForTheQuery(
-        params, statsWriteId, writeIdString, false)) {
       return allCols;
     }
     List<String> colsToUpdate = new ArrayList<>();
@@ -493,7 +445,7 @@ public class StatsUpdaterThread extends Thread implements MetaStoreThread {
     return colsToUpdate;
   }
 
-  private List<TableName> getTablesToCheck() throws MetaException, NoSuchObjectException {
+  private List<FullTableName> getTablesToCheck() throws MetaException, NoSuchObjectException {
     if (isExistingOnly) {
       try {
         return rs.getTableNamesWithStats();
@@ -505,11 +457,10 @@ public class StatsUpdaterThread extends Thread implements MetaStoreThread {
   }
 
   private ValidReaderWriteIdList getWriteIds(
-      TableName fullTableName) throws NoSuchTxnException, MetaException {
-    // TODO: acid utils don't support catalogs
-    GetValidWriteIdsRequest req = new GetValidWriteIdsRequest(
-        Lists.newArrayList(fullTableName.getDbTable()));
-    return TxnCommonUtils.createValidReaderWriteIdList(
+      FullTableName fullTableName) throws NoSuchTxnException, MetaException {
+    GetValidWriteIdsRequest req = new GetValidWriteIdsRequest();
+    req.setFullTableNames(Lists.newArrayList(fullTableName.toString()));
+    return TxnUtils.createValidReaderWriteIdList(
         txnHandler.getValidWriteIds(req).getTblValidWriteIds().get(0));
   }
 
@@ -553,24 +504,24 @@ public class StatsUpdaterThread extends Thread implements MetaStoreThread {
     }
   }
 
-  private boolean isAnalyzeTableInProgress(TableName fullTableName) {
+  private boolean isAnalyzeTableInProgress(FullTableName fullTableName) {
     return tablesInProgress.containsKey(fullTableName);
   }
 
-  private boolean isAnalyzePartInProgress(TableName tableName, String partName) {
+  private boolean isAnalyzePartInProgress(FullTableName tableName, String partName) {
     return partsInProgress.containsKey(makeFullPartName(tableName, partName));
   }
 
-  private static String makeFullPartName(TableName tableName, String partName) {
+  private static String makeFullPartName(FullTableName tableName, String partName) {
     return tableName + "/" + partName;
   }
 
   private final static class AnalyzeWork {
-    TableName tableName;
+    FullTableName tableName;
     String partName, allParts;
     List<String> cols;
 
-    public AnalyzeWork(TableName tableName, String partName, String allParts, List<String> cols) {
+    public AnalyzeWork(FullTableName tableName, String partName, String allParts, List<String> cols) {
       this.tableName = tableName;
       this.partName = partName;
       this.allParts = allParts;
@@ -583,7 +534,7 @@ public class StatsUpdaterThread extends Thread implements MetaStoreThread {
 
     public String buildCommand() {
       // Catalogs cannot be parsed as part of the query. Seems to be a bug.
-      String cmd = "analyze table " + tableName.getDb() + "." + tableName.getTable();
+      String cmd = "analyze table " + tableName.db + "." + tableName.table;
       assert partName == null || allParts == null;
       if (partName != null) {
         cmd += " partition(" + partName + ")";
@@ -619,17 +570,12 @@ public class StatsUpdaterThread extends Thread implements MetaStoreThread {
     }
     String cmd = null;
     try {
+      cmd = req.buildCommand();
+      LOG.debug("Running {} based on {}", cmd, req);
       if (doWait) {
         SessionState.start(ss); // This is the first call, open the session
       }
-      TableName tb = req.tableName;
-      if (MetaStoreUtils.isDbBeingFailedOver(rs.getDatabase(tb.getCat(), tb.getDb()))) {
-        LOG.info("Skipping table: {} as it belongs to database which is being failed over." + tb.getTable());
-        return true;
-      }
-      cmd = req.buildCommand();
-      LOG.debug("Running {} based on {}", cmd, req);
-      DriverUtils.runOnDriver(conf, ss, cmd);
+      DriverUtils.runOnDriver(conf, user, ss, cmd, null);
     } catch (Exception e) {
       LOG.error("Analyze command failed: " + cmd, e);
       try {

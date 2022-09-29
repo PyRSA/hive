@@ -34,7 +34,6 @@ import org.apache.hadoop.hive.ql.exec.TableScanOperator;
 import org.apache.hadoop.hive.ql.optimizer.signature.TestOperatorSignature;
 import org.apache.hadoop.hive.ql.parse.ParseException;
 import org.apache.hadoop.hive.ql.plan.mapper.PlanMapper;
-import org.apache.hadoop.hive.ql.processors.CommandProcessorException;
 import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hadoop.hive.ql.stats.OperatorStatsReaderHook;
 import org.apache.hive.testutils.HiveTestEnvSetup;
@@ -69,7 +68,8 @@ public class TestOperatorCmp {
         // @formatter:on
     };
     for (String cmd : cmds) {
-      driver.run(cmd);
+      int ret = driver.run(cmd).getResponseCode();
+      assertEquals("Checking command success", 0, ret);
     }
   }
 
@@ -82,18 +82,20 @@ public class TestOperatorCmp {
   public static void dropTables(IDriver driver) throws Exception {
     String tables[] = { "tu", "tv", "tw" };
     for (String t : tables) {
-      driver.run("drop table if exists " + t);
+      int ret = driver.run("drop table if exists " + t).getResponseCode();
+      assertEquals("Checking command success", 0, ret);
     }
   }
 
-  private PlanMapper getMapperForQuery(IDriver driver, String query) throws CommandProcessorException {
-    driver.run(query);
+  private PlanMapper getMapperForQuery(IDriver driver, String query) {
+    int ret = driver.run(query).getResponseCode();
+    assertEquals("Checking command success", 0, ret);
     PlanMapper pm0 = driver.getContext().getPlanMapper();
     return pm0;
   }
 
   @Test
-  public void testUnrelatedFiltersAreNotMatched0() throws ParseException, CommandProcessorException {
+  public void testUnrelatedFiltersAreNotMatched0() throws ParseException {
     IDriver driver = createDriver();
     String query = "select u from tu where id_uv = 1 union all select v from tv where id_uv = 1";
 
@@ -115,7 +117,7 @@ public class TestOperatorCmp {
   }
 
   @Test
-  public void testUnrelatedFiltersAreNotMatched1() throws ParseException, CommandProcessorException {
+  public void testUnrelatedFiltersAreNotMatched1() throws ParseException {
     IDriver driver = createDriver();
     PlanMapper pm0 = getMapperForQuery(driver, "select u from tu where id_uv = 1 group by u");
     PlanMapper pm1 = getMapperForQuery(driver, "select v from tv where id_uv = 1 group by v");
@@ -128,11 +130,12 @@ public class TestOperatorCmp {
   }
 
   @Test
-  public void testDifferentFiltersAreNotMatched() throws ParseException, CommandProcessorException {
+  public void testDifferentFiltersAreNotMatched() throws ParseException {
     IDriver driver = createDriver();
     PlanMapper pm0 = getMapperForQuery(driver, "select u from tu where id_uv = 1 group by u");
     PlanMapper pm1 = getMapperForQuery(driver, "select u from tu where id_uv = 2 group by u");
 
+    assertHelper(AssertHelperOp.SAME, pm0, pm1, TableScanOperator.class);
     assertHelper(AssertHelperOp.NOT_SAME, pm0, pm1, FilterOperator.class);
 
   }
@@ -190,11 +193,9 @@ public class TestOperatorCmp {
   private static IDriver createDriver() {
     HiveConf conf = env_setup.getTestCtx().hiveConf;
 
-    conf.setBoolVar(ConfVars.HIVEOPTPPD, false);
     conf.setBoolVar(ConfVars.HIVE_QUERY_REEXECUTION_ENABLED, true);
     conf.setBoolVar(ConfVars.HIVE_VECTORIZATION_ENABLED, false);
     conf.setBoolVar(ConfVars.HIVE_QUERY_REEXECUTION_ALWAYS_COLLECT_OPERATOR_STATS, true);
-    conf.setVar(ConfVars.HIVE_CBO_FALLBACK_STRATEGY, "NEVER");
     conf.setVar(ConfVars.HIVE_QUERY_REEXECUTION_STRATEGIES, "reoptimize");
     conf.set("zzz", "1");
     conf.set("reexec.overlay.zzz", "2000");

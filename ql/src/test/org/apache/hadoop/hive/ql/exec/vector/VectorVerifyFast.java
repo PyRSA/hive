@@ -364,9 +364,9 @@ public class VectorVerifyFast {
       case STRING:
       {
         Text value = (Text) object;
-        byte[] bytes = value.getBytes();
-        int byteLength = value.getLength();
-        serializeWrite.writeString(bytes, 0, byteLength);
+        byte[] stringBytes = value.getBytes();
+        int stringLength = stringBytes.length;
+        serializeWrite.writeString(stringBytes, 0, stringLength);
       }
       break;
       case CHAR:
@@ -479,8 +479,8 @@ public class VectorVerifyFast {
     case STRUCT:
     {
       StructTypeInfo structTypeInfo = (StructTypeInfo) typeInfo;
-      List<TypeInfo> fieldTypeInfos = structTypeInfo.getAllStructFieldTypeInfos();
-      List<Object> fieldValues = (List<Object>) object;
+      ArrayList<TypeInfo> fieldTypeInfos = structTypeInfo.getAllStructFieldTypeInfos();
+      ArrayList<Object> fieldValues = (ArrayList<Object>) object;
       final int size = fieldValues.size();
       serializeWrite.beginStruct(fieldValues);
       boolean isFirst = true;
@@ -647,7 +647,7 @@ public class VectorVerifyFast {
     case STRUCT:
     {
       StructTypeInfo structTypeInfo = (StructTypeInfo) typeInfo;
-      List<TypeInfo> fieldTypeInfos = structTypeInfo.getAllStructFieldTypeInfos();
+      ArrayList<TypeInfo> fieldTypeInfos = structTypeInfo.getAllStructFieldTypeInfos();
       final int size = fieldTypeInfos.size();
       ArrayList<Object> fieldValues = new ArrayList<Object>();
       Object fieldObj;

@@ -18,7 +18,6 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.expressions;
 
-import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.ql.exec.vector.BytesColumnVector;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 
@@ -37,8 +36,8 @@ public class CastLongToString extends LongToStringUnaryUDF {
   }
 
   @Override
-  public void transientInit(Configuration conf) throws HiveException {
-    super.transientInit(conf);
+  public void transientInit() throws HiveException {
+    super.transientInit();
 
     temp = new byte[20];
   }

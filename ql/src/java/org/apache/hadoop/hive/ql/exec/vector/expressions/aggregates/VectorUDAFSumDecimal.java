@@ -139,10 +139,17 @@ public class VectorUDAFSumDecimal extends VectorAggregateExpression {
       }
     } else {
       if (inputVector.isRepeating) {
-        iterateHasNullsRepeatingWithAggregationSelection(
-          aggregationBufferSets, aggregateIndex,
-          vector[0],
-          batchSize, inputVector.isNull);
+        if (batch.selectedInUse) {
+          iterateHasNullsRepeatingSelectionWithAggregationSelection(
+            aggregationBufferSets, aggregateIndex,
+            vector[0],
+            batchSize, batch.selected, inputVector.isNull);
+        } else {
+          iterateHasNullsRepeatingWithAggregationSelection(
+            aggregationBufferSets, aggregateIndex,
+            vector[0],
+            batchSize, inputVector.isNull);
+        }
       } else {
         if (batch.selectedInUse) {
           iterateHasNullsSelectionWithAggregationSelection(
@@ -202,6 +209,28 @@ public class VectorUDAFSumDecimal extends VectorAggregateExpression {
         i);
       myagg.sumValue(values[i]);
     }
+  }
+
+  private void iterateHasNullsRepeatingSelectionWithAggregationSelection(
+    VectorAggregationBufferRow[] aggregationBufferSets,
+    int aggregateIndex,
+    HiveDecimalWritable value,
+    int batchSize,
+    int[] selection,
+    boolean[] isNull) {
+
+    if (isNull[0]) {
+      return;
+    }
+
+    for (int i=0; i < batchSize; ++i) {
+      Aggregation myagg = getCurrentAggregationBuffer(
+        aggregationBufferSets,
+        aggregateIndex,
+        i);
+      myagg.sumValue(value);
+    }
+
   }
 
   private void iterateHasNullsRepeatingWithAggregationSelection(

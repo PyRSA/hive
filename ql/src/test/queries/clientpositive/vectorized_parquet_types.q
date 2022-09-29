@@ -1,4 +1,3 @@
--- SORT_QUERY_RESULTS
 set hive.mapred.mode=nonstrict;
 set hive.explain.user=false;
 set hive.llap.cache.allow.synthetic.fileid=true;

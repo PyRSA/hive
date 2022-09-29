@@ -1,5 +1,3 @@
---! qt:dataset:src1
---! qt:dataset:src
 set hive.compute.query.using.stats=false;
 set hive.strict.checks.cartesian.product=false;
 set hive.cli.print.header=true;

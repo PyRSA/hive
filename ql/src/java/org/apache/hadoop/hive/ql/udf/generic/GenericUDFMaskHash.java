@@ -22,8 +22,7 @@ import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.hadoop.hive.common.type.Date;
 import org.apache.hadoop.hive.ql.exec.Description;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
-import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.ql.session.SessionState;
+
 
 @Description(name = "mask_hash",
              value = "returns hash of the given value",
@@ -47,11 +46,7 @@ class MaskHashTransformer extends AbstractTransformer {
 
   @Override
   String transform(final String value) {
-    if("sha512".equalsIgnoreCase(HiveConf.getVar(SessionState.get().getConf(), HiveConf.ConfVars.HIVE_MASKING_ALGO).trim())){
-      return DigestUtils.sha512Hex(value);
-    }else{
-      return DigestUtils.sha256Hex(value);
-    }
+    return DigestUtils.sha256Hex(value);
   }
 
   @Override

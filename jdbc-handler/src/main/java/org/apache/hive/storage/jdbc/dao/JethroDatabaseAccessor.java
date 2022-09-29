@@ -43,7 +43,8 @@ public class JethroDatabaseAccessor extends GenericJdbcDatabaseAccessor {
   }
 
   @Override
-  protected String getMetaDataQuery(String sql) {
+  protected String getMetaDataQuery(Configuration conf) {
+    String sql = JdbcStorageConfigManager.getQueryToExecute(conf);
     return addLimitToQuery(sql, 0);
   }
 }

@@ -63,6 +63,7 @@ import org.apache.hive.common.util.DateParser;
         + "  '2009-07-31'")
 @VectorizedExpressions({VectorUDFDateAddColScalar.class, VectorUDFDateAddScalarCol.class, VectorUDFDateAddColCol.class})
 public class GenericUDFDateAdd extends GenericUDF {
+  private transient final DateParser dateParser = new DateParser();
   private transient final Date dateVal = new Date();
   private transient Converter dateConverter;
   private transient Converter daysConverter;
@@ -165,7 +166,7 @@ public class GenericUDFDateAdd extends GenericUDF {
     switch (inputType1) {
     case STRING:
       String dateString = dateConverter.convert(arguments[0].get()).toString();
-      if (DateParser.parseDate(dateString, dateVal)) {
+      if (dateParser.parseDate(dateString, dateVal)) {
         output.set(dateVal);
       } else {
         return null;

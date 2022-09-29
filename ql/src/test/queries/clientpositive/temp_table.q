@@ -1,4 +1,3 @@
---! qt:dataset:src
 set hive.mapred.mode=nonstrict;
 set hive.explain.user=false;
 EXPLAIN CREATE TEMPORARY TABLE foo AS SELECT * FROM src WHERE key % 2 = 0;
@@ -8,7 +7,7 @@ EXPLAIN CREATE TEMPORARY TABLE bar AS SELECT * FROM src WHERE key % 2 = 1;
 CREATE TEMPORARY TABLE bar AS SELECT * FROM src WHERE key % 2 = 1;
 
 DESCRIBE foo;
-DESCRIBE FORMATTED bar;
+DESCRIBE bar;
 
 explain select * from foo order by key limit 10;
 select * from foo order by key limit 10;
@@ -26,6 +25,8 @@ select * from bay;
 INSERT OVERWRITE TABLE bay SELECT * FROM src ORDER BY key;
 
 select * from bay order by key limit 10;
+
+SHOW TABLES;
 
 CREATE DATABASE two;
 

@@ -26,7 +26,6 @@ import org.apache.hadoop.hive.serde2.typeinfo.PrimitiveTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
 import org.apache.parquet.column.ColumnDescriptor;
 import org.apache.parquet.column.page.PageReader;
-import org.apache.parquet.schema.LogicalTypeAnnotation.DecimalLogicalTypeAnnotation;
 import org.apache.parquet.schema.Type;
 import java.io.IOException;
 import java.time.ZoneId;
@@ -49,10 +48,9 @@ public class VectorizedListColumnReader extends BaseVectorizedColumnReader {
   boolean isFirstRow = true;
 
   public VectorizedListColumnReader(ColumnDescriptor descriptor, PageReader pageReader,
-      boolean skipTimestampConversion, ZoneId writerTimezone, boolean skipProlepticConversion,
-      boolean legacyConversionEnabled, Type type, TypeInfo hiveType) throws IOException {
-    super(descriptor, pageReader, skipTimestampConversion, writerTimezone, skipProlepticConversion,
-        legacyConversionEnabled, type, hiveType);
+      boolean skipTimestampConversion, ZoneId writerTimezone, Type type, TypeInfo hiveType)
+      throws IOException {
+    super(descriptor, pageReader, skipTimestampConversion, writerTimezone, type, hiveType);
   }
 
   @Override
@@ -77,64 +75,19 @@ public class VectorizedListColumnReader extends BaseVectorizedColumnReader {
       isFirstRow = false;
     }
 
-    int index = collectDataFromParquetPage(total, lcv, valueList, category);
-
-    // Convert valueList to array for the ListColumnVector.child
-    convertValueListToListColumnVector(category, lcv, valueList, index);
-  }
-
-  /**
-   * Collects data from a parquet page and returns the final row index where it stopped.
-   * The returned index can be equal to or less than total.
-   * @param total maximum number of rows to collect
-   * @param lcv column vector to do initial setup in data collection time
-   * @param valueList collection of values that will be fed into the vector later
-   * @param category
-   * @return
-   * @throws IOException
-   */
-  private int collectDataFromParquetPage(int total, ListColumnVector lcv, List<Object> valueList,
-      PrimitiveObjectInspector.PrimitiveCategory category) throws IOException {
     int index = 0;
-    /*
-     * Here is a nested loop for collecting all values from a parquet page.
-     * A column of array type can be considered as a list of lists, so the two loops are as below:
-     * 1. The outer loop iterates on rows (index is a row index, so points to a row in the batch), e.g.:
-     * [0, 2, 3]    <- index: 0
-     * [NULL, 3, 4] <- index: 1
-     *
-     * 2. The inner loop iterates on values within a row (sets all data from parquet data page
-     * for an element in ListColumnVector), so fetchNextValue returns values one-by-one:
-     * 0, 2, 3, NULL, 3, 4
-     *
-     * As described below, the repetition level (repetitionLevel != 0)
-     * can be used to decide when we'll start to read values for the next list.
-     */
     while (!eof && index < total) {
       // add element to ListColumnVector one by one
-      lcv.offsets[index] = valueList.size();
-      /*
-       * Let's collect all values for a single list.
-       * Repetition level = 0 means that a new list started there in the parquet page,
-       * in that case, let's exit from the loop, and start to collect value for a new list.
-       */
-      do {
-        /*
-         * Definition level = 0 when a NULL value was returned instead of a list
-         * (this is not the same as a NULL value in of a list).
-         */
-        if (definitionLevel == 0) {
-          lcv.isNull[index] = true;
-          lcv.noNulls = false;
-        }
-        valueList
-            .add(isCurrentPageDictionaryEncoded ? dictionaryDecodeValue(category, (Integer) lastValue) : lastValue);
-      } while (fetchNextValue(category) && (repetitionLevel != 0));
-
-      lcv.lengths[index] = valueList.size() - lcv.offsets[index];
+      addElement(lcv, valueList, category, index);
       index++;
     }
-    return index;
+
+    // Decode the value if necessary
+    if (isCurrentPageDictionaryEncoded) {
+      valueList = decodeDictionaryIds(category, valueList);
+    }
+    // Convert valueList to array for the ListColumnVector.child
+    convertValueListToListColumnVector(category, lcv, valueList, index);
   }
 
   private int readPageIfNeed() throws IOException {
@@ -148,13 +101,6 @@ public class VectorizedListColumnReader extends BaseVectorizedColumnReader {
     return leftInPage;
   }
 
-  /**
-   * Reads a single value from parquet page, puts it into lastValue.
-   * Returns a boolean indicating if there is more values to read (true).
-   * @param category
-   * @return
-   * @throws IOException
-   */
   private boolean fetchNextValue(PrimitiveObjectInspector.PrimitiveCategory category) throws IOException {
     int left = readPageIfNeed();
     if (left > 0) {
@@ -167,14 +113,36 @@ public class VectorizedListColumnReader extends BaseVectorizedColumnReader {
         } else {
           lastValue = readPrimitiveTypedRow(category);
         }
-      } else {
-        lastValue = null;
       }
       return true;
     } else {
       eof = true;
       return false;
     }
+  }
+
+  /**
+   * The function will set all data from parquet data page for an element in ListColumnVector
+   */
+  private void addElement(ListColumnVector lcv, List<Object> elements, PrimitiveObjectInspector.PrimitiveCategory category, int index) throws IOException {
+    lcv.offsets[index] = elements.size();
+
+    // Return directly if last value is null
+    if (definitionLevel < maxDefLevel) {
+      lcv.isNull[index] = true;
+      lcv.lengths[index] = 0;
+      // fetch the data from parquet data page for next call
+      fetchNextValue(category);
+      return;
+    }
+
+    do {
+      // add all data for an element in ListColumnVector, get out the loop if there is no data or the data is for new element
+      elements.add(lastValue);
+    } while (fetchNextValue(category) && (repetitionLevel != 0));
+
+    lcv.isNull[index] = false;
+    lcv.lengths[index] = elements.size() - lcv.offsets[index];
   }
 
   // Need to be in consistent with that VectorizedPrimitiveColumnReader#readBatchHelper
@@ -211,40 +179,79 @@ public class VectorizedListColumnReader extends BaseVectorizedColumnReader {
     }
   }
 
-  private Object dictionaryDecodeValue(PrimitiveObjectInspector.PrimitiveCategory category, Integer dictionaryValue) {
-    if (dictionaryValue == null) {
-      return null;
-    }
+  private List decodeDictionaryIds(PrimitiveObjectInspector.PrimitiveCategory category, List
+      valueList) {
+    int total = valueList.size();
+    List resultList;
+    List<Integer> intList = (List<Integer>) valueList;
 
     switch (category) {
     case INT:
     case BYTE:
     case SHORT:
-      return dictionary.readInteger(dictionaryValue);
+      resultList = new ArrayList<Integer>(total);
+      for (int i = 0; i < total; ++i) {
+        resultList.add(dictionary.readInteger(intList.get(i)));
+      }
+      break;
     case DATE:
     case INTERVAL_YEAR_MONTH:
     case LONG:
-      return dictionary.readLong(dictionaryValue);
+      resultList = new ArrayList<Long>(total);
+      for (int i = 0; i < total; ++i) {
+        resultList.add(dictionary.readLong(intList.get(i)));
+      }
+      break;
     case BOOLEAN:
-      return dictionary.readBoolean(dictionaryValue) ? 1 : 0;
+      resultList = new ArrayList<Long>(total);
+      for (int i = 0; i < total; ++i) {
+        resultList.add(dictionary.readBoolean(intList.get(i)) ? 1 : 0);
+      }
+      break;
     case DOUBLE:
-      return dictionary.readDouble(dictionaryValue);
+      resultList = new ArrayList<Long>(total);
+      for (int i = 0; i < total; ++i) {
+        resultList.add(dictionary.readDouble(intList.get(i)));
+      }
+      break;
     case BINARY:
-      return dictionary.readBytes(dictionaryValue);
+      resultList = new ArrayList<Long>(total);
+      for (int i = 0; i < total; ++i) {
+        resultList.add(dictionary.readBytes(intList.get(i)));
+      }
+      break;
     case STRING:
     case CHAR:
     case VARCHAR:
-      return dictionary.readString(dictionaryValue);
+      resultList = new ArrayList<Long>(total);
+      for (int i = 0; i < total; ++i) {
+        resultList.add(dictionary.readString(intList.get(i)));
+      }
+      break;
     case FLOAT:
-      return dictionary.readFloat(dictionaryValue);
+      resultList = new ArrayList<Float>(total);
+      for (int i = 0; i < total; ++i) {
+        resultList.add(dictionary.readFloat(intList.get(i)));
+      }
+      break;
     case DECIMAL:
-      return dictionary.readDecimal(dictionaryValue);
+      resultList = new ArrayList<Long>(total);
+      for (int i = 0; i < total; ++i) {
+        resultList.add(dictionary.readDecimal(intList.get(i)));
+      }
+      break;
     case TIMESTAMP:
-      return dictionary.readTimestamp(dictionaryValue);
+      resultList = new ArrayList<Long>(total);
+      for (int i = 0; i < total; ++i) {
+        resultList.add(dictionary.readTimestamp(intList.get(i)));
+      }
+      break;
     case INTERVAL_DAY_TIME:
     default:
       throw new RuntimeException("Unsupported type in the list: " + type);
     }
+
+    return resultList;
   }
 
   /**
@@ -270,11 +277,7 @@ public class VectorizedListColumnReader extends BaseVectorizedColumnReader {
     case BOOLEAN:
       lcv.child = new LongColumnVector(total);
       for (int i = 0; i < valueList.size(); i++) {
-        if (valueList.get(i) == null) {
-          lcv.child.isNull[i] = true;
-        } else {
-          ((LongColumnVector) lcv.child).vector[i] = ((List<Integer>) valueList).get(i);
-        }
+        ((LongColumnVector) lcv.child).vector[i] = ((List<Integer>) valueList).get(i);
       }
       break;
     case INT:
@@ -285,21 +288,13 @@ public class VectorizedListColumnReader extends BaseVectorizedColumnReader {
     case LONG:
       lcv.child = new LongColumnVector(total);
       for (int i = 0; i < valueList.size(); i++) {
-        if (valueList.get(i) == null) {
-          lcv.child.isNull[i] = true;
-        } else {
-          ((LongColumnVector) lcv.child).vector[i] = ((List<Long>) valueList).get(i);
-        }
+        ((LongColumnVector) lcv.child).vector[i] = ((List<Long>) valueList).get(i);
       }
       break;
     case DOUBLE:
       lcv.child = new DoubleColumnVector(total);
       for (int i = 0; i < valueList.size(); i++) {
-        if (valueList.get(i) == null) {
-          lcv.child.isNull[i] = true;
-        } else {
-          ((DoubleColumnVector) lcv.child).vector[i] = ((List<Double>) valueList).get(i);
-        }
+        ((DoubleColumnVector) lcv.child).vector[i] = ((List<Double>) valueList).get(i);
       }
       break;
     case BINARY:
@@ -310,36 +305,22 @@ public class VectorizedListColumnReader extends BaseVectorizedColumnReader {
       lcv.child.init();
       for (int i = 0; i < valueList.size(); i++) {
         byte[] src = ((List<byte[]>) valueList).get(i);
-        if (src == null) {
-          ((BytesColumnVector) lcv.child).setRef(i, src, 0, 0);
-          lcv.child.isNull[i] = true;
-        } else {
-          ((BytesColumnVector) lcv.child).setRef(i, src, 0, src.length);
-        }
+        ((BytesColumnVector) lcv.child).setRef(i, src, 0, src.length);
       }
       break;
     case FLOAT:
       lcv.child = new DoubleColumnVector(total);
       for (int i = 0; i < valueList.size(); i++) {
-        if (valueList.get(i) == null) {
-          lcv.child.isNull[i] = true;
-        } else {
-          ((DoubleColumnVector) lcv.child).vector[i] = ((List<Float>) valueList).get(i);
-        }
+        ((DoubleColumnVector) lcv.child).vector[i] = ((List<Float>) valueList).get(i);
       }
       break;
     case DECIMAL:
       decimalTypeCheck(type);
-      DecimalLogicalTypeAnnotation logicalType = (DecimalLogicalTypeAnnotation) type.getLogicalTypeAnnotation();
-      int precision = logicalType.getPrecision();
-      int scale = logicalType.getScale();
+      int precision = type.asPrimitiveType().getDecimalMetadata().getPrecision();
+      int scale = type.asPrimitiveType().getDecimalMetadata().getScale();
       lcv.child = new DecimalColumnVector(total, precision, scale);
       for (int i = 0; i < valueList.size(); i++) {
-        if (valueList.get(i) == null) {
-          lcv.child.isNull[i] = true;
-        } else {
-          ((DecimalColumnVector) lcv.child).vector[i].set(((List<byte[]>) valueList).get(i), scale);
-        }
+        ((DecimalColumnVector) lcv.child).vector[i].set(((List<byte[]>) valueList).get(i), scale);
       }
       break;
     case INTERVAL_DAY_TIME:
@@ -414,7 +395,6 @@ public class VectorizedListColumnReader extends BaseVectorizedColumnReader {
       System.arraycopy(((DecimalColumnVector) lcv.child).vector, start,
           ((DecimalColumnVector) resultCV).vector, 0, length);
     }
-    System.arraycopy(lcv.child.isNull, start, resultCV.isNull, 0, length);
     return resultCV;
   }
 
@@ -449,10 +429,7 @@ public class VectorizedListColumnReader extends BaseVectorizedColumnReader {
     int length2 = cv2.vector.length;
     if (length1 == length2) {
       for (int i = 0; i < length1; i++) {
-        if (columnVectorsDifferNullForSameIndex(cv1, cv2, i)) {
-          return false;
-        }
-        if (!cv1.isNull[i] && !cv2.isNull[i] && cv1.vector[i] != cv2.vector[i]) {
+        if (cv1.vector[i] != cv2.vector[i]) {
           return false;
         }
       }
@@ -467,10 +444,7 @@ public class VectorizedListColumnReader extends BaseVectorizedColumnReader {
     int length2 = cv2.vector.length;
     if (length1 == length2) {
       for (int i = 0; i < length1; i++) {
-        if (columnVectorsDifferNullForSameIndex(cv1, cv2, i)) {
-          return false;
-        }
-        if (!cv1.isNull[i] && !cv2.isNull[i] && cv1.vector[i] != cv2.vector[i]) {
+        if (cv1.vector[i] != cv2.vector[i]) {
           return false;
         }
       }
@@ -485,10 +459,9 @@ public class VectorizedListColumnReader extends BaseVectorizedColumnReader {
     int length2 = cv2.vector.length;
     if (length1 == length2 && cv1.scale == cv2.scale && cv1.precision == cv2.precision) {
       for (int i = 0; i < length1; i++) {
-        if (columnVectorsDifferNullForSameIndex(cv1, cv2, i)) {
-          return false;
-        }
-        if (!cv1.isNull[i] && !cv2.isNull[i] && !cv1.vector[i].equals(cv2.vector[i])) {
+        if (cv1.vector[i] != null && cv2.vector[i] == null
+            || cv1.vector[i] == null && cv2.vector[i] != null
+            || cv1.vector[i] != null && cv2.vector[i] != null && !cv1.vector[i].equals(cv2.vector[i])) {
           return false;
         }
       }
@@ -501,40 +474,23 @@ public class VectorizedListColumnReader extends BaseVectorizedColumnReader {
   private boolean compareBytesColumnVector(BytesColumnVector cv1, BytesColumnVector cv2) {
     int length1 = cv1.vector.length;
     int length2 = cv2.vector.length;
-    if (length1 != length2) {
-      return false;
-    }
-
-    for (int i = 0; i < length1; i++) {
-      // check for different nulls
-      if (columnVectorsDifferNullForSameIndex(cv1, cv2, i)) {
-        return false;
-      }
-
-      // if they are both null, continue
-      if (cv1.isNull[i] && cv2.isNull[i]) {
-        continue;
-      }
-
-      // check if value lengths are the same
-      int innerLen1 = cv1.vector[i].length;
-      int innerLen2 = cv2.vector[i].length;
-      if (innerLen1 != innerLen2) {
-        return false;
-      }
-
-      // compare value stored
-      for (int j = 0; j < innerLen1; j++) {
-        if (cv1.vector[i][j] != cv2.vector[i][j]) {
+    if (length1 == length2) {
+      for (int i = 0; i < length1; i++) {
+        int innerLen1 = cv1.vector[i].length;
+        int innerLen2 = cv2.vector[i].length;
+        if (innerLen1 == innerLen2) {
+          for (int j = 0; j < innerLen1; j++) {
+            if (cv1.vector[i][j] != cv2.vector[i][j]) {
+              return false;
+            }
+          }
+        } else {
           return false;
         }
       }
+    } else {
+      return false;
     }
     return true;
-  }
-
-
-  private boolean columnVectorsDifferNullForSameIndex(ColumnVector cv1, ColumnVector cv2, int index) {
-    return (cv1.isNull[index] && !cv2.isNull[index]) || (!cv1.isNull[index] && cv2.isNull[index]);
   }
 }

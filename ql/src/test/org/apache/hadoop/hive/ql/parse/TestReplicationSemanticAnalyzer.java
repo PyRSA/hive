@@ -17,29 +17,18 @@
  */
 package org.apache.hadoop.hive.ql.parse;
 
-import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.ql.session.SessionState;
 import org.junit.Test;
 import org.junit.experimental.runners.Enclosed;
 import org.junit.runner.RunWith;
 
-import static org.apache.hadoop.hive.conf.HiveConf.ConfVars.HIVE_QUOTEDID_SUPPORT;
 import static org.junit.Assert.assertEquals;
 
 @RunWith(Enclosed.class)
 public class TestReplicationSemanticAnalyzer {
   private static ParseDriver driver = new ParseDriver();
-  private static HiveConf hiveConf = buildHiveConf();
 
-  public static HiveConf buildHiveConf() {
-    HiveConf conf = new HiveConf();
-    conf.setVar(HIVE_QUOTEDID_SUPPORT, Quotation.NONE.stringValue());
-    return conf;
-  }
-
-  private static ASTNode parse(String command) throws Exception {
-    SessionState.start(hiveConf);
-    return (ASTNode) driver.parse(command, hiveConf).getTree().getChild(0);
+  private static ASTNode parse(String command) throws ParseException {
+    return (ASTNode) driver.parse(command).getChild(0);
   }
 
   private static void assertWithClause(ASTNode root, int replConfigIndex) {
@@ -86,9 +75,9 @@ public class TestReplicationSemanticAnalyzer {
 
   private static void assertTableName(ASTNode root) {
     ASTNode child = (ASTNode) root.getChild(1);
-    assertEquals("TOK_REPL_TABLES", child.getText());
+    assertEquals("TOK_TABNAME", child.getText());
     assertEquals(1, child.getChildCount());
-    assertEquals("'test_table'", child.getChild(0).getText());
+    assertEquals("test_table", child.getChild(0).getText());
   }
 
   private static void assertDatabase(final int expectedNumberOfChildren, ASTNode root) {
@@ -102,7 +91,7 @@ public class TestReplicationSemanticAnalyzer {
   public static class ReplDump {
 
     @Test
-    public void parseDbPattern() throws Exception {
+    public void parseDbPattern() throws ParseException {
       ASTNode root = parse("repl dump `*`");
       assertEquals("TOK_REPL_DUMP", root.getText());
       assertEquals(1, root.getChildCount());
@@ -112,56 +101,130 @@ public class TestReplicationSemanticAnalyzer {
     }
 
     @Test
-    public void parseDb() throws Exception {
+    public void parseDb() throws ParseException {
       ASTNode root = parse("repl dump testDb");
       assertDatabase(1, root);
     }
 
     @Test
-    public void parseTableName() throws Exception {
-      ASTNode root = parse("repl dump testDb.'test_table'");
+    public void parseTableName() throws ParseException {
+      ASTNode root = parse("repl dump testDb.test_table");
       assertDatabase(2, root);
       assertTableName(root);
+    }
+
+    @Test
+    public void parseFromEventId() throws ParseException {
+      ASTNode root = parse("repl dump testDb.test_table from 100");
+      assertDatabase(3, root);
+      assertTableName(root);
+      assertFromEvent(1, root);
+    }
+
+    @Test
+    public void parseToEventId() throws ParseException {
+      ASTNode root = parse("repl dump testDb.test_table from 100 to 200");
+      assertDatabase(3, root);
+      assertTableName(root);
+      ASTNode fromClauseRootNode = assertFromEvent(3, root);
+      assertToEventId(fromClauseRootNode);
+    }
+
+    @Test
+    public void parseLimit() throws ParseException {
+      ASTNode root = parse("repl dump testDb.test_table from 100 to 200 limit 10");
+      assertDatabase(3, root);
+      assertTableName(root);
+      ASTNode fromClauseRootNode = assertFromEvent(5, root);
+      assertToEventId(fromClauseRootNode);
+
+      ASTNode child = (ASTNode) fromClauseRootNode.getChild(3);
+      assertEquals("TOK_LIMIT", child.getText());
+      assertEquals(0, child.getChildCount());
+
+      child = (ASTNode) fromClauseRootNode.getChild(4);
+      assertEquals("10", child.getText());
+      assertEquals(0, child.getChildCount());
     }
   }
 
   public static class ReplDumpWithClause {
 
     @Test
-    public void parseDb() throws Exception {
+    public void parseDb() throws ParseException {
       ASTNode root = parse("repl dump testDb with ('key.1'='value.1','key.2'='value.2')");
       assertDatabase(2, root);
       assertWithClause(root, 1);
     }
 
     @Test
-    public void parseTableName() throws Exception {
+    public void parseTableName() throws ParseException {
       ASTNode root =
-          parse("repl dump testDb.'test_table' with ('key.1'='value.1','key.2'='value.2')");
+          parse("repl dump testDb.test_table with ('key.1'='value.1','key.2'='value.2')");
       assertDatabase(3, root);
       assertTableName(root);
       assertWithClause(root, 2);
+    }
+
+    @Test
+    public void parseFromEventId() throws ParseException {
+      ASTNode root = parse("repl dump testDb.test_table from 100 "
+          + "with ('key.1'='value.1','key.2'='value.2')");
+      assertDatabase(4, root);
+      assertTableName(root);
+      assertFromEvent(1, root);
+      assertWithClause(root, 3);
+    }
+
+    @Test
+    public void parseToEventId() throws ParseException {
+      ASTNode root = parse("repl dump testDb.test_table from 100 to 200 "
+          + "with ('key.1'='value.1','key.2'='value.2')");
+      assertDatabase(4, root);
+      assertTableName(root);
+      ASTNode fromClauseRootNode = assertFromEvent(3, root);
+      assertToEventId(fromClauseRootNode);
+      assertWithClause(root, 3);
+    }
+
+    @Test
+    public void parseLimit() throws ParseException {
+      ASTNode root = parse("repl dump testDb.test_table from 100 to 200 limit 10 "
+          + "with ('key.1'='value.1','key.2'='value.2')");
+      assertDatabase(4, root);
+      assertTableName(root);
+      ASTNode fromClauseRootNode = assertFromEvent(5, root);
+      assertToEventId(fromClauseRootNode);
+      assertWithClause(root, 3);
+
+      ASTNode child = (ASTNode) fromClauseRootNode.getChild(3);
+      assertEquals("TOK_LIMIT", child.getText());
+      assertEquals(0, child.getChildCount());
+
+      child = (ASTNode) fromClauseRootNode.getChild(4);
+      assertEquals("10", child.getText());
+      assertEquals(0, child.getChildCount());
     }
   }
 
   public static class ReplLoad {
 
     @Test
-    public void parseFromLocation() throws Exception {
-      ASTNode root = parse("repl load testDbName");
+    public void parseFromLocation() throws ParseException {
+      ASTNode root = parse("repl load  from '/some/location/in/hdfs/'");
       assertFromLocation(1, root);
     }
 
     @Test
-    public void parseTargetDbName() throws Exception {
-      ASTNode root = parse("repl load testDbName into targetTestDbName");
+    public void parseTargetDbName() throws ParseException {
+      ASTNode root = parse("repl load targetTestDbName from '/some/location/in/hdfs/'");
       assertFromLocation(2, root);
       assertTargetDatabaseName(root);
     }
 
     @Test
-    public void parseWithClause() throws Exception {
-      ASTNode root = parse("repl load testDbName into targetTestDbName"
+    public void parseWithClause() throws ParseException {
+      ASTNode root = parse("repl load targetTestDbName from '/some/location/in/hdfs/'"
           + " with ('mapred.job.queue.name'='repl','hive.repl.approx.max.load.tasks'='100')");
       assertFromLocation(3, root);
       assertTargetDatabaseName(root);
@@ -188,7 +251,7 @@ public class TestReplicationSemanticAnalyzer {
       assertEquals("TOK_REPL_LOAD", root.getText());
       assertEquals(expectedNumberOfChildren, root.getChildCount());
       ASTNode child = (ASTNode) root.getChild(0);
-      assertEquals("testDbName", child.getText());
+      assertEquals("'/some/location/in/hdfs/'", child.getText());
       assertEquals(0, child.getChildCount());
     }
 
@@ -205,13 +268,13 @@ public class TestReplicationSemanticAnalyzer {
   public static class ReplStatus {
 
     @Test
-    public void parseTargetDbName() throws Exception {
+    public void parseTargetDbName() throws ParseException {
       ASTNode root = parse("repl status targetTestDbName");
       assertTargetDatabaseName(root);
     }
 
     @Test
-    public void parseWithClause() throws Exception {
+    public void parseWithClause() throws ParseException {
       ASTNode root = parse("repl status targetTestDbName with"
           + "('hive.metastore.uris'='thrift://localhost:12341')");
       assertTargetDatabaseName(root);

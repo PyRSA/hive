@@ -35,7 +35,7 @@ import org.apache.hadoop.hive.ql.exec.OperatorFactory;
 import org.apache.hadoop.hive.ql.exec.ReduceSinkOperator;
 import org.apache.hadoop.hive.ql.exec.RowSchema;
 import org.apache.hadoop.hive.ql.lib.Node;
-import org.apache.hadoop.hive.ql.lib.SemanticNodeProcessor;
+import org.apache.hadoop.hive.ql.lib.NodeProcessor;
 import org.apache.hadoop.hive.ql.lib.NodeProcessorCtx;
 import org.apache.hadoop.hive.ql.optimizer.GenMapRedUtils;
 import org.apache.hadoop.hive.ql.optimizer.ReduceSinkMapJoinProc;
@@ -58,7 +58,7 @@ import org.slf4j.LoggerFactory;
  * a new execution unit.) and break the operators into work
  * and tasks along the way.
  */
-public class GenTezWork implements SemanticNodeProcessor {
+public class GenTezWork implements NodeProcessor {
 
   private static final Logger LOG = LoggerFactory.getLogger(GenTezWork.class.getName());
 
@@ -70,7 +70,7 @@ public class GenTezWork implements SemanticNodeProcessor {
 
   @Override
   public Object process(Node nd, Stack<Node> stack,
-                        NodeProcessorCtx procContext, Object... nodeOutputs)
+      NodeProcessorCtx procContext, Object... nodeOutputs)
       throws SemanticException {
 
     GenTezProcContext context = (GenTezProcContext) procContext;
@@ -319,7 +319,9 @@ public class GenTezWork implements SemanticNodeProcessor {
     // This is where we cut the tree as described above. We also remember that
     // we might have to connect parent work with this work later.
     for (Operator<?> parent : new ArrayList<Operator<?>>(root.getParentOperators())) {
-      LOG.debug("Removing {} as parent from {}", parent, root);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Removing " + parent + " as parent from " + root);
+      }
       context.leafOperatorToFollowingWork.remove(parent);
       context.leafOperatorToFollowingWork.put(parent, work);
       root.removeParent(parent);

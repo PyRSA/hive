@@ -18,11 +18,8 @@
 package org.apache.hadoop.hive.ql.exec;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.util.HashMap;
-import java.util.Map;
 
-import org.apache.commons.lang3.exception.ExceptionUtils;
+import org.apache.commons.lang.exception.ExceptionUtils;
 import org.apache.hadoop.hive.ql.CompilationOpContext;
 import org.apache.hadoop.hive.ql.io.orc.Writer;
 import org.apache.orc.TypeDescription;
@@ -31,7 +28,6 @@ import org.slf4j.LoggerFactory;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.Path;
 import org.apache.orc.CompressionKind;
-import org.apache.hadoop.hive.ql.io.AcidUtils;
 import org.apache.hadoop.hive.ql.io.orc.OrcFile;
 import org.apache.hadoop.hive.ql.io.orc.OrcFileKeyWrapper;
 import org.apache.hadoop.hive.ql.io.orc.OrcFileValueWrapper;
@@ -58,7 +54,7 @@ public class OrcFileMergeOperator extends
   private TypeDescription fileSchema;
   private int rowIndexStride = 0;
 
-  private Map<Integer, Writer> outWriters = new HashMap<>();
+  private Writer outWriter;
   private Path prevPath;
   private Reader reader;
   private FSDataInputStream fdis;
@@ -110,16 +106,14 @@ public class OrcFileMergeOperator extends
       if (prevPath == null) {
         prevPath = k.getInputPath();
         reader = OrcFile.createReader(fs, k.getInputPath());
-        LOG.info("ORC merge file input path: " + k.getInputPath());
+        if (LOG.isInfoEnabled()) {
+          LOG.info("ORC merge file input path: " + k.getInputPath());
+        }
       }
 
       // store the orc configuration from the first file. All other files should
       // match this configuration before merging else will not be merged
-      int bucketId = 0;
-      if (conf.getIsCompactionTable()) {
-        bucketId = AcidUtils.parseBucketId(new Path(filePath));
-      }
-      if (outWriters.get(bucketId) == null) {
+      if (outWriter == null) {
         compression = k.getCompression();
         compressBuffSize = k.getCompressBufferSize();
         fileVersion = k.getFileVersion();
@@ -140,11 +134,10 @@ public class OrcFileMergeOperator extends
         }
 
         Path outPath = getOutPath();
-        if (conf.getIsCompactionTable()) {
-          outPath = getOutPath(bucketId);
+        outWriter = OrcFile.createWriter(outPath, options);
+        if (LOG.isDebugEnabled()) {
+          LOG.info("ORC merge file output path: " + outPath);
         }
-        outWriters.put(bucketId, OrcFile.createWriter(outPath, options));
-        LOG.info("ORC merge file output path: {}", outPath);
       }
 
       if (!checkCompatibility(k)) {
@@ -154,9 +147,6 @@ public class OrcFileMergeOperator extends
 
       // next file in the path
       if (!k.getInputPath().equals(prevPath)) {
-        if (reader != null) {
-          reader.close();
-        }
         reader = OrcFile.createReader(fs, k.getInputPath());
       }
 
@@ -167,7 +157,7 @@ public class OrcFileMergeOperator extends
           (int) v.getStripeInformation().getLength());
 
       // append the stripe buffer to the new ORC file
-      outWriters.get(bucketId).appendStripe(buffer, 0, buffer.length, v.getStripeInformation(),
+      outWriter.appendStripe(buffer, 0, buffer.length, v.getStripeInformation(),
           v.getStripeStatistics());
 
       if (LOG.isInfoEnabled()) {
@@ -179,9 +169,7 @@ public class OrcFileMergeOperator extends
 
       // add user metadata to footer in case of any
       if (v.isLastStripeInFile()) {
-        for (Map.Entry<String, ByteBuffer> entry: v.getUserMetadata().entrySet()) {
-          outWriters.get(bucketId).addUserMetadata(entry.getKey(), entry.getValue());
-        }
+        outWriter.appendUserMetadata(v.getUserMetadata());
       }
     } catch (Throwable e) {
       exception = true;
@@ -190,15 +178,6 @@ public class OrcFileMergeOperator extends
     } finally {
       if (exception) {
         closeOp(true);
-      }
-      if (reader != null) {
-        try {
-          reader.close();
-        } catch (IOException e) {
-          throw new HiveException(String.format("Unable to close reader for %s", filePath), e);
-        } finally {
-          reader = null;
-        }
       }
       if (fdis != null) {
         try {
@@ -273,12 +252,9 @@ public class OrcFileMergeOperator extends
         fdis = null;
       }
 
-      if (outWriters != null) {
-        for (Map.Entry<Integer, Writer> outWriterEntry : outWriters.entrySet()) {
-          Writer outWriter = outWriterEntry.getValue();
-          outWriter.close();
-        }
-        outWriters.clear();
+      if (outWriter != null) {
+        outWriter.close();
+        outWriter = null;
       }
     } catch (Exception e) {
       throw new HiveException("Unable to close OrcFileMergeOperator", e);

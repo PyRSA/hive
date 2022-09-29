@@ -28,8 +28,10 @@ import org.apache.hadoop.hive.ql.exec.TableScanOperator;
 import org.apache.hadoop.hive.ql.exec.Task;
 import org.apache.hadoop.hive.ql.exec.TaskFactory;
 import org.apache.hadoop.hive.ql.exec.mr.MapRedTask;
+import org.apache.hadoop.hive.ql.io.orc.OrcInputFormat;
+import org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat;
 import org.apache.hadoop.hive.ql.lib.Node;
-import org.apache.hadoop.hive.ql.lib.SemanticNodeProcessor;
+import org.apache.hadoop.hive.ql.lib.NodeProcessor;
 import org.apache.hadoop.hive.ql.lib.NodeProcessorCtx;
 import org.apache.hadoop.hive.ql.metadata.Partition;
 import org.apache.hadoop.hive.ql.metadata.Table;
@@ -41,13 +43,12 @@ import org.apache.hadoop.hive.ql.plan.StatsWork;
 import org.apache.hadoop.hive.ql.plan.BasicStatsWork;
 import org.apache.hadoop.hive.ql.plan.MapredWork;
 import org.apache.hadoop.hive.ql.plan.OperatorDesc;
-import org.apache.hadoop.hive.ql.stats.BasicStatsNoJobTask;
 import org.apache.hadoop.mapred.InputFormat;
 
 /**
  * Processor for the rule - table scan.
  */
-public class GenMRTableScan1 implements SemanticNodeProcessor {
+public class GenMRTableScan1 implements NodeProcessor {
   public GenMRTableScan1() {
   }
 
@@ -63,8 +64,6 @@ public class GenMRTableScan1 implements SemanticNodeProcessor {
       Object... nodeOutputs) throws SemanticException {
     TableScanOperator op = (TableScanOperator) nd;
     GenMRProcContext ctx = (GenMRProcContext) opProcCtx;
-    ctx.reset();
-
     ParseContext parseCtx = ctx.getParseCtx();
     Table table = op.getConf().getTableMetadata();
     Class<? extends InputFormat> inputFormat = table.getInputFormatClass();
@@ -85,7 +84,8 @@ public class GenMRTableScan1 implements SemanticNodeProcessor {
 
         if (parseCtx.getQueryProperties().isAnalyzeCommand()) {
           boolean noScan = parseCtx.getQueryProperties().isNoScanAnalyzeCommand();
-          if (BasicStatsNoJobTask.canUseBasicStats(table, inputFormat)) {
+          if (OrcInputFormat.class.isAssignableFrom(inputFormat) ||
+                  MapredParquetInputFormat.class.isAssignableFrom(inputFormat)) {
             // For ORC and Parquet, all the following statements are the same
             // ANALYZE TABLE T [PARTITION (...)] COMPUTE STATISTICS
             // ANALYZE TABLE T [PARTITION (...)] COMPUTE STATISTICS noscan;

@@ -18,10 +18,14 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.ptf;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.hive.common.type.FastHiveDecimal;
 import org.apache.hadoop.hive.common.type.HiveDecimal;
-import org.apache.hadoop.hive.ql.exec.vector.ColumnVector.Type;
 import org.apache.hadoop.hive.ql.exec.vector.DecimalColumnVector;
+import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
+import org.apache.hadoop.hive.ql.exec.vector.ColumnVector.Type;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorExpression;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.plan.ptf.WindowFrameDef;
@@ -37,6 +41,10 @@ import com.google.common.base.Preconditions;
  */
 public class VectorPTFEvaluatorDecimalFirstValue extends VectorPTFEvaluatorBase {
 
+  private static final long serialVersionUID = 1L;
+  private static final String CLASS_NAME = VectorPTFEvaluatorDecimalFirstValue.class.getName();
+  private static final Log LOG = LogFactory.getLog(CLASS_NAME);
+
   protected boolean haveFirstValue;
   protected boolean isGroupResultNull;
   protected HiveDecimalWritable firstValue;
@@ -48,8 +56,7 @@ public class VectorPTFEvaluatorDecimalFirstValue extends VectorPTFEvaluatorBase 
     resetEvaluator();
   }
 
-  @Override
-  public void evaluateGroupBatch(VectorizedRowBatch batch)
+  public void evaluateGroupBatch(VectorizedRowBatch batch, boolean isLastGroupBatch)
       throws HiveException {
 
     evaluateInputExpr(batch);
@@ -99,13 +106,8 @@ public class VectorPTFEvaluatorDecimalFirstValue extends VectorPTFEvaluatorBase 
     }
   }
 
-  @Override
   public boolean streamsResult() {
     return true;
-  }
-
-  public boolean isGroupResultNull() {
-    return isGroupResultNull;
   }
 
   @Override
@@ -114,21 +116,9 @@ public class VectorPTFEvaluatorDecimalFirstValue extends VectorPTFEvaluatorBase 
   }
 
   @Override
-  public Object getGroupResult() {
-    return firstValue;
-  }
-
-  @Override
   public void resetEvaluator() {
     haveFirstValue = false;
     isGroupResultNull = true;
     firstValue.set(HiveDecimal.ZERO);
-  }
-
-  // this is not necessarily needed, because first_value is evaluated in a streaming way, therefore
-  // VectorPTFGroupBatches won't hit this codepath, so this is just for clarity's sake (behavior is
-  // other than default VectorPTFEvaluatorBase)
-  public boolean isCacheableForRange() {
-    throw new RuntimeException("isCacheableForRange check is not expected for first_value");
   }
 }

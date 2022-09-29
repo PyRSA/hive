@@ -21,12 +21,9 @@ package org.apache.hadoop.hive.ql.exec.tez;
 import org.apache.hadoop.hive.ql.exec.tez.TezSessionState.HiveResources;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
@@ -116,9 +113,9 @@ public class TezSessionPoolManager extends TezSessionPoolSession.AbstractTrigger
     }
     initTriggers(conf);
     if (resourcePlan != null) {
-      Collection<String> appliedTriggers = updateTriggers(resourcePlan);
-      LOG.info("Updated tez session pool manager with triggers {} from active resource plan: {}",
-          appliedTriggers, resourcePlan.getPlan().getName());
+      updateTriggers(resourcePlan);
+      LOG.info("Updated tez session pool manager with active resource plan: {}",
+          resourcePlan.getPlan().getName());
     }
   }
 
@@ -278,18 +275,15 @@ public class TezSessionPoolManager extends TezSessionPoolSession.AbstractTrigger
     // TODO Session re-use completely disabled for doAs=true. Always launches a new session.
     boolean nonDefaultUser = conf.getBoolVar(HiveConf.ConfVars.HIVE_SERVER2_ENABLE_DOAS);
 
-    boolean jobNameSet = !HiveConf.getVar(conf, ConfVars.HIVETEZJOBNAME).equals("HIVE-%s");
-
     /*
-     * if the user has specified a queue name themselves or job name is set, we create a new
-     * session. also a new session is created if the user tries to submit to a queue using
+     * if the user has specified a queue name themselves, we create a new session.
+     * also a new session is created if the user tries to submit to a queue using
      * their own credentials. We expect that with the new security model, things will
      * run as user hive in most cases.
      */
-    if (nonDefaultUser || !hasInitialSessions || hasQueue || jobNameSet) {
-      LOG.info("QueueName: {} nonDefaultUser: {} defaultQueuePool: {} hasInitialSessions: {}" +
-                      " jobNameSet: ", queueName, nonDefaultUser, defaultSessionPool,
-              hasInitialSessions, jobNameSet);
+    if (nonDefaultUser || !hasInitialSessions || hasQueue) {
+      LOG.info("QueueName: {} nonDefaultUser: {} defaultQueuePool: {} hasInitialSessions: {}",
+              queueName, nonDefaultUser, defaultSessionPool, hasInitialSessions);
       return getNewSessionState(conf, queueName, doOpen);
     }
 
@@ -451,12 +445,6 @@ public class TezSessionPoolManager extends TezSessionPoolSession.AbstractTrigger
       String queueName = session.getQueueName();
       String confQueueName = conf.get(TezConfiguration.TEZ_QUEUE_NAME);
       LOG.info("Current queue name is " + queueName + " incoming queue name is " + confQueueName);
-
-      if (queueName != null && confQueueName == null) {
-        LOG.info("Incoming queue null is reset to current queue " + queueName);
-        confQueueName = queueName;
-      }
-
       return (queueName == null) ? confQueueName == null : queueName.equals(confQueueName);
     } else {
       // this session should never be a default session unless something has messed up.
@@ -498,11 +486,12 @@ public class TezSessionPoolManager extends TezSessionPoolSession.AbstractTrigger
 
   static void reopenInternal(
       TezSessionState sessionState) throws Exception {
+    HiveResources resources = sessionState.extractHiveResources();
     // TODO: close basically resets the object to a bunch of nulls.
     //       We should ideally not reuse the object because it's pointless and error-prone.
-    sessionState.close(true);
+    sessionState.close(false);
     // Note: scratchdir is reused implicitly because the sessionId is the same.
-    sessionState.open(sessionState.extractHiveResources());
+    sessionState.open(resources);
   }
 
 
@@ -538,12 +527,11 @@ public class TezSessionPoolManager extends TezSessionPoolSession.AbstractTrigger
 
   private void updateSessions() {
     if (sessionTriggerProvider != null) {
-      sessionTriggerProvider.setSessions(new LinkedList<>(openSessions));
+      sessionTriggerProvider.setSessions(Collections.unmodifiableList(openSessions));
     }
   }
 
-  public Collection<String> updateTriggers(final WMFullResourcePlan appliedRp) {
-    Set<String> triggerNames = new HashSet<>();
+  public void updateTriggers(final WMFullResourcePlan appliedRp) {
     if (sessionTriggerProvider != null) {
       List<WMTrigger> wmTriggers = appliedRp != null ? appliedRp.getTriggers() : null;
       List<Trigger> triggers = new ArrayList<>();
@@ -551,20 +539,19 @@ public class TezSessionPoolManager extends TezSessionPoolSession.AbstractTrigger
         for (WMTrigger wmTrigger : wmTriggers) {
           if (wmTrigger.isSetIsInUnmanaged() && wmTrigger.isIsInUnmanaged()) {
             triggers.add(ExecutionTrigger.fromWMTrigger(wmTrigger));
-            triggerNames.add(wmTrigger.getTriggerName());
           }
         }
       }
       sessionTriggerProvider.setTriggers(Collections.unmodifiableList(triggers));
     }
-
-    return triggerNames;
   }
 
   /** Called by TezSessionPoolSession when closed. */
   @Override
   public void unregisterOpenSession(TezSessionPoolSession session) {
-    LOG.debug("Closed a pool session [{}]", this);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Closed a pool session [" + this + "]");
+    }
     synchronized (openSessions) {
       openSessions.remove(session);
       updateSessions();

@@ -18,21 +18,13 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.expressions;
 
-import java.time.ZoneId;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hive.common.type.Timestamp;
-import org.apache.hadoop.hive.common.type.TimestampTZ;
-import org.apache.hadoop.hive.common.type.TimestampTZUtil;
-import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.io.Text;
 
 import java.nio.charset.CharacterCodingException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.time.format.DateTimeFormatterBuilder;
+import java.util.Calendar;
 import java.util.Date;
-import java.util.Locale;
 import java.util.TimeZone;
 
 /**
@@ -43,7 +35,9 @@ public final class VectorUDFUnixTimeStampString extends VectorUDFTimestampFieldS
 
   private static final long serialVersionUID = 1L;
 
-  private transient ZoneId timeZone;
+  private transient final SimpleDateFormat format = getFormatter();
+  private transient final Calendar calendar = Calendar.getInstance(
+      TimeZone.getTimeZone("UTC"));
 
   public VectorUDFUnixTimeStampString(int colNum, int outputColumnNum) {
     super(colNum, outputColumnNum, -1, -1);
@@ -54,25 +48,20 @@ public final class VectorUDFUnixTimeStampString extends VectorUDFTimestampFieldS
   }
 
   @Override
-  public void transientInit(Configuration conf) throws HiveException {
-    super.transientInit(conf);
-    if (timeZone == null) {
-      String timeZoneStr = HiveConf.getVar(conf, HiveConf.ConfVars.HIVE_LOCAL_TIME_ZONE);
-      timeZone = TimestampTZUtil.parseTimeZone(timeZoneStr);
-    }
-  }
-
-  @Override
-  protected long getField(byte[] bytes, int start, int length) throws ParseException {
-
+  protected long doGetField(byte[] bytes, int start, int length) throws ParseException {
+    Date date = null;
     try {
-      Timestamp timestamp = Timestamp.valueOf(Text.decode(bytes, start, length));
-      TimestampTZ timestampTZ = TimestampTZUtil.convert(timestamp,timeZone);
-      return timestampTZ.getEpochSecond();
+      date = format.parse(Text.decode(bytes, start, length));
     } catch (CharacterCodingException e) {
       throw new ParseException(e.getMessage(), 0);
-    } catch (IllegalArgumentException e){
-      throw new ParseException(e.getMessage(), 0);
     }
+    calendar.setTime(date);
+    return calendar.getTimeInMillis() / 1000;
+  }
+
+  private static SimpleDateFormat getFormatter() {
+    SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+    format.setTimeZone(TimeZone.getTimeZone("UTC"));
+    return format;
   }
 }

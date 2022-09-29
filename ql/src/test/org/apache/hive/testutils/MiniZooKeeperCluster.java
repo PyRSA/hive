@@ -20,9 +20,9 @@ package org.apache.hive.testutils;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.InterruptedIOException;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.io.Reader;
 import java.net.BindException;
@@ -32,15 +32,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HConstants;
-import org.apache.zookeeper.common.ClientX509Util;
-import org.apache.zookeeper.common.X509Util;
-import org.apache.zookeeper.server.ServerCnxnFactory;
+import org.apache.zookeeper.server.NIOServerCnxnFactory;
 import org.apache.zookeeper.server.ZooKeeperServer;
 import org.apache.zookeeper.server.persistence.FileTxnLog;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.google.common.annotations.VisibleForTesting;
 
@@ -51,14 +49,11 @@ import com.google.common.annotations.VisibleForTesting;
  *
  *XXX: copied from the only used class by qtestutil from hbase-tests
  */
-public class MiniZooKeeperCluster {
-  private static final Logger LOG = LoggerFactory.getLogger(MiniZooKeeperCluster.class);
+class MiniZooKeeperCluster {
+  private static final Log LOG = LogFactory.getLog(MiniZooKeeperCluster.class);
 
   private static final int TICK_TIME = 2000;
   private static final int DEFAULT_CONNECTION_TIMEOUT = 30000;
-  private static final String LOCALHOST_KEY_STORE_NAME = "keystore.jks";
-  private static final String TRUST_STORE_NAME = "truststore.jks";
-  private static final String KEY_STORE_TRUST_STORE_PASSWORD = "HiveJdbc";
   private int connectionTimeout;
 
   private boolean started;
@@ -66,7 +61,7 @@ public class MiniZooKeeperCluster {
   /** The default port. If zero, we use a random port. */
   private int defaultClientPort = 0;
 
-  private List<ServerCnxnFactory> standaloneServerFactoryList;
+  private List<NIOServerCnxnFactory> standaloneServerFactoryList;
   private List<ZooKeeperServer> zooKeeperServers;
   private List<Integer> clientPortList;
 
@@ -75,20 +70,11 @@ public class MiniZooKeeperCluster {
 
   private Configuration configuration;
 
-  private boolean sslEnabled = false;
-
   public MiniZooKeeperCluster() {
     this(new Configuration());
   }
-  public MiniZooKeeperCluster(boolean sslEnabled) {
-    this(new Configuration(), sslEnabled);
-  }
-  public MiniZooKeeperCluster(Configuration configuration) {
-    this(configuration, false);
-  }
 
-  public MiniZooKeeperCluster(Configuration configuration, boolean sslEnabled) {
-    this.sslEnabled = sslEnabled;
+  public MiniZooKeeperCluster(Configuration configuration) {
     this.started = false;
     this.configuration = configuration;
     activeZKServerIndex = -1;
@@ -181,18 +167,12 @@ public class MiniZooKeeperCluster {
   }
 
   // / XXX: From o.a.zk.t.ClientBase
-  private static void setupTestEnv(boolean sslEnabled) {
-    // With ZooKeeper 3.5 we need to whitelist the 4 letter commands we use
-    System.setProperty("zookeeper.4lw.commands.whitelist", "*");
-
+  private static void setupTestEnv() {
     // during the tests we run with 100K prealloc in the logs.
     // on windows systems prealloc of 64M was seen to take ~15seconds
     // resulting in test failure (client timeout on first session).
     // set env and directly in order to handle static init/gc issues
     System.setProperty("zookeeper.preAllocSize", "100");
-    if (sslEnabled) {
-      System.setProperty("zookeeper.authProvider.x509", "org.apache.zookeeper.server.auth.X509AuthenticationProvider");
-    }
     FileTxnLog.setPreallocSize(100 * 1024);
   }
 
@@ -217,7 +197,7 @@ public class MiniZooKeeperCluster {
       return -1;
     }
 
-    setupTestEnv(sslEnabled);
+    setupTestEnv();
     shutdown();
 
     int tentativePort = -1; // the seed port
@@ -246,10 +226,12 @@ public class MiniZooKeeperCluster {
       // Setting {min,max}SessionTimeout defaults to be the same as in Zookeeper
       server.setMinSessionTimeout(configuration.getInt("hbase.zookeeper.property.minSessionTimeout", -1));
       server.setMaxSessionTimeout(configuration.getInt("hbase.zookeeper.property.maxSessionTimeout", -1));
-      ServerCnxnFactory standaloneServerFactory;
+      NIOServerCnxnFactory standaloneServerFactory;
       while (true) {
         try {
-          standaloneServerFactory = createServerCnxnFactory(currentClientPort);
+          standaloneServerFactory = new NIOServerCnxnFactory();
+          standaloneServerFactory.configure(new InetSocketAddress(currentClientPort),
+              configuration.getInt(HConstants.ZOOKEEPER_MAX_CLIENT_CNXNS, HConstants.DEFAULT_ZOOKEPER_MAX_CLIENT_CNXNS));
         } catch (BindException e) {
           LOG.debug("Failed binding ZK Server to client port: " + currentClientPort, e);
           // We're told to use some port but it's occupied, fail
@@ -267,7 +249,7 @@ public class MiniZooKeeperCluster {
       // Start up this ZK server
       standaloneServerFactory.startup(server);
       // Runs a 'stat' against the servers.
-      if (!sslEnabled && !waitForServerUp(currentClientPort, connectionTimeout)) {
+      if (!waitForServerUp(currentClientPort, connectionTimeout)) {
         throw new IOException("Waiting for startup of standalone server");
       }
 
@@ -291,36 +273,6 @@ public class MiniZooKeeperCluster {
     return clientPort;
   }
 
-  private ServerCnxnFactory createServerCnxnFactory(int currentClientPort) throws IOException {
-    ServerCnxnFactory serverCnxnFactory = null;
-    if (sslEnabled) {
-      System.setProperty(ServerCnxnFactory.ZOOKEEPER_SERVER_CNXN_FACTORY,
-          "org.apache.zookeeper.server.NettyServerCnxnFactory");
-      String dataFileDir = !System.getProperty("test.data.files", "").isEmpty() ?
-              System.getProperty("test.data.files") :
-              configuration.get("test.data.files").replace('\\', '/').replace("c:", "");
-      X509Util x509Util = new ClientX509Util();
-      System.setProperty(x509Util.getSslKeystoreLocationProperty(),
-          dataFileDir + File.separator + LOCALHOST_KEY_STORE_NAME);
-      System.setProperty(x509Util.getSslKeystorePasswdProperty(),
-          KEY_STORE_TRUST_STORE_PASSWORD);
-      System.setProperty(x509Util.getSslTruststoreLocationProperty(),
-          dataFileDir + File.separator + TRUST_STORE_NAME);
-      System.setProperty(x509Util.getSslTruststorePasswdProperty(),
-          KEY_STORE_TRUST_STORE_PASSWORD);
-      serverCnxnFactory = ServerCnxnFactory.createFactory();
-      serverCnxnFactory.configure(new InetSocketAddress(currentClientPort),
-          configuration.getInt(HConstants.ZOOKEEPER_MAX_CLIENT_CNXNS, HConstants.DEFAULT_ZOOKEPER_MAX_CLIENT_CNXNS),
-          true);
-    } else {
-      serverCnxnFactory = ServerCnxnFactory.createFactory();
-      serverCnxnFactory.configure(new InetSocketAddress(currentClientPort),
-          configuration.getInt(HConstants.ZOOKEEPER_MAX_CLIENT_CNXNS, HConstants.DEFAULT_ZOOKEPER_MAX_CLIENT_CNXNS));
-    }
-    return serverCnxnFactory;
-  }
-
-
   private void createDir(File dir) throws IOException {
     try {
       if (!dir.exists()) {
@@ -337,7 +289,7 @@ public class MiniZooKeeperCluster {
   public void shutdown() throws IOException {
     // shut down all the zk servers
     for (int i = 0; i < standaloneServerFactoryList.size(); i++) {
-      ServerCnxnFactory standaloneServerFactory = standaloneServerFactoryList.get(i);
+      NIOServerCnxnFactory standaloneServerFactory = standaloneServerFactoryList.get(i);
       int clientPort = clientPortList.get(i);
 
       standaloneServerFactory.shutdown();
@@ -350,7 +302,6 @@ public class MiniZooKeeperCluster {
     for (ZooKeeperServer zkServer : zooKeeperServers) {
       //explicitly close ZKDatabase since ZookeeperServer does not close them
       zkServer.getZKDatabase().close();
-      zkServer.shutdown(true);
     }
     zooKeeperServers.clear();
 
@@ -374,7 +325,7 @@ public class MiniZooKeeperCluster {
     }
 
     // Shutdown the current active one
-    ServerCnxnFactory standaloneServerFactory = standaloneServerFactoryList.get(activeZKServerIndex);
+    NIOServerCnxnFactory standaloneServerFactory = standaloneServerFactoryList.get(activeZKServerIndex);
     int clientPort = clientPortList.get(activeZKServerIndex);
 
     standaloneServerFactory.shutdown();
@@ -412,7 +363,7 @@ public class MiniZooKeeperCluster {
 
     int backupZKServerIndex = activeZKServerIndex + 1;
     // Shutdown the current active one
-    ServerCnxnFactory standaloneServerFactory = standaloneServerFactoryList.get(backupZKServerIndex);
+    NIOServerCnxnFactory standaloneServerFactory = standaloneServerFactoryList.get(backupZKServerIndex);
     int clientPort = clientPortList.get(backupZKServerIndex);
 
     standaloneServerFactory.shutdown();
@@ -430,7 +381,7 @@ public class MiniZooKeeperCluster {
   }
 
   // XXX: From o.a.zk.t.ClientBase
-  public static boolean waitForServerDown(int port, long timeout) throws IOException {
+  private static boolean waitForServerDown(int port, long timeout) throws IOException {
     long start = System.currentTimeMillis();
     while (true) {
       try {
@@ -459,7 +410,7 @@ public class MiniZooKeeperCluster {
   }
 
   // XXX: From o.a.zk.t.ClientBase
-  public static boolean waitForServerUp(int port, long timeout) throws IOException {
+  private static boolean waitForServerUp(int port, long timeout) throws IOException {
     long start = System.currentTimeMillis();
     while (true) {
       try {

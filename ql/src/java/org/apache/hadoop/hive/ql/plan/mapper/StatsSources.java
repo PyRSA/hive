@@ -18,22 +18,21 @@
 
 package org.apache.hadoop.hive.ql.plan.mapper;
 
-import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.ql.optimizer.signature.OpTreeSignature;
-import org.apache.hadoop.hive.ql.optimizer.signature.RelTreeSignature;
 import org.apache.hadoop.hive.ql.plan.mapper.PlanMapper.EquivGroup;
 import org.apache.hadoop.hive.ql.stats.OperatorStats;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableList.Builder;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableMap.Builder;
 
 public class StatsSources {
 
@@ -70,19 +69,18 @@ public class StatsSources {
       statsSource = new MapBackedStatsSource();
     }
 
-    ImmutableList<PersistedRuntimeStats> statMap = extractStatsFromPlanMapper(pm);
-    statsSource.load(statMap);
+    Map<OpTreeSignature, OperatorStats> statMap = extractStatMapFromPlanMapper(pm);
+    statsSource.putAll(statMap);
     return statsSource;
   }
 
-  private static ImmutableList<PersistedRuntimeStats> extractStatsFromPlanMapper(PlanMapper pm) {
-    Builder<PersistedRuntimeStats> li = ImmutableList.builder();
+  private static Map<OpTreeSignature, OperatorStats> extractStatMapFromPlanMapper(PlanMapper pm) {
+    Builder<OpTreeSignature, OperatorStats> map = ImmutableMap.builder();
     Iterator<EquivGroup> it = pm.iterateGroups();
     while (it.hasNext()) {
       EquivGroup e = it.next();
       List<OperatorStats> stat = e.getAll(OperatorStats.class);
       List<OpTreeSignature> sig = e.getAll(OpTreeSignature.class);
-      List<RelTreeSignature> rSig = e.getAll(RelTreeSignature.class);
 
       if (stat.size() > 1 || sig.size() > 1) {
         StringBuffer sb = new StringBuffer();
@@ -97,26 +95,11 @@ public class StatsSources {
         }
         LOG.debug(sb.toString());
       }
-      if (stat.size() < 1 || sig.size() < 1) {
-        continue;
+      if (stat.size() >= 1 && sig.size() >= 1) {
+        map.put(sig.get(0), stat.get(0));
       }
-      if (e.getAll(OperatorStats.IncorrectRuntimeStatsMarker.class).size() > 0) {
-        LOG.debug("Ignoring {}, marked with OperatorStats.IncorrectRuntimeStatsMarker", sig.get(0));
-        continue;
-      }
-      if (e.getAll(OperatorStats.MayNotUseForRelNodes.class).size() > 0) {
-        rSig = new ArrayList<>();
-      }
-      li.add(new PersistedRuntimeStats(first(sig), first(stat), first(rSig)));
     }
-    return li.build();
-  }
-
-  private static <T> T first(List<T> rSig) {
-    if (rSig.size() > 0) {
-      return rSig.iterator().next();
-    }
-    return null;
+    return map.build();
   }
 
   private static StatsSource globalStatsSource;

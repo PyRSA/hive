@@ -18,9 +18,12 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.ptf;
 
-import org.apache.hadoop.hive.ql.exec.vector.ColumnVector.Type;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
+import org.apache.hadoop.hive.ql.exec.vector.ColumnVector.Type;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorExpression;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.plan.ptf.WindowFrameDef;
 
@@ -32,48 +35,41 @@ import org.apache.hadoop.hive.ql.plan.ptf.WindowFrameDef;
  */
 public class VectorPTFEvaluatorDenseRank extends VectorPTFEvaluatorBase {
 
-  private long denseRank;
+  private static final long serialVersionUID = 1L;
+  private static final String CLASS_NAME = VectorPTFEvaluatorDenseRank.class.getName();
+  private static final Log LOG = LogFactory.getLog(CLASS_NAME);
 
-  public VectorPTFEvaluatorDenseRank(WindowFrameDef windowFrameDef, int outputColumnNum) {
-    super(windowFrameDef, outputColumnNum);
+  private int denseRank;
+
+  public VectorPTFEvaluatorDenseRank(WindowFrameDef windowFrameDef, VectorExpression inputVecExpr,
+      int outputColumnNum) {
+    super(windowFrameDef, inputVecExpr, outputColumnNum);
     resetEvaluator();
   }
 
-  @Override
-  public void evaluateGroupBatch(VectorizedRowBatch batch) throws HiveException {
+  public void evaluateGroupBatch(VectorizedRowBatch batch, boolean isLastGroupBatch)
+      throws HiveException {
 
-    // We don't evaluate input columns...
+    evaluateInputExpr(batch);
 
     LongColumnVector longColVector = (LongColumnVector) batch.cols[outputColumnNum];
     longColVector.isRepeating = true;
     longColVector.isNull[0] = false;
     longColVector.vector[0] = denseRank;
+
+    if (isLastGroupBatch) {
+      denseRank++;
+    }
   }
 
-  @Override
-  public void doLastBatchWork() {
-    denseRank++;
-  }
-
-  @Override
   public boolean streamsResult() {
     // No group value.
     return true;
   }
 
   @Override
-  public boolean isGroupResultNull() {
-    return false;
-  }
-
-  @Override
   public Type getResultColumnVectorType() {
     return Type.LONG;
-  }
-
-  @Override
-  public Object getGroupResult() {
-    return denseRank;
   }
 
   @Override

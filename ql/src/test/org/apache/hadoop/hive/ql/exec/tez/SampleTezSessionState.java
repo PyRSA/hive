@@ -18,12 +18,7 @@
 
 package org.apache.hadoop.hive.ql.exec.tez;
 
-
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.FutureCallback;
-import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.MoreExecutors;
-import com.google.common.util.concurrent.SettableFuture;
+import com.google.common.util.concurrent.*;
 import java.io.IOException;
 import java.util.concurrent.ScheduledExecutorService;
 import javax.security.auth.login.LoginException;

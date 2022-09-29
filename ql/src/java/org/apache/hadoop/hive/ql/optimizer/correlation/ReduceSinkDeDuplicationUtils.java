@@ -17,12 +17,10 @@
  */
 package org.apache.hadoop.hive.ql.optimizer.correlation;
 
-import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map.Entry;
 
-import com.google.common.collect.Lists;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.ql.exec.JoinOperator;
@@ -30,21 +28,17 @@ import org.apache.hadoop.hive.ql.exec.Operator;
 import org.apache.hadoop.hive.ql.exec.PTFOperator;
 import org.apache.hadoop.hive.ql.exec.ReduceSinkOperator;
 import org.apache.hadoop.hive.ql.exec.SelectOperator;
-import org.apache.hadoop.hive.ql.exec.Utilities;
 import org.apache.hadoop.hive.ql.optimizer.correlation.ReduceSinkDeDuplication.ReduceSinkDeduplicateProcCtx;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
-import org.apache.hadoop.hive.ql.plan.ColStatistics;
 import org.apache.hadoop.hive.ql.plan.ExprNodeConstantDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeDescUtils;
 import org.apache.hadoop.hive.ql.plan.OperatorDesc;
 import org.apache.hadoop.hive.ql.plan.PlanUtils;
 import org.apache.hadoop.hive.ql.plan.ReduceSinkDesc;
-import org.apache.hadoop.hive.ql.plan.Statistics;
 import org.apache.hadoop.hive.ql.plan.TableDesc;
 
 import com.google.common.collect.ImmutableList;
-import org.apache.hadoop.hive.ql.stats.StatsUtils;
 
 public class ReduceSinkDeDuplicationUtils {
 
@@ -119,9 +113,9 @@ public class ReduceSinkDeDuplicationUtils {
    * If parent RS has not been assigned any partitioning column, we will use
    * partitioning columns (if exist) of child RS.
    */
-  public static boolean merge(HiveConf hiveConf, ReduceSinkOperator cRS, ReduceSinkOperator pRS, int minReducer)
+  public static boolean merge(ReduceSinkOperator cRS, ReduceSinkOperator pRS, int minReducer)
       throws SemanticException {
-    int[] result = extractMergeDirections(hiveConf, cRS, pRS, minReducer);
+    int[] result = extractMergeDirections(cRS, pRS, minReducer);
     if (result == null) {
       return false;
     }
@@ -134,10 +128,25 @@ public class ReduceSinkDeDuplicationUtils {
       pRS.getConf().setKeyCols(ExprNodeDescUtils.backtrack(childKCs, cRS, pRS));
     }
 
-    List<ExprNodeDesc> childPCs = cRS.getConf().getPartitionCols();
-    List<ExprNodeDesc> parentPCs = pRS.getConf().getPartitionCols();
-    if (canReplaceParentWithChildPartioning(result[1], childPCs, parentPCs)) {
-      pRS.getConf().setPartitionCols(ExprNodeDescUtils.backtrack(childPCs, cRS, pRS));
+    if (result[1] < 0) {
+      // The partitioning columns of the parent RS are more specific than
+      // those of the child RS.
+      List<ExprNodeDesc> childPCs = cRS.getConf().getPartitionCols();
+      if (childPCs != null && !childPCs.isEmpty()) {
+        // If partitioning columns of the child RS are assigned,
+        // assign these to the partitioning columns of the parent RS.
+        pRS.getConf().setPartitionCols(ExprNodeDescUtils.backtrack(childPCs, cRS, pRS));
+      }
+    } else if (result[1] > 0) {
+      // The partitioning columns of the child RS are more specific than
+      // those of the parent RS.
+      List<ExprNodeDesc> parentPCs = pRS.getConf().getPartitionCols();
+      if (parentPCs == null || parentPCs.isEmpty()) {
+        // If partitioning columns of the parent RS are not assigned,
+        // assign partitioning columns of the child RS to the parent RS.
+        ArrayList<ExprNodeDesc> childPCs = cRS.getConf().getPartitionCols();
+        pRS.getConf().setPartitionCols(ExprNodeDescUtils.backtrack(childPCs, cRS, pRS));
+      }
     }
 
     if (result[2] > 0) {
@@ -183,47 +192,9 @@ public class ReduceSinkDeDuplicationUtils {
         TableDesc keyTable = PlanUtils.getReduceKeyTableDesc(new ArrayList<FieldSchema>(), pRS
             .getConf().getOrder(), pRS.getConf().getNullOrder());
         pRS.getConf().setKeySerializeInfo(keyTable);
-      } else if (cRS.getConf().getKeyCols() != null && cRS.getConf().getKeyCols().size() > 0) {
-        ArrayList<String> keyColNames = Lists.newArrayList();
-        for (ExprNodeDesc keyCol : pRS.getConf().getKeyCols()) {
-          String keyColName = keyCol.getExprString();
-          keyColNames.add(keyColName);
-        }
-        List<FieldSchema> fields = PlanUtils.getFieldSchemasFromColumnList(pRS.getConf().getKeyCols(),
-            keyColNames, 0, "");
-        TableDesc keyTable = PlanUtils.getReduceKeyTableDesc(fields, pRS.getConf().getOrder(),
-            pRS.getConf().getNullOrder());
-        ArrayList<String> outputKeyCols = Lists.newArrayList();
-        for (int i = 0; i < fields.size(); i++) {
-          outputKeyCols.add(fields.get(i).getName());
-        }
-        pRS.getConf().setOutputKeyColumnNames(outputKeyCols);
-        pRS.getConf().setKeySerializeInfo(keyTable);
-        pRS.getConf().setNumDistributionKeys(cRS.getConf().getNumDistributionKeys());
       }
     }
     return true;
-  }
-
-  private static long estimateReducers(HiveConf conf, ReduceSinkOperator rs) {
-    // TODO: Check if we can somehow exploit the logic in SetReducerParallelism
-    if (rs.getConf().getNumReducers() > 0) {
-      return rs.getConf().getNumReducers();
-    }
-    int constantReducers = conf.getIntVar(HiveConf.ConfVars.HADOOPNUMREDUCERS);
-    if (constantReducers > 0) {
-      return constantReducers;
-    }
-    long inputTotalBytes = 0;
-    List<Operator<?>> rsSiblings = rs.getChildOperators().get(0).getParentOperators();
-    for (Operator<?> sibling : rsSiblings) {
-      if (sibling.getStatistics() != null) {
-        inputTotalBytes = StatsUtils.safeAdd(inputTotalBytes, sibling.getStatistics().getDataSize());
-      }
-    }
-    int maxReducers = conf.getIntVar(HiveConf.ConfVars.MAXREDUCERS);
-    long bytesPerReducer = conf.getLongVar(HiveConf.ConfVars.BYTESPERREDUCER);
-    return Utilities.estimateReducers(inputTotalBytes, bytesPerReducer, maxReducers, false);
   }
 
   /**
@@ -237,7 +208,7 @@ public class ReduceSinkDeDuplicationUtils {
           throws SemanticException {
     return strictMerge(cRS, ImmutableList.of(pRS));
   }
-
+  
   public static boolean strictMerge(ReduceSinkOperator cRS, List<ReduceSinkOperator> pRSs)
           throws SemanticException {
     ReduceSinkDesc cRSc = cRS.getConf();
@@ -255,7 +226,7 @@ public class ReduceSinkDeDuplicationUtils {
       if (moveRSOrderTo == null) {
         return false;
       }
-
+  
       int cKeySize = cRSc.getKeyCols().size();
       for (int i = 0; i < cKeySize; i++) {
         ExprNodeDesc cExpr = cRSc.getKeyCols().get(i);
@@ -269,7 +240,7 @@ public class ReduceSinkDeDuplicationUtils {
           return false;
         }
       }
-
+  
       int cPartSize = cRSc.getPartitionCols().size();
       for (int i = 0; i < cPartSize; i++) {
         ExprNodeDesc cExpr = cRSc.getPartitionCols().get(i);
@@ -323,8 +294,8 @@ public class ReduceSinkDeDuplicationUtils {
    * 2. for -1, configuration of parent RS is more specific than child RS
    * 3. for 1, configuration of child RS is more specific than parent RS
    */
-  private static int[] extractMergeDirections(HiveConf hiveConf, ReduceSinkOperator cRS, ReduceSinkOperator pRS,
-      int minReducer) throws SemanticException {
+  private static int[] extractMergeDirections(ReduceSinkOperator cRS, ReduceSinkOperator pRS, int minReducer)
+      throws SemanticException {
     ReduceSinkDesc cConf = cRS.getConf();
     ReduceSinkDesc pConf = pRS.getConf();
     // If there is a PTF between cRS and pRS we cannot ignore the order direction
@@ -336,9 +307,6 @@ public class ReduceSinkDeDuplicationUtils {
     }
     // if cRS is being used for distinct - the two reduce sinks are incompatible
     if (cConf.getDistinctColumnIndices().size() >= 2) {
-      return null;
-    }
-    if (cConf.getBucketingVersion() != pConf.getBucketingVersion()) {
       return null;
     }
     Integer moveReducerNumTo = checkNumReducer(cConf.getNumReducers(), pConf.getNumReducers());
@@ -358,13 +326,6 @@ public class ReduceSinkDeDuplicationUtils {
     if (movePartitionColTo == null) {
       return null;
     }
-    if (canReplaceParentWithChildPartioning(movePartitionColTo, cpars, ppars)) {
-      long oldParallelism = estimateReducers(hiveConf, pRS);
-      long newParallelism = estimateReducers(hiveConf, cRS);
-      if (newParallelism < oldParallelism && newParallelism < minReducer) {
-        return null;
-      }
-    }
     Integer moveNumDistKeyTo = checkNumDistributionKey(cConf.getNumDistributionKeys(),
         pConf.getNumDistributionKeys());
     return new int[] {moveKeyColTo, movePartitionColTo, moveRSOrderTo,
@@ -381,27 +342,6 @@ public class ReduceSinkDeDuplicationUtils {
       parent = parent.getParentOperators().get(0);
     }
     return false;
-  }
-
-  /**
-   * Checks if the partitioning columns of the child RS can replace the columns of the parent RS.
-   *
-   * The replacement can be done in two cases:
-   * <ul>
-   *   <li>Parent RS columns are more specific than those of the child RS, and child columns are assigned;</li>
-   *   <li>Child RS columns are more specific than those of the parent RS, and parent columns are not assigned.</li>
-   * </ul>
-   *
-   * @param moveColTo -1 if parent columns are more specific, 1 if child columns are more specific, 0 if the columns are
-   * equal
-   * @param cpars the child RS partitioning columns
-   * @param ppars the parent RS partitioning columns
-   * @return
-   *  true if the partitioning columns of the child RS can replace the columns of the parent RS and false otherwise
-   */
-  private static boolean canReplaceParentWithChildPartioning(Integer moveColTo, List<ExprNodeDesc> cpars,
-      List<ExprNodeDesc> ppars) {
-    return moveColTo < 0 && (cpars != null && !cpars.isEmpty()) || moveColTo > 0 && (ppars == null || ppars.isEmpty());
   }
 
   private static Integer checkNumDistributionKey(int cnd, int pnd) {
@@ -535,28 +475,6 @@ public class ReduceSinkDeDuplicationUtils {
     return 0;
   }
 
-  // Check that in the path between cRS and pRS, there are only Select operators
-  // i.e. the sequence must be pRS-SEL*-cRS
-  // ensure SEL does not branch
-  protected static boolean checkSelectSingleBranchOnly(ReduceSinkOperator cRS, ReduceSinkOperator pRS) {
-    Operator<? extends OperatorDesc> parent = cRS.getParentOperators().get(0);
-    if (cRS.getConf().getBucketingVersion() != pRS.getConf().getBucketingVersion()) {
-      return false;
-    }
-    while (parent != pRS) {
-      assert parent.getNumParent() == 1;
-      if (!(parent instanceof SelectOperator)) {
-        return false;
-      }
-      if (parent.getChildOperators().size() > 1) {
-        return false;
-      }
-
-      parent = parent.getParentOperators().get(0);
-    }
-    return true;
-  }
-
   protected static boolean aggressiveDedup(ReduceSinkOperator cRS, ReduceSinkOperator pRS,
           ReduceSinkDeduplicateProcCtx dedupCtx) throws SemanticException {
     assert cRS.getNumParent() == 1;
@@ -566,8 +484,15 @@ public class ReduceSinkDeDuplicationUtils {
     List<ExprNodeDesc> cKeys = cConf.getKeyCols();
     List<ExprNodeDesc> pKeys = pConf.getKeyCols();
 
-    if (!checkSelectSingleBranchOnly(cRS, pRS)) {
-      return false;
+    // Check that in the path between cRS and pRS, there are only Select operators
+    // i.e. the sequence must be pRS-SEL*-cRS
+    Operator<? extends OperatorDesc> parent = cRS.getParentOperators().get(0);
+    while (parent != pRS) {
+      assert parent.getNumParent() == 1;
+      if (!(parent instanceof SelectOperator)) {
+        return false;
+      }
+      parent = parent.getParentOperators().get(0);
     }
 
     // If child keys are null or empty, we bail out
@@ -589,7 +514,7 @@ public class ReduceSinkDeDuplicationUtils {
         return false;
       }
     }
-    cRS.getConf().setKeyCols(cKeysInParentRS);
+    cRS.getConf().setKeyCols(ExprNodeDescUtils.backtrack(cKeysInParentRS, cRS, pRS));
 
     // Backtrack partition columns of cRS to pRS
     // If we cannot backtrack any of the columns, bail out
@@ -602,7 +527,7 @@ public class ReduceSinkDeDuplicationUtils {
         return false;
       }
     }
-    cRS.getConf().setPartitionCols(cPartitionInParentRS);
+    cRS.getConf().setPartitionCols(ExprNodeDescUtils.backtrack(cPartitionInParentRS, cRS, pRS));
 
     // Backtrack value columns of cRS to pRS
     // If we cannot backtrack any of the columns, bail out
@@ -615,7 +540,7 @@ public class ReduceSinkDeDuplicationUtils {
         return false;
       }
     }
-    cRS.getConf().setValueCols(cValueInParentRS);
+    cRS.getConf().setValueCols(ExprNodeDescUtils.backtrack(cValueInParentRS, cRS, pRS));
 
     // Backtrack bucket columns of cRS to pRS (if any)
     // If we cannot backtrack any of the columns, bail out
@@ -629,7 +554,7 @@ public class ReduceSinkDeDuplicationUtils {
           return false;
         }
       }
-      cRS.getConf().setBucketCols(cBucketInParentRS);
+      cRS.getConf().setBucketCols(ExprNodeDescUtils.backtrack(cBucketInParentRS, cRS, pRS));
     }
 
     // Update column expression map
@@ -639,7 +564,7 @@ public class ReduceSinkDeDuplicationUtils {
 
     // Replace pRS with cRS and remove operator sequence from pRS to cRS
     // Recall that the sequence must be pRS-SEL*-cRS
-    Operator<? extends OperatorDesc> parent = cRS.getParentOperators().get(0);
+    parent = cRS.getParentOperators().get(0);
     while (parent != pRS) {
       dedupCtx.addRemovedOperator(parent);
       parent = parent.getParentOperators().get(0);

@@ -39,13 +39,12 @@ public class DBSerializer implements JsonWriter.Serializer {
   public void writeTo(JsonWriter writer, ReplicationSpec additionalPropertiesProvider)
       throws SemanticException, IOException {
     dbObject.putToParameters(
-        ReplicationSpec.KEY.CURR_STATE_ID_SOURCE.toString(),
+        ReplicationSpec.KEY.CURR_STATE_ID.toString(),
         additionalPropertiesProvider.getCurrentReplicationState()
     );
-
+    TSerializer serializer = new TSerializer(new TJSONProtocol.Factory());
     try {
-      TSerializer serializer = new TSerializer(new TJSONProtocol.Factory());
-      String value = serializer.toString(dbObject);
+      String value = serializer.toString(dbObject, UTF_8);
       writer.jsonGenerator.writeStringField(FIELD_NAME, value);
     } catch (TException e) {
       throw new SemanticException(ErrorMsg.ERROR_SERIALIZE_METASTORE.getMsg(), e);

@@ -1,10 +1,9 @@
---! qt:dataset:alltypesparquet
 SET hive.vectorized.execution.enabled=true;
 set hive.fetch.task.conversion=none;
 
 -- SORT_QUERY_RESULTS
 
-EXPLAIN VECTORIZATION EXPRESSION
+EXPLAIN VECTORIZATION DETAIL
 SELECT SUM(cint),
        (SUM(cint) * -563),
        (-3728 + SUM(cint)),

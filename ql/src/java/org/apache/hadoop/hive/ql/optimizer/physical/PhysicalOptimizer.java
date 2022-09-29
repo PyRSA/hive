@@ -46,6 +46,9 @@ public class PhysicalOptimizer {
    */
   private void initialize(HiveConf hiveConf) {
     resolvers = new ArrayList<PhysicalPlanResolver>();
+    if (hiveConf.getBoolVar(HiveConf.ConfVars.HIVESKEWJOIN)) {
+      resolvers.add(new SkewJoinResolver());
+    }
     if (hiveConf.getBoolVar(HiveConf.ConfVars.HIVECONVERTJOIN)) {
       resolvers.add(new CommonJoinResolver());
 
@@ -55,9 +58,6 @@ public class PhysicalOptimizer {
       if (hiveConf.getBoolVar(HiveConf.ConfVars.HIVE_AUTO_SORTMERGE_JOIN_TOMAPJOIN)) {
         resolvers.add(new SortMergeJoinResolver());
       }
-    }
-    if (hiveConf.getBoolVar(HiveConf.ConfVars.HIVESKEWJOIN)) {
-      resolvers.add(new SkewJoinResolver());
     }
 
     resolvers.add(new MapJoinResolver());
@@ -104,7 +104,7 @@ public class PhysicalOptimizer {
    * invoke all the resolvers one-by-one, and alter the physical plan.
    *
    * @return PhysicalContext
-   * @throws SemanticException
+   * @throws HiveException
    */
   public PhysicalContext optimize() throws SemanticException {
     for (PhysicalPlanResolver r : resolvers) {

@@ -1,15 +1,12 @@
---! qt:dataset:src
 set hive.mapred.mode=nonstrict;
 set hive.cbo.returnpath.hiveop=true;
 set hive.explain.user=false;
 -- SORT_QUERY_RESULTS
 
-create table A_n18 (key string, value string);
-insert into A_n18
+create table A_n18 as
 select * from src;
 
-create table B_n14 (key string, value string);
-insert into B_n14
+create table B_n14 as
 select * from src order by key
 limit 10;
 

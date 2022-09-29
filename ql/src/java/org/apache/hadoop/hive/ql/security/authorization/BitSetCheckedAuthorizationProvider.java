@@ -28,8 +28,6 @@ import org.apache.hadoop.hive.metastore.api.Database;
 import org.apache.hadoop.hive.metastore.api.HiveObjectType;
 import org.apache.hadoop.hive.metastore.api.PrincipalPrivilegeSet;
 import org.apache.hadoop.hive.metastore.api.PrivilegeGrantInfo;
-import org.apache.hadoop.hive.ql.hooks.ReadEntity;
-import org.apache.hadoop.hive.ql.hooks.WriteEntity;
 import org.apache.hadoop.hive.ql.metadata.AuthorizationException;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.metadata.Partition;
@@ -65,8 +63,8 @@ public abstract class BitSetCheckedAuthorizationProvider extends
   }
 
   @Override
-  public void authorizeDbLevelOperations(Privilege[] inputRequiredPriv, Privilege[] outputRequiredPriv,
-      Collection<ReadEntity> inputs, Collection<WriteEntity> outputs) throws HiveException, AuthorizationException {
+  public void authorize(Privilege[] inputRequiredPriv,
+      Privilege[] outputRequiredPriv) throws HiveException, AuthorizationException {
 
     BitSetChecker checker = BitSetChecker.getBitSetChecker(inputRequiredPriv,
         outputRequiredPriv);

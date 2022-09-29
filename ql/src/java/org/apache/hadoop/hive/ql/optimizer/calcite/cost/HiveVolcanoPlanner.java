@@ -28,10 +28,10 @@ import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.plan.volcano.RelSubset;
 import org.apache.calcite.plan.volcano.VolcanoPlanner;
 import org.apache.calcite.rel.RelCollationTraitDef;
-import org.apache.calcite.rel.RelDistributionTraitDef;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
+import org.apache.calcite.util.Util;
 import org.apache.hadoop.hive.ql.optimizer.calcite.HiveConfPlannerContext;
 import org.apache.hadoop.hive.ql.optimizer.calcite.HivePlannerContext;
 import org.apache.hadoop.hive.ql.optimizer.calcite.RelOptHiveTable;
@@ -46,7 +46,6 @@ import org.apache.hadoop.hive.ql.optimizer.calcite.rules.HiveDruidRules;
  */
 public class HiveVolcanoPlanner extends VolcanoPlanner {
   private static final boolean ENABLE_COLLATION_TRAIT = true;
-  private static final boolean ENABLE_DISTRIBUTION_TRAIT = true;
 
   private final boolean isHeuristic;
 
@@ -62,9 +61,6 @@ public class HiveVolcanoPlanner extends VolcanoPlanner {
     planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
     if (ENABLE_COLLATION_TRAIT) {
       planner.addRelTraitDef(RelCollationTraitDef.INSTANCE);
-    }
-    if (ENABLE_DISTRIBUTION_TRAIT) {
-      planner.addRelTraitDef(RelDistributionTraitDef.INSTANCE);
     }
     return planner;
   }
@@ -85,6 +81,7 @@ public class HiveVolcanoPlanner extends VolcanoPlanner {
       addRule(HiveDruidRules.FILTER_PROJECT_TRANSPOSE);
       addRule(HiveDruidRules.SORT_PROJECT_TRANSPOSE);
       addRule(HiveDruidRules.SORT);
+      addRule(HiveDruidRules.PROJECT_SORT_TRANSPOSE);
       return;
     }
     super.registerClass(node);
@@ -122,12 +119,9 @@ public class HiveVolcanoPlanner extends VolcanoPlanner {
     Multimap<Class<? extends RelNode>, RelNode> nodeTypes =
         mq.getNodeTypes(rel);
     for (RelNode scan : nodeTypes.get(TableScan.class)) {
-      if (scan.getTable() instanceof RelOptHiveTable) {
-        RelOptHiveTable relOptHiveTable = (RelOptHiveTable) scan.getTable();
-        if (relOptHiveTable.getHiveTableMD().isMaterializedView()) {
-          usesMaterializedViews = true;
-          break;
-        }
+      if (((RelOptHiveTable) scan.getTable()).getHiveTableMD().isMaterializedView()) {
+        usesMaterializedViews = true;
+        break;
       }
     }
     if (isHeuristic && usesMaterializedViews) {

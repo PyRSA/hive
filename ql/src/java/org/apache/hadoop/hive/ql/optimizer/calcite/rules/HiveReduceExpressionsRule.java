@@ -36,7 +36,6 @@ import org.apache.hadoop.hive.ql.optimizer.calcite.HiveRelFactories;
 import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveFilter;
 import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveJoin;
 import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveProject;
-import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveSemiJoin;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -80,13 +79,6 @@ public abstract class HiveReduceExpressionsRule extends ReduceExpressionsRule {
   public static final ReduceExpressionsRule JOIN_INSTANCE =
       new JoinReduceExpressionsRule(HiveJoin.class, false, HiveRelFactories.HIVE_BUILDER);
 
-  /**
-   * Singleton rule that reduces constants inside a
-   * {@link org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveSemiJoin}.
-   */
-  public static final ReduceExpressionsRule SEMIJOIN_INSTANCE =
-      new JoinReduceExpressionsRule(HiveSemiJoin.class, false, HiveRelFactories.HIVE_BUILDER);
-
   //~ Constructors -----------------------------------------------------------
 
   /**
@@ -96,10 +88,7 @@ public abstract class HiveReduceExpressionsRule extends ReduceExpressionsRule {
    */
   protected HiveReduceExpressionsRule(Class<? extends RelNode> clazz,
       RelBuilderFactory relBuilderFactory, String desc) {
-    super((Config) Config.EMPTY
-      .withOperandSupplier(b -> b.operand(clazz).anyInputs())
-      .withDescription(desc)
-      .withRelBuilderFactory(relBuilderFactory));
+    super(clazz, relBuilderFactory, desc);
   }
 
   /**
@@ -111,15 +100,7 @@ public abstract class HiveReduceExpressionsRule extends ReduceExpressionsRule {
 
     public FilterReduceExpressionsRule(Class<? extends Filter> filterClass,
         RelBuilderFactory relBuilderFactory) {
-      super(
-        (Config) Config.EMPTY
-        .as(FilterReduceExpressionsRule.Config.class)
-        .withMatchNullability(true)
-        .withOperandFor(filterClass)
-        .withDescription("ReduceExpressionsRule(Filter)")
-        .as(FilterReduceExpressionsRule.Config.class)
-        .withRelBuilderFactory(relBuilderFactory)
-      );
+      super(filterClass, relBuilderFactory, "ReduceExpressionsRule(Filter)");
     }
 
     @Override public void onMatch(RelOptRuleCall call) {
@@ -182,7 +163,7 @@ public abstract class HiveReduceExpressionsRule extends ReduceExpressionsRule {
       }
 
       // New plan is absolutely better than old plan.
-      call.getPlanner().prune(filter);
+      call.getPlanner().setImportance(filter, 0.0);
     }
 
     /**

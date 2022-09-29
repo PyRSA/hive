@@ -2,8 +2,10 @@ set hive.mapred.mode=nonstrict;
 set hive.stats.autogather=false;
 set hive.optimize.union.remove=true;
 
+set hive.merge.sparkfiles=false;
 set hive.merge.mapfiles=false;
 set hive.merge.mapredfiles=false;
+set mapred.input.dir.recursive=true;
 
 -- SORT_QUERY_RESULTS
 -- This is to test the union->selectstar->filesink optimization
@@ -13,6 +15,7 @@ set hive.merge.mapredfiles=false;
 -- again to process the union. The union can be removed completely.
 -- It does not matter, whether the output is merged or not. In this case, merging is turned
 -- off
+-- INCLUDE_HADOOP_MAJOR_VERSIONS(0.23)
 -- Since this test creates sub-directories for the output table outputTbl1_n11, it might be easier
 -- to run the test only on hadoop 23
 

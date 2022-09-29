@@ -1,11 +1,58 @@
-PREHOOK: query: explain select count(*) FROM druid_table_alltypesorc
+PREHOOK: query: CREATE TABLE druid_table_n3
+STORED BY 'org.apache.hadoop.hive.druid.DruidStorageHandler'
+TBLPROPERTIES ("druid.segment.granularity" = "HOUR", "druid.query.granularity" = "MINUTE")
+AS
+SELECT cast (`ctimestamp1` as timestamp with local time zone) as `__time`,
+  cstring1,
+  cstring2,
+  cdouble,
+  cfloat,
+  ctinyint,
+  csmallint,
+  cint,
+  cbigint,
+  cboolean1,
+  cboolean2
+  FROM alltypesorc where ctimestamp1 IS NOT NULL
+PREHOOK: type: CREATETABLE_AS_SELECT
+PREHOOK: Input: default@alltypesorc
+PREHOOK: Output: database:default
+PREHOOK: Output: default@druid_table_n3
+POSTHOOK: query: CREATE TABLE druid_table_n3
+STORED BY 'org.apache.hadoop.hive.druid.DruidStorageHandler'
+TBLPROPERTIES ("druid.segment.granularity" = "HOUR", "druid.query.granularity" = "MINUTE")
+AS
+SELECT cast (`ctimestamp1` as timestamp with local time zone) as `__time`,
+  cstring1,
+  cstring2,
+  cdouble,
+  cfloat,
+  ctinyint,
+  csmallint,
+  cint,
+  cbigint,
+  cboolean1,
+  cboolean2
+  FROM alltypesorc where ctimestamp1 IS NOT NULL
+POSTHOOK: type: CREATETABLE_AS_SELECT
+POSTHOOK: Input: default@alltypesorc
+POSTHOOK: Output: database:default
+POSTHOOK: Output: default@druid_table_n3
+POSTHOOK: Lineage: druid_table_n3.__time EXPRESSION [(alltypesorc)alltypesorc.FieldSchema(name:ctimestamp1, type:timestamp, comment:null), ]
+POSTHOOK: Lineage: druid_table_n3.cbigint SIMPLE [(alltypesorc)alltypesorc.FieldSchema(name:cbigint, type:bigint, comment:null), ]
+POSTHOOK: Lineage: druid_table_n3.cboolean1 SIMPLE [(alltypesorc)alltypesorc.FieldSchema(name:cboolean1, type:boolean, comment:null), ]
+POSTHOOK: Lineage: druid_table_n3.cboolean2 SIMPLE [(alltypesorc)alltypesorc.FieldSchema(name:cboolean2, type:boolean, comment:null), ]
+POSTHOOK: Lineage: druid_table_n3.cdouble SIMPLE [(alltypesorc)alltypesorc.FieldSchema(name:cdouble, type:double, comment:null), ]
+POSTHOOK: Lineage: druid_table_n3.cfloat SIMPLE [(alltypesorc)alltypesorc.FieldSchema(name:cfloat, type:float, comment:null), ]
+POSTHOOK: Lineage: druid_table_n3.cint SIMPLE [(alltypesorc)alltypesorc.FieldSchema(name:cint, type:int, comment:null), ]
+POSTHOOK: Lineage: druid_table_n3.csmallint SIMPLE [(alltypesorc)alltypesorc.FieldSchema(name:csmallint, type:smallint, comment:null), ]
+POSTHOOK: Lineage: druid_table_n3.cstring1 SIMPLE [(alltypesorc)alltypesorc.FieldSchema(name:cstring1, type:string, comment:null), ]
+POSTHOOK: Lineage: druid_table_n3.cstring2 SIMPLE [(alltypesorc)alltypesorc.FieldSchema(name:cstring2, type:string, comment:null), ]
+POSTHOOK: Lineage: druid_table_n3.ctinyint SIMPLE [(alltypesorc)alltypesorc.FieldSchema(name:ctinyint, type:tinyint, comment:null), ]
+PREHOOK: query: explain select count(*) FROM druid_table_n3
 PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
-PREHOOK: Output: hdfs://### HDFS PATH ###
-POSTHOOK: query: explain select count(*) FROM druid_table_alltypesorc
+POSTHOOK: query: explain select count(*) FROM druid_table_n3
 POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
-POSTHOOK: Output: hdfs://### HDFS PATH ###
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
 
@@ -15,36 +62,32 @@ STAGE PLANS:
       limit: -1
       Processor Tree:
         TableScan
-          alias: druid_table_alltypesorc
+          alias: druid_table_n3
           properties:
             druid.fieldNames $f0
             druid.fieldTypes bigint
-            druid.query.json {"queryType":"timeseries","dataSource":"default.druid_table_alltypesorc","descending":false,"granularity":"all","aggregations":[{"type":"count","name":"$f0"}],"intervals":["1900-01-01T00:00:00.000Z/3000-01-01T00:00:00.000Z"],"context":{"skipEmptyBuckets":false}}
+            druid.query.json {"queryType":"timeseries","dataSource":"default.druid_table_n3","descending":false,"granularity":"all","aggregations":[{"type":"count","name":"$f0"}],"intervals":["1900-01-01T00:00:00.000Z/3000-01-01T00:00:00.000Z"],"context":{"skipEmptyBuckets":false}}
             druid.query.type timeseries
           Select Operator
             expressions: $f0 (type: bigint)
             outputColumnNames: _col0
             ListSink
 
-PREHOOK: query: SELECT count(*) FROM druid_table_alltypesorc
+PREHOOK: query: SELECT count(*) FROM druid_table_n3
 PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
+PREHOOK: Input: default@druid_table_n3
 PREHOOK: Output: hdfs://### HDFS PATH ###
-POSTHOOK: query: SELECT count(*) FROM druid_table_alltypesorc
+POSTHOOK: query: SELECT count(*) FROM druid_table_n3
 POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
+POSTHOOK: Input: default@druid_table_n3
 POSTHOOK: Output: hdfs://### HDFS PATH ###
-9173
+6105
 PREHOOK: query: EXPLAIN SELECT floor_year(`__time`), SUM(cfloat), SUM(cdouble), SUM(ctinyint), SUM(csmallint),SUM(cint), SUM(cbigint)
-FROM druid_table_alltypesorc GROUP BY floor_year(`__time`)
+FROM druid_table_n3 GROUP BY floor_year(`__time`)
 PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
-PREHOOK: Output: hdfs://### HDFS PATH ###
 POSTHOOK: query: EXPLAIN SELECT floor_year(`__time`), SUM(cfloat), SUM(cdouble), SUM(ctinyint), SUM(csmallint),SUM(cint), SUM(cbigint)
-FROM druid_table_alltypesorc GROUP BY floor_year(`__time`)
+FROM druid_table_n3 GROUP BY floor_year(`__time`)
 POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
-POSTHOOK: Output: hdfs://### HDFS PATH ###
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
 
@@ -54,11 +97,11 @@ STAGE PLANS:
       limit: -1
       Processor Tree:
         TableScan
-          alias: druid_table_alltypesorc
+          alias: druid_table_n3
           properties:
             druid.fieldNames timestamp,$f1,$f2,$f3,$f4,$f5,$f6
             druid.fieldTypes timestamp with local time zone,double,double,bigint,bigint,bigint,bigint
-            druid.query.json {"queryType":"timeseries","dataSource":"default.druid_table_alltypesorc","descending":false,"granularity":{"type":"period","period":"P1Y","timeZone":"US/Pacific"},"aggregations":[{"type":"doubleSum","name":"$f1","fieldName":"cfloat"},{"type":"doubleSum","name":"$f2","fieldName":"cdouble"},{"type":"longSum","name":"$f3","fieldName":"ctinyint"},{"type":"longSum","name":"$f4","fieldName":"csmallint"},{"type":"longSum","name":"$f5","fieldName":"cint"},{"type":"longSum","name":"$f6","fieldName":"cbigint"}],"intervals":["1900-01-01T00:00:00.000Z/3000-01-01T00:00:00.000Z"],"context":{"skipEmptyBuckets":true}}
+            druid.query.json {"queryType":"timeseries","dataSource":"default.druid_table_n3","descending":false,"granularity":{"type":"period","period":"P1Y","timeZone":"US/Pacific"},"aggregations":[{"type":"doubleSum","name":"$f1","fieldName":"cfloat"},{"type":"doubleSum","name":"$f2","fieldName":"cdouble"},{"type":"longSum","name":"$f3","fieldName":"ctinyint"},{"type":"longSum","name":"$f4","fieldName":"csmallint"},{"type":"longSum","name":"$f5","fieldName":"cint"},{"type":"longSum","name":"$f6","fieldName":"cbigint"}],"intervals":["1900-01-01T00:00:00.000Z/3000-01-01T00:00:00.000Z"],"context":{"skipEmptyBuckets":true}}
             druid.query.type timeseries
           Select Operator
             expressions: timestamp (type: timestamp with local time zone), $f1 (type: double), $f2 (type: double), $f3 (type: bigint), $f4 (type: bigint), $f5 (type: bigint), $f6 (type: bigint)
@@ -66,26 +109,22 @@ STAGE PLANS:
             ListSink
 
 PREHOOK: query: SELECT floor_year(`__time`), SUM(cfloat), SUM(cdouble), SUM(ctinyint), SUM(csmallint),SUM(cint), SUM(cbigint)
-FROM druid_table_alltypesorc GROUP BY floor_year(`__time`)
+FROM druid_table_n3 GROUP BY floor_year(`__time`)
 PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
+PREHOOK: Input: default@druid_table_n3
 PREHOOK: Output: hdfs://### HDFS PATH ###
 POSTHOOK: query: SELECT floor_year(`__time`), SUM(cfloat), SUM(cdouble), SUM(ctinyint), SUM(csmallint),SUM(cint), SUM(cbigint)
-FROM druid_table_alltypesorc GROUP BY floor_year(`__time`)
+FROM druid_table_n3 GROUP BY floor_year(`__time`)
 POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
+POSTHOOK: Input: default@druid_table_n3
 POSTHOOK: Output: hdfs://### HDFS PATH ###
-1969-01-01 00:00:00.0 US/Pacific	-39590.24699282646	2.73086627938E7	-39967	7781089	1408069801800	10992545287
+1969-01-01 00:00:00.0 US/Pacific	-39590.24724686146	2.7308662809692383E7	-39967	7781089	1408069801800	10992545287
 PREHOOK: query: EXPLAIN SELECT floor_year(`__time`), MIN(cfloat), MIN(cdouble), MIN(ctinyint), MIN(csmallint),MIN(cint), MIN(cbigint)
-FROM druid_table_alltypesorc GROUP BY floor_year(`__time`)
+FROM druid_table_n3 GROUP BY floor_year(`__time`)
 PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
-PREHOOK: Output: hdfs://### HDFS PATH ###
 POSTHOOK: query: EXPLAIN SELECT floor_year(`__time`), MIN(cfloat), MIN(cdouble), MIN(ctinyint), MIN(csmallint),MIN(cint), MIN(cbigint)
-FROM druid_table_alltypesorc GROUP BY floor_year(`__time`)
+FROM druid_table_n3 GROUP BY floor_year(`__time`)
 POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
-POSTHOOK: Output: hdfs://### HDFS PATH ###
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
 
@@ -95,11 +134,11 @@ STAGE PLANS:
       limit: -1
       Processor Tree:
         TableScan
-          alias: druid_table_alltypesorc
+          alias: druid_table_n3
           properties:
             druid.fieldNames timestamp,$f1,$f2,$f3,$f4,$f5,$f6
             druid.fieldTypes timestamp with local time zone,float,double,tinyint,smallint,int,bigint
-            druid.query.json {"queryType":"timeseries","dataSource":"default.druid_table_alltypesorc","descending":false,"granularity":{"type":"period","period":"P1Y","timeZone":"US/Pacific"},"aggregations":[{"type":"doubleMin","name":"$f1","fieldName":"cfloat"},{"type":"doubleMin","name":"$f2","fieldName":"cdouble"},{"type":"longMin","name":"$f3","fieldName":"ctinyint"},{"type":"longMin","name":"$f4","fieldName":"csmallint"},{"type":"longMin","name":"$f5","fieldName":"cint"},{"type":"longMin","name":"$f6","fieldName":"cbigint"}],"intervals":["1900-01-01T00:00:00.000Z/3000-01-01T00:00:00.000Z"],"context":{"skipEmptyBuckets":true}}
+            druid.query.json {"queryType":"timeseries","dataSource":"default.druid_table_n3","descending":false,"granularity":{"type":"period","period":"P1Y","timeZone":"US/Pacific"},"aggregations":[{"type":"doubleMin","name":"$f1","fieldName":"cfloat"},{"type":"doubleMin","name":"$f2","fieldName":"cdouble"},{"type":"longMin","name":"$f3","fieldName":"ctinyint"},{"type":"longMin","name":"$f4","fieldName":"csmallint"},{"type":"longMin","name":"$f5","fieldName":"cint"},{"type":"longMin","name":"$f6","fieldName":"cbigint"}],"intervals":["1900-01-01T00:00:00.000Z/3000-01-01T00:00:00.000Z"],"context":{"skipEmptyBuckets":true}}
             druid.query.type timeseries
           Select Operator
             expressions: timestamp (type: timestamp with local time zone), $f1 (type: float), $f2 (type: double), $f3 (type: tinyint), $f4 (type: smallint), $f5 (type: int), $f6 (type: bigint)
@@ -107,26 +146,22 @@ STAGE PLANS:
             ListSink
 
 PREHOOK: query: SELECT floor_year(`__time`), MIN(cfloat), MIN(cdouble), MIN(ctinyint), MIN(csmallint),MIN(cint), MIN(cbigint)
-FROM druid_table_alltypesorc GROUP BY floor_year(`__time`)
+FROM druid_table_n3 GROUP BY floor_year(`__time`)
 PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
+PREHOOK: Input: default@druid_table_n3
 PREHOOK: Output: hdfs://### HDFS PATH ###
 POSTHOOK: query: SELECT floor_year(`__time`), MIN(cfloat), MIN(cdouble), MIN(ctinyint), MIN(csmallint),MIN(cint), MIN(cbigint)
-FROM druid_table_alltypesorc GROUP BY floor_year(`__time`)
+FROM druid_table_n3 GROUP BY floor_year(`__time`)
 POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
+POSTHOOK: Input: default@druid_table_n3
 POSTHOOK: Output: hdfs://### HDFS PATH ###
-1969-01-01 00:00:00.0 US/Pacific	-64.0	-16373.0	-64	-16373	-1073279343	-2147311592
+1969-01-01 00:00:00.0 US/Pacific	-1790.7781	-308691.84375	2	14255	-1073279343	-8577981133
 PREHOOK: query: EXPLAIN SELECT floor_year(`__time`), MAX(cfloat), MAX(cdouble), MAX(ctinyint), MAX(csmallint),MAX(cint), MAX(cbigint)
-FROM druid_table_alltypesorc GROUP BY floor_year(`__time`)
+FROM druid_table_n3 GROUP BY floor_year(`__time`)
 PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
-PREHOOK: Output: hdfs://### HDFS PATH ###
 POSTHOOK: query: EXPLAIN SELECT floor_year(`__time`), MAX(cfloat), MAX(cdouble), MAX(ctinyint), MAX(csmallint),MAX(cint), MAX(cbigint)
-FROM druid_table_alltypesorc GROUP BY floor_year(`__time`)
+FROM druid_table_n3 GROUP BY floor_year(`__time`)
 POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
-POSTHOOK: Output: hdfs://### HDFS PATH ###
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
 
@@ -136,11 +171,11 @@ STAGE PLANS:
       limit: -1
       Processor Tree:
         TableScan
-          alias: druid_table_alltypesorc
+          alias: druid_table_n3
           properties:
             druid.fieldNames timestamp,$f1,$f2,$f3,$f4,$f5,$f6
             druid.fieldTypes timestamp with local time zone,float,double,tinyint,smallint,int,bigint
-            druid.query.json {"queryType":"timeseries","dataSource":"default.druid_table_alltypesorc","descending":false,"granularity":{"type":"period","period":"P1Y","timeZone":"US/Pacific"},"aggregations":[{"type":"doubleMax","name":"$f1","fieldName":"cfloat"},{"type":"doubleMax","name":"$f2","fieldName":"cdouble"},{"type":"longMax","name":"$f3","fieldName":"ctinyint"},{"type":"longMax","name":"$f4","fieldName":"csmallint"},{"type":"longMax","name":"$f5","fieldName":"cint"},{"type":"longMax","name":"$f6","fieldName":"cbigint"}],"intervals":["1900-01-01T00:00:00.000Z/3000-01-01T00:00:00.000Z"],"context":{"skipEmptyBuckets":true}}
+            druid.query.json {"queryType":"timeseries","dataSource":"default.druid_table_n3","descending":false,"granularity":{"type":"period","period":"P1Y","timeZone":"US/Pacific"},"aggregations":[{"type":"doubleMax","name":"$f1","fieldName":"cfloat"},{"type":"doubleMax","name":"$f2","fieldName":"cdouble"},{"type":"longMax","name":"$f3","fieldName":"ctinyint"},{"type":"longMax","name":"$f4","fieldName":"csmallint"},{"type":"longMax","name":"$f5","fieldName":"cint"},{"type":"longMax","name":"$f6","fieldName":"cbigint"}],"intervals":["1900-01-01T00:00:00.000Z/3000-01-01T00:00:00.000Z"],"context":{"skipEmptyBuckets":true}}
             druid.query.type timeseries
           Select Operator
             expressions: timestamp (type: timestamp with local time zone), $f1 (type: float), $f2 (type: double), $f3 (type: tinyint), $f4 (type: smallint), $f5 (type: int), $f6 (type: bigint)
@@ -148,24 +183,20 @@ STAGE PLANS:
             ListSink
 
 PREHOOK: query: SELECT floor_year(`__time`), MAX(cfloat), MAX(cdouble), MAX(ctinyint), MAX(csmallint),MAX(cint), MAX(cbigint)
-FROM druid_table_alltypesorc GROUP BY floor_year(`__time`)
+FROM druid_table_n3 GROUP BY floor_year(`__time`)
 PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
+PREHOOK: Input: default@druid_table_n3
 PREHOOK: Output: hdfs://### HDFS PATH ###
 POSTHOOK: query: SELECT floor_year(`__time`), MAX(cfloat), MAX(cdouble), MAX(ctinyint), MAX(csmallint),MAX(cint), MAX(cbigint)
-FROM druid_table_alltypesorc GROUP BY floor_year(`__time`)
+FROM druid_table_n3 GROUP BY floor_year(`__time`)
 POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
+POSTHOOK: Input: default@druid_table_n3
 POSTHOOK: Output: hdfs://### HDFS PATH ###
-1969-01-01 00:00:00.0 US/Pacific	79.553	9763215.5639	62	16370	1073680599	2145498388
-PREHOOK: query: EXPLAIN SELECT cstring1, SUM(cdouble) as s FROM druid_table_alltypesorc GROUP BY cstring1 ORDER BY s ASC LIMIT 10
+1969-01-01 00:00:00.0 US/Pacific	769.16394	1.9565518E7	-45	-8101	1276572707	4923772860
+PREHOOK: query: EXPLAIN SELECT cstring1, SUM(cdouble) as s FROM druid_table_n3 GROUP BY cstring1 ORDER BY s ASC LIMIT 10
 PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
-PREHOOK: Output: hdfs://### HDFS PATH ###
-POSTHOOK: query: EXPLAIN SELECT cstring1, SUM(cdouble) as s FROM druid_table_alltypesorc GROUP BY cstring1 ORDER BY s ASC LIMIT 10
+POSTHOOK: query: EXPLAIN SELECT cstring1, SUM(cdouble) as s FROM druid_table_n3 GROUP BY cstring1 ORDER BY s ASC LIMIT 10
 POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
-POSTHOOK: Output: hdfs://### HDFS PATH ###
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
 
@@ -175,27 +206,27 @@ STAGE PLANS:
       limit: -1
       Processor Tree:
         TableScan
-          alias: druid_table_alltypesorc
+          alias: druid_table_n3
           properties:
             druid.fieldNames cstring1,$f1
             druid.fieldTypes string,double
-            druid.query.json {"queryType":"groupBy","dataSource":"default.druid_table_alltypesorc","granularity":"all","dimensions":[{"type":"default","dimension":"cstring1","outputName":"cstring1","outputType":"STRING"}],"limitSpec":{"type":"default","limit":10,"columns":[{"dimension":"$f1","direction":"ascending","dimensionOrder":"numeric"}]},"aggregations":[{"type":"doubleSum","name":"$f1","fieldName":"cdouble"}],"intervals":["1900-01-01T00:00:00.000Z/3000-01-01T00:00:00.000Z"]}
+            druid.query.json {"queryType":"groupBy","dataSource":"default.druid_table_n3","granularity":"all","dimensions":[{"type":"default","dimension":"cstring1","outputName":"cstring1","outputType":"STRING"}],"limitSpec":{"type":"default","limit":10,"columns":[{"dimension":"$f1","direction":"ascending","dimensionOrder":"numeric"}]},"aggregations":[{"type":"doubleSum","name":"$f1","fieldName":"cdouble"}],"intervals":["1900-01-01T00:00:00.000Z/3000-01-01T00:00:00.000Z"]}
             druid.query.type groupBy
           Select Operator
             expressions: cstring1 (type: string), $f1 (type: double)
             outputColumnNames: _col0, _col1
             ListSink
 
-PREHOOK: query: SELECT cstring1, SUM(cdouble) as s FROM druid_table_alltypesorc GROUP BY cstring1 ORDER BY s ASC LIMIT 10
+PREHOOK: query: SELECT cstring1, SUM(cdouble) as s FROM druid_table_n3 GROUP BY cstring1 ORDER BY s ASC LIMIT 10
 PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
+PREHOOK: Input: default@druid_table_n3
 PREHOOK: Output: hdfs://### HDFS PATH ###
-POSTHOOK: query: SELECT cstring1, SUM(cdouble) as s FROM druid_table_alltypesorc GROUP BY cstring1 ORDER BY s ASC LIMIT 10
+POSTHOOK: query: SELECT cstring1, SUM(cdouble) as s FROM druid_table_n3 GROUP BY cstring1 ORDER BY s ASC LIMIT 10
 POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
+POSTHOOK: Input: default@druid_table_n3
 POSTHOOK: Output: hdfs://### HDFS PATH ###
-1cGVWH7n1QU	-596096.6799999999
-821UdmGbkEf4j	-14161.826999999997
+1cGVWH7n1QU	-596096.6875
+821UdmGbkEf4j	-14161.827026367188
 00iT08	0.0
 02v8WnLuYDos3Cq	0.0
 yv1js	0.0
@@ -204,14 +235,10 @@ yv1js	0.0
 02vDyIVT752	0.0
 00PafC7v	0.0
 ytpx1RL8F2I	0.0
-PREHOOK: query: EXPLAIN SELECT cstring2, MAX(cdouble) FROM druid_table_alltypesorc GROUP BY cstring2 ORDER BY cstring2 ASC LIMIT 10
+PREHOOK: query: EXPLAIN SELECT cstring2, MAX(cdouble) FROM druid_table_n3 GROUP BY cstring2 ORDER BY cstring2 ASC LIMIT 10
 PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
-PREHOOK: Output: hdfs://### HDFS PATH ###
-POSTHOOK: query: EXPLAIN SELECT cstring2, MAX(cdouble) FROM druid_table_alltypesorc GROUP BY cstring2 ORDER BY cstring2 ASC LIMIT 10
+POSTHOOK: query: EXPLAIN SELECT cstring2, MAX(cdouble) FROM druid_table_n3 GROUP BY cstring2 ORDER BY cstring2 ASC LIMIT 10
 POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
-POSTHOOK: Output: hdfs://### HDFS PATH ###
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
 
@@ -221,26 +248,26 @@ STAGE PLANS:
       limit: -1
       Processor Tree:
         TableScan
-          alias: druid_table_alltypesorc
+          alias: druid_table_n3
           properties:
             druid.fieldNames cstring2,$f1
             druid.fieldTypes string,double
-            druid.query.json {"queryType":"groupBy","dataSource":"default.druid_table_alltypesorc","granularity":"all","dimensions":[{"type":"default","dimension":"cstring2","outputName":"cstring2","outputType":"STRING"}],"limitSpec":{"type":"default","limit":10,"columns":[{"dimension":"cstring2","direction":"ascending","dimensionOrder":"lexicographic"}]},"aggregations":[{"type":"doubleMax","name":"$f1","fieldName":"cdouble"}],"intervals":["1900-01-01T00:00:00.000Z/3000-01-01T00:00:00.000Z"]}
+            druid.query.json {"queryType":"groupBy","dataSource":"default.druid_table_n3","granularity":"all","dimensions":[{"type":"default","dimension":"cstring2","outputName":"cstring2","outputType":"STRING"}],"limitSpec":{"type":"default","limit":10,"columns":[{"dimension":"cstring2","direction":"ascending","dimensionOrder":"lexicographic"}]},"aggregations":[{"type":"doubleMax","name":"$f1","fieldName":"cdouble"}],"intervals":["1900-01-01T00:00:00.000Z/3000-01-01T00:00:00.000Z"]}
             druid.query.type groupBy
           Select Operator
             expressions: cstring2 (type: string), $f1 (type: double)
             outputColumnNames: _col0, _col1
             ListSink
 
-PREHOOK: query: SELECT cstring2, MAX(cdouble) FROM druid_table_alltypesorc GROUP BY cstring2 ORDER BY cstring2 ASC LIMIT 10
+PREHOOK: query: SELECT cstring2, MAX(cdouble) FROM druid_table_n3 GROUP BY cstring2 ORDER BY cstring2 ASC LIMIT 10
 PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
+PREHOOK: Input: default@druid_table_n3
 PREHOOK: Output: hdfs://### HDFS PATH ###
-POSTHOOK: query: SELECT cstring2, MAX(cdouble) FROM druid_table_alltypesorc GROUP BY cstring2 ORDER BY cstring2 ASC LIMIT 10
+POSTHOOK: query: SELECT cstring2, MAX(cdouble) FROM druid_table_n3 GROUP BY cstring2 ORDER BY cstring2 ASC LIMIT 10
 POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
+POSTHOOK: Input: default@druid_table_n3
 POSTHOOK: Output: hdfs://### HDFS PATH ###
-NULL	9763215.5639
+NULL	1.9565518E7
 0034fkcXMQI3	15601.0
 004J8y	0.0
 00GNm	-200.0
@@ -252,16 +279,12 @@ NULL	9763215.5639
 01EfkvNk6mjG44uxs	0.0
 PREHOOK: query: EXPLAIN
 SELECT `__time`
-FROM druid_table_alltypesorc ORDER BY `__time` ASC LIMIT 10
+FROM druid_table_n3 ORDER BY `__time` ASC LIMIT 10
 PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
-PREHOOK: Output: hdfs://### HDFS PATH ###
 POSTHOOK: query: EXPLAIN
 SELECT `__time`
-FROM druid_table_alltypesorc ORDER BY `__time` ASC LIMIT 10
+FROM druid_table_n3 ORDER BY `__time` ASC LIMIT 10
 POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
-POSTHOOK: Output: hdfs://### HDFS PATH ###
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -277,32 +300,23 @@ STAGE PLANS:
         Map 1 
             Map Operator Tree:
                 TableScan
-                  alias: druid_table_alltypesorc
+                  alias: druid_table_n3
                   properties:
                     druid.fieldNames vc
                     druid.fieldTypes timestamp with local time zone
-                    druid.query.json {"queryType":"scan","dataSource":"default.druid_table_alltypesorc","intervals":["1900-01-01T00:00:00.000Z/3000-01-01T00:00:00.000Z"],"virtualColumns":[{"type":"expression","name":"vc","expression":"\"__time\"","outputType":"LONG"}],"columns":["vc"],"resultFormat":"compactedList"}
+                    druid.query.json {"queryType":"scan","dataSource":"default.druid_table_n3","intervals":["1900-01-01T00:00:00.000Z/3000-01-01T00:00:00.000Z"],"virtualColumns":[{"type":"expression","name":"vc","expression":"\"__time\"","outputType":"LONG"}],"columns":["vc"],"resultFormat":"compactedList"}
                     druid.query.type scan
                   Statistics: Num rows: 9173 Data size: 348640 Basic stats: COMPLETE Column stats: NONE
-                  Top N Key Operator
-                    sort order: +
-                    keys: vc (type: timestamp with local time zone)
-                    null sort order: z
+                  Select Operator
+                    expressions: vc (type: timestamp with local time zone)
+                    outputColumnNames: _col0
                     Statistics: Num rows: 9173 Data size: 348640 Basic stats: COMPLETE Column stats: NONE
-                    top n: 10
-                    Select Operator
-                      expressions: vc (type: timestamp with local time zone)
-                      outputColumnNames: _col0
+                    Reduce Output Operator
+                      key expressions: _col0 (type: timestamp with local time zone)
+                      sort order: +
                       Statistics: Num rows: 9173 Data size: 348640 Basic stats: COMPLETE Column stats: NONE
-                      Reduce Output Operator
-                        key expressions: _col0 (type: timestamp with local time zone)
-                        null sort order: z
-                        sort order: +
-                        Statistics: Num rows: 9173 Data size: 348640 Basic stats: COMPLETE Column stats: NONE
-            Execution mode: llap
-            LLAP IO: no inputs
+                      TopN Hash Memory Usage: 0.1
         Reducer 2 
-            Execution mode: llap
             Reduce Operator Tree:
               Select Operator
                 expressions: KEY.reducesinkkey0 (type: timestamp with local time zone)
@@ -326,14 +340,14 @@ STAGE PLANS:
         ListSink
 
 PREHOOK: query: SELECT `__time`
-FROM druid_table_alltypesorc ORDER BY `__time` ASC LIMIT 10
+FROM druid_table_n3 ORDER BY `__time` ASC LIMIT 10
 PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
+PREHOOK: Input: default@druid_table_n3
 PREHOOK: Output: hdfs://### HDFS PATH ###
 POSTHOOK: query: SELECT `__time`
-FROM druid_table_alltypesorc ORDER BY `__time` ASC LIMIT 10
+FROM druid_table_n3 ORDER BY `__time` ASC LIMIT 10
 POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
+POSTHOOK: Input: default@druid_table_n3
 POSTHOOK: Output: hdfs://### HDFS PATH ###
 1969-12-31 15:59:00.0 US/Pacific
 1969-12-31 15:59:00.0 US/Pacific
@@ -347,18 +361,14 @@ POSTHOOK: Output: hdfs://### HDFS PATH ###
 1969-12-31 15:59:00.0 US/Pacific
 PREHOOK: query: EXPLAIN
 SELECT `__time`
-FROM druid_table_alltypesorc
+FROM druid_table_n3
 WHERE `__time` < '1970-03-01 00:00:00' ORDER BY `__time` ASC LIMIT 10
 PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
-PREHOOK: Output: hdfs://### HDFS PATH ###
 POSTHOOK: query: EXPLAIN
 SELECT `__time`
-FROM druid_table_alltypesorc
+FROM druid_table_n3
 WHERE `__time` < '1970-03-01 00:00:00' ORDER BY `__time` ASC LIMIT 10
 POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
-POSTHOOK: Output: hdfs://### HDFS PATH ###
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -374,32 +384,23 @@ STAGE PLANS:
         Map 1 
             Map Operator Tree:
                 TableScan
-                  alias: druid_table_alltypesorc
+                  alias: druid_table_n3
                   properties:
                     druid.fieldNames vc
                     druid.fieldTypes timestamp with local time zone
-                    druid.query.json {"queryType":"scan","dataSource":"default.druid_table_alltypesorc","intervals":["1900-01-01T00:00:00.000Z/1970-03-01T08:00:00.000Z"],"virtualColumns":[{"type":"expression","name":"vc","expression":"\"__time\"","outputType":"LONG"}],"columns":["vc"],"resultFormat":"compactedList"}
+                    druid.query.json {"queryType":"scan","dataSource":"default.druid_table_n3","intervals":["1900-01-01T00:00:00.000Z/1970-03-01T08:00:00.000Z"],"virtualColumns":[{"type":"expression","name":"vc","expression":"\"__time\"","outputType":"LONG"}],"columns":["vc"],"resultFormat":"compactedList"}
                     druid.query.type scan
                   Statistics: Num rows: 9173 Data size: 348640 Basic stats: COMPLETE Column stats: NONE
-                  Top N Key Operator
-                    sort order: +
-                    keys: vc (type: timestamp with local time zone)
-                    null sort order: z
+                  Select Operator
+                    expressions: vc (type: timestamp with local time zone)
+                    outputColumnNames: _col0
                     Statistics: Num rows: 9173 Data size: 348640 Basic stats: COMPLETE Column stats: NONE
-                    top n: 10
-                    Select Operator
-                      expressions: vc (type: timestamp with local time zone)
-                      outputColumnNames: _col0
+                    Reduce Output Operator
+                      key expressions: _col0 (type: timestamp with local time zone)
+                      sort order: +
                       Statistics: Num rows: 9173 Data size: 348640 Basic stats: COMPLETE Column stats: NONE
-                      Reduce Output Operator
-                        key expressions: _col0 (type: timestamp with local time zone)
-                        null sort order: z
-                        sort order: +
-                        Statistics: Num rows: 9173 Data size: 348640 Basic stats: COMPLETE Column stats: NONE
-            Execution mode: llap
-            LLAP IO: no inputs
+                      TopN Hash Memory Usage: 0.1
         Reducer 2 
-            Execution mode: llap
             Reduce Operator Tree:
               Select Operator
                 expressions: KEY.reducesinkkey0 (type: timestamp with local time zone)
@@ -423,16 +424,16 @@ STAGE PLANS:
         ListSink
 
 PREHOOK: query: SELECT `__time`
-FROM druid_table_alltypesorc
+FROM druid_table_n3
 WHERE `__time` < '1970-03-01 00:00:00' ORDER BY `__time` ASC LIMIT 10
 PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
+PREHOOK: Input: default@druid_table_n3
 PREHOOK: Output: hdfs://### HDFS PATH ###
 POSTHOOK: query: SELECT `__time`
-FROM druid_table_alltypesorc
+FROM druid_table_n3
 WHERE `__time` < '1970-03-01 00:00:00' ORDER BY `__time` ASC LIMIT 10
 POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
+POSTHOOK: Input: default@druid_table_n3
 POSTHOOK: Output: hdfs://### HDFS PATH ###
 1969-12-31 15:59:00.0 US/Pacific
 1969-12-31 15:59:00.0 US/Pacific
@@ -446,18 +447,14 @@ POSTHOOK: Output: hdfs://### HDFS PATH ###
 1969-12-31 15:59:00.0 US/Pacific
 PREHOOK: query: EXPLAIN
 SELECT `__time`
-FROM druid_table_alltypesorc
+FROM druid_table_n3
 WHERE `__time` >= '1968-01-01 00:00:00' AND `__time` <= '1970-03-01 00:00:00' ORDER BY `__time` ASC LIMIT 10
 PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
-PREHOOK: Output: hdfs://### HDFS PATH ###
 POSTHOOK: query: EXPLAIN
 SELECT `__time`
-FROM druid_table_alltypesorc
+FROM druid_table_n3
 WHERE `__time` >= '1968-01-01 00:00:00' AND `__time` <= '1970-03-01 00:00:00' ORDER BY `__time` ASC LIMIT 10
 POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
-POSTHOOK: Output: hdfs://### HDFS PATH ###
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -473,32 +470,23 @@ STAGE PLANS:
         Map 1 
             Map Operator Tree:
                 TableScan
-                  alias: druid_table_alltypesorc
+                  alias: druid_table_n3
                   properties:
                     druid.fieldNames vc
                     druid.fieldTypes timestamp with local time zone
-                    druid.query.json {"queryType":"scan","dataSource":"default.druid_table_alltypesorc","intervals":["1968-01-01T08:00:00.000Z/1970-03-01T08:00:00.001Z"],"virtualColumns":[{"type":"expression","name":"vc","expression":"\"__time\"","outputType":"LONG"}],"columns":["vc"],"resultFormat":"compactedList"}
+                    druid.query.json {"queryType":"scan","dataSource":"default.druid_table_n3","intervals":["1968-01-01T08:00:00.000Z/1970-03-01T08:00:00.001Z"],"virtualColumns":[{"type":"expression","name":"vc","expression":"\"__time\"","outputType":"LONG"}],"columns":["vc"],"resultFormat":"compactedList"}
                     druid.query.type scan
                   Statistics: Num rows: 9173 Data size: 348640 Basic stats: COMPLETE Column stats: NONE
-                  Top N Key Operator
-                    sort order: +
-                    keys: vc (type: timestamp with local time zone)
-                    null sort order: z
+                  Select Operator
+                    expressions: vc (type: timestamp with local time zone)
+                    outputColumnNames: _col0
                     Statistics: Num rows: 9173 Data size: 348640 Basic stats: COMPLETE Column stats: NONE
-                    top n: 10
-                    Select Operator
-                      expressions: vc (type: timestamp with local time zone)
-                      outputColumnNames: _col0
+                    Reduce Output Operator
+                      key expressions: _col0 (type: timestamp with local time zone)
+                      sort order: +
                       Statistics: Num rows: 9173 Data size: 348640 Basic stats: COMPLETE Column stats: NONE
-                      Reduce Output Operator
-                        key expressions: _col0 (type: timestamp with local time zone)
-                        null sort order: z
-                        sort order: +
-                        Statistics: Num rows: 9173 Data size: 348640 Basic stats: COMPLETE Column stats: NONE
-            Execution mode: llap
-            LLAP IO: no inputs
+                      TopN Hash Memory Usage: 0.1
         Reducer 2 
-            Execution mode: llap
             Reduce Operator Tree:
               Select Operator
                 expressions: KEY.reducesinkkey0 (type: timestamp with local time zone)
@@ -522,16 +510,16 @@ STAGE PLANS:
         ListSink
 
 PREHOOK: query: SELECT `__time`
-FROM druid_table_alltypesorc
+FROM druid_table_n3
 WHERE `__time` >= '1968-01-01 00:00:00' AND `__time` <= '1970-03-01 00:00:00' ORDER BY `__time` ASC LIMIT 10
 PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
+PREHOOK: Input: default@druid_table_n3
 PREHOOK: Output: hdfs://### HDFS PATH ###
 POSTHOOK: query: SELECT `__time`
-FROM druid_table_alltypesorc
+FROM druid_table_n3
 WHERE `__time` >= '1968-01-01 00:00:00' AND `__time` <= '1970-03-01 00:00:00' ORDER BY `__time` ASC LIMIT 10
 POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
+POSTHOOK: Input: default@druid_table_n3
 POSTHOOK: Output: hdfs://### HDFS PATH ###
 1969-12-31 15:59:00.0 US/Pacific
 1969-12-31 15:59:00.0 US/Pacific
@@ -545,20 +533,16 @@ POSTHOOK: Output: hdfs://### HDFS PATH ###
 1969-12-31 15:59:00.0 US/Pacific
 PREHOOK: query: EXPLAIN
 SELECT `__time`
-FROM druid_table_alltypesorc
+FROM druid_table_n3
 WHERE `__time` >= '1968-01-01 00:00:00' AND `__time` <= '1970-03-01 00:00:00'
     AND `__time` < '2011-01-01 00:00:00' ORDER BY `__time` ASC LIMIT 10
 PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
-PREHOOK: Output: hdfs://### HDFS PATH ###
 POSTHOOK: query: EXPLAIN
 SELECT `__time`
-FROM druid_table_alltypesorc
+FROM druid_table_n3
 WHERE `__time` >= '1968-01-01 00:00:00' AND `__time` <= '1970-03-01 00:00:00'
     AND `__time` < '2011-01-01 00:00:00' ORDER BY `__time` ASC LIMIT 10
 POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
-POSTHOOK: Output: hdfs://### HDFS PATH ###
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -574,32 +558,23 @@ STAGE PLANS:
         Map 1 
             Map Operator Tree:
                 TableScan
-                  alias: druid_table_alltypesorc
+                  alias: druid_table_n3
                   properties:
                     druid.fieldNames vc
                     druid.fieldTypes timestamp with local time zone
-                    druid.query.json {"queryType":"scan","dataSource":"default.druid_table_alltypesorc","intervals":["1968-01-01T08:00:00.000Z/1970-03-01T08:00:00.001Z"],"virtualColumns":[{"type":"expression","name":"vc","expression":"\"__time\"","outputType":"LONG"}],"columns":["vc"],"resultFormat":"compactedList"}
+                    druid.query.json {"queryType":"scan","dataSource":"default.druid_table_n3","intervals":["1968-01-01T08:00:00.000Z/1970-03-01T08:00:00.001Z"],"virtualColumns":[{"type":"expression","name":"vc","expression":"\"__time\"","outputType":"LONG"}],"columns":["vc"],"resultFormat":"compactedList"}
                     druid.query.type scan
                   Statistics: Num rows: 9173 Data size: 348640 Basic stats: COMPLETE Column stats: NONE
-                  Top N Key Operator
-                    sort order: +
-                    keys: vc (type: timestamp with local time zone)
-                    null sort order: z
+                  Select Operator
+                    expressions: vc (type: timestamp with local time zone)
+                    outputColumnNames: _col0
                     Statistics: Num rows: 9173 Data size: 348640 Basic stats: COMPLETE Column stats: NONE
-                    top n: 10
-                    Select Operator
-                      expressions: vc (type: timestamp with local time zone)
-                      outputColumnNames: _col0
+                    Reduce Output Operator
+                      key expressions: _col0 (type: timestamp with local time zone)
+                      sort order: +
                       Statistics: Num rows: 9173 Data size: 348640 Basic stats: COMPLETE Column stats: NONE
-                      Reduce Output Operator
-                        key expressions: _col0 (type: timestamp with local time zone)
-                        null sort order: z
-                        sort order: +
-                        Statistics: Num rows: 9173 Data size: 348640 Basic stats: COMPLETE Column stats: NONE
-            Execution mode: llap
-            LLAP IO: no inputs
+                      TopN Hash Memory Usage: 0.1
         Reducer 2 
-            Execution mode: llap
             Reduce Operator Tree:
               Select Operator
                 expressions: KEY.reducesinkkey0 (type: timestamp with local time zone)
@@ -623,18 +598,18 @@ STAGE PLANS:
         ListSink
 
 PREHOOK: query: SELECT `__time`
-FROM druid_table_alltypesorc
+FROM druid_table_n3
 WHERE `__time` >= '1968-01-01 00:00:00' AND `__time` <= '1970-03-01 00:00:00'
     AND `__time` < '2011-01-01 00:00:00' ORDER BY `__time` ASC LIMIT 10
 PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
+PREHOOK: Input: default@druid_table_n3
 PREHOOK: Output: hdfs://### HDFS PATH ###
 POSTHOOK: query: SELECT `__time`
-FROM druid_table_alltypesorc
+FROM druid_table_n3
 WHERE `__time` >= '1968-01-01 00:00:00' AND `__time` <= '1970-03-01 00:00:00'
     AND `__time` < '2011-01-01 00:00:00' ORDER BY `__time` ASC LIMIT 10
 POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
+POSTHOOK: Input: default@druid_table_n3
 POSTHOOK: Output: hdfs://### HDFS PATH ###
 1969-12-31 15:59:00.0 US/Pacific
 1969-12-31 15:59:00.0 US/Pacific
@@ -648,18 +623,14 @@ POSTHOOK: Output: hdfs://### HDFS PATH ###
 1969-12-31 15:59:00.0 US/Pacific
 PREHOOK: query: EXPLAIN
 SELECT `__time`
-FROM druid_table_alltypesorc
+FROM druid_table_n3
 WHERE `__time` BETWEEN '1968-01-01 00:00:00' AND '1970-01-01 00:00:00' ORDER BY `__time` ASC LIMIT 10
 PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
-PREHOOK: Output: hdfs://### HDFS PATH ###
 POSTHOOK: query: EXPLAIN
 SELECT `__time`
-FROM druid_table_alltypesorc
+FROM druid_table_n3
 WHERE `__time` BETWEEN '1968-01-01 00:00:00' AND '1970-01-01 00:00:00' ORDER BY `__time` ASC LIMIT 10
 POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
-POSTHOOK: Output: hdfs://### HDFS PATH ###
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -675,32 +646,23 @@ STAGE PLANS:
         Map 1 
             Map Operator Tree:
                 TableScan
-                  alias: druid_table_alltypesorc
+                  alias: druid_table_n3
                   properties:
                     druid.fieldNames vc
                     druid.fieldTypes timestamp with local time zone
-                    druid.query.json {"queryType":"scan","dataSource":"default.druid_table_alltypesorc","intervals":["1968-01-01T08:00:00.000Z/1970-01-01T08:00:00.001Z"],"virtualColumns":[{"type":"expression","name":"vc","expression":"\"__time\"","outputType":"LONG"}],"columns":["vc"],"resultFormat":"compactedList"}
+                    druid.query.json {"queryType":"scan","dataSource":"default.druid_table_n3","intervals":["1968-01-01T08:00:00.000Z/1970-01-01T08:00:00.001Z"],"virtualColumns":[{"type":"expression","name":"vc","expression":"\"__time\"","outputType":"LONG"}],"columns":["vc"],"resultFormat":"compactedList"}
                     druid.query.type scan
                   Statistics: Num rows: 9173 Data size: 348640 Basic stats: COMPLETE Column stats: NONE
-                  Top N Key Operator
-                    sort order: +
-                    keys: vc (type: timestamp with local time zone)
-                    null sort order: z
+                  Select Operator
+                    expressions: vc (type: timestamp with local time zone)
+                    outputColumnNames: _col0
                     Statistics: Num rows: 9173 Data size: 348640 Basic stats: COMPLETE Column stats: NONE
-                    top n: 10
-                    Select Operator
-                      expressions: vc (type: timestamp with local time zone)
-                      outputColumnNames: _col0
+                    Reduce Output Operator
+                      key expressions: _col0 (type: timestamp with local time zone)
+                      sort order: +
                       Statistics: Num rows: 9173 Data size: 348640 Basic stats: COMPLETE Column stats: NONE
-                      Reduce Output Operator
-                        key expressions: _col0 (type: timestamp with local time zone)
-                        null sort order: z
-                        sort order: +
-                        Statistics: Num rows: 9173 Data size: 348640 Basic stats: COMPLETE Column stats: NONE
-            Execution mode: llap
-            LLAP IO: no inputs
+                      TopN Hash Memory Usage: 0.1
         Reducer 2 
-            Execution mode: llap
             Reduce Operator Tree:
               Select Operator
                 expressions: KEY.reducesinkkey0 (type: timestamp with local time zone)
@@ -724,16 +686,16 @@ STAGE PLANS:
         ListSink
 
 PREHOOK: query: SELECT `__time`
-FROM druid_table_alltypesorc
+FROM druid_table_n3
 WHERE `__time` BETWEEN '1968-01-01 00:00:00' AND '1970-01-01 00:00:00' ORDER BY `__time` ASC LIMIT 10
 PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
+PREHOOK: Input: default@druid_table_n3
 PREHOOK: Output: hdfs://### HDFS PATH ###
 POSTHOOK: query: SELECT `__time`
-FROM druid_table_alltypesorc
+FROM druid_table_n3
 WHERE `__time` BETWEEN '1968-01-01 00:00:00' AND '1970-01-01 00:00:00' ORDER BY `__time` ASC LIMIT 10
 POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
+POSTHOOK: Input: default@druid_table_n3
 POSTHOOK: Output: hdfs://### HDFS PATH ###
 1969-12-31 15:59:00.0 US/Pacific
 1969-12-31 15:59:00.0 US/Pacific
@@ -747,20 +709,16 @@ POSTHOOK: Output: hdfs://### HDFS PATH ###
 1969-12-31 15:59:00.0 US/Pacific
 PREHOOK: query: EXPLAIN
 SELECT `__time`
-FROM druid_table_alltypesorc
+FROM druid_table_n3
 WHERE (`__time` BETWEEN '1968-01-01 00:00:00' AND '1970-01-01 00:00:00')
     OR (`__time` BETWEEN '1968-02-01 00:00:00' AND '1970-04-01 00:00:00') ORDER BY `__time` ASC LIMIT 10
 PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
-PREHOOK: Output: hdfs://### HDFS PATH ###
 POSTHOOK: query: EXPLAIN
 SELECT `__time`
-FROM druid_table_alltypesorc
+FROM druid_table_n3
 WHERE (`__time` BETWEEN '1968-01-01 00:00:00' AND '1970-01-01 00:00:00')
     OR (`__time` BETWEEN '1968-02-01 00:00:00' AND '1970-04-01 00:00:00') ORDER BY `__time` ASC LIMIT 10
 POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
-POSTHOOK: Output: hdfs://### HDFS PATH ###
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -776,32 +734,23 @@ STAGE PLANS:
         Map 1 
             Map Operator Tree:
                 TableScan
-                  alias: druid_table_alltypesorc
+                  alias: druid_table_n3
                   properties:
                     druid.fieldNames vc
                     druid.fieldTypes timestamp with local time zone
-                    druid.query.json {"queryType":"scan","dataSource":"default.druid_table_alltypesorc","intervals":["1968-01-01T08:00:00.000Z/1970-04-01T08:00:00.001Z"],"virtualColumns":[{"type":"expression","name":"vc","expression":"\"__time\"","outputType":"LONG"}],"columns":["vc"],"resultFormat":"compactedList"}
+                    druid.query.json {"queryType":"scan","dataSource":"default.druid_table_n3","intervals":["1968-01-01T08:00:00.000Z/1970-04-01T08:00:00.001Z"],"virtualColumns":[{"type":"expression","name":"vc","expression":"\"__time\"","outputType":"LONG"}],"columns":["vc"],"resultFormat":"compactedList"}
                     druid.query.type scan
                   Statistics: Num rows: 9173 Data size: 348640 Basic stats: COMPLETE Column stats: NONE
-                  Top N Key Operator
-                    sort order: +
-                    keys: vc (type: timestamp with local time zone)
-                    null sort order: z
+                  Select Operator
+                    expressions: vc (type: timestamp with local time zone)
+                    outputColumnNames: _col0
                     Statistics: Num rows: 9173 Data size: 348640 Basic stats: COMPLETE Column stats: NONE
-                    top n: 10
-                    Select Operator
-                      expressions: vc (type: timestamp with local time zone)
-                      outputColumnNames: _col0
+                    Reduce Output Operator
+                      key expressions: _col0 (type: timestamp with local time zone)
+                      sort order: +
                       Statistics: Num rows: 9173 Data size: 348640 Basic stats: COMPLETE Column stats: NONE
-                      Reduce Output Operator
-                        key expressions: _col0 (type: timestamp with local time zone)
-                        null sort order: z
-                        sort order: +
-                        Statistics: Num rows: 9173 Data size: 348640 Basic stats: COMPLETE Column stats: NONE
-            Execution mode: llap
-            LLAP IO: no inputs
+                      TopN Hash Memory Usage: 0.1
         Reducer 2 
-            Execution mode: llap
             Reduce Operator Tree:
               Select Operator
                 expressions: KEY.reducesinkkey0 (type: timestamp with local time zone)
@@ -825,18 +774,18 @@ STAGE PLANS:
         ListSink
 
 PREHOOK: query: SELECT `__time`
-FROM druid_table_alltypesorc
+FROM druid_table_n3
 WHERE (`__time` BETWEEN '1968-01-01 00:00:00' AND '1970-01-01 00:00:00')
     OR (`__time` BETWEEN '1968-02-01 00:00:00' AND '1970-04-01 00:00:00') ORDER BY `__time` ASC LIMIT 10
 PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
+PREHOOK: Input: default@druid_table_n3
 PREHOOK: Output: hdfs://### HDFS PATH ###
 POSTHOOK: query: SELECT `__time`
-FROM druid_table_alltypesorc
+FROM druid_table_n3
 WHERE (`__time` BETWEEN '1968-01-01 00:00:00' AND '1970-01-01 00:00:00')
     OR (`__time` BETWEEN '1968-02-01 00:00:00' AND '1970-04-01 00:00:00') ORDER BY `__time` ASC LIMIT 10
 POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
+POSTHOOK: Input: default@druid_table_n3
 POSTHOOK: Output: hdfs://### HDFS PATH ###
 1969-12-31 15:59:00.0 US/Pacific
 1969-12-31 15:59:00.0 US/Pacific
@@ -848,14 +797,10 @@ POSTHOOK: Output: hdfs://### HDFS PATH ###
 1969-12-31 15:59:00.0 US/Pacific
 1969-12-31 15:59:00.0 US/Pacific
 1969-12-31 15:59:00.0 US/Pacific
-PREHOOK: query: explain select (cstring1 is null ) AS is_null, (cint is not null ) as isnotnull FROM druid_table_alltypesorc
+PREHOOK: query: explain select (cstring1 is null ) AS is_null, (cint is not null ) as isnotnull FROM druid_table_n3
 PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
-PREHOOK: Output: hdfs://### HDFS PATH ###
-POSTHOOK: query: explain select (cstring1 is null ) AS is_null, (cint is not null ) as isnotnull FROM druid_table_alltypesorc
+POSTHOOK: query: explain select (cstring1 is null ) AS is_null, (cint is not null ) as isnotnull FROM druid_table_n3
 POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
-POSTHOOK: Output: hdfs://### HDFS PATH ###
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
 
@@ -865,96 +810,14 @@ STAGE PLANS:
       limit: -1
       Processor Tree:
         TableScan
-          alias: druid_table_alltypesorc
+          alias: druid_table_n3
           properties:
             druid.fieldNames vc,vc0
             druid.fieldTypes boolean,boolean
-            druid.query.json {"queryType":"scan","dataSource":"default.druid_table_alltypesorc","intervals":["1900-01-01T00:00:00.000Z/3000-01-01T00:00:00.000Z"],"virtualColumns":[{"type":"expression","name":"vc","expression":"isnull(\"cstring1\")","outputType":"LONG"},{"type":"expression","name":"vc0","expression":"notnull(\"cint\")","outputType":"LONG"}],"columns":["vc","vc0"],"resultFormat":"compactedList"}
+            druid.query.json {"queryType":"scan","dataSource":"default.druid_table_n3","intervals":["1900-01-01T00:00:00.000Z/3000-01-01T00:00:00.000Z"],"virtualColumns":[{"type":"expression","name":"vc","expression":"isnull(\"cstring1\")","outputType":"FLOAT"},{"type":"expression","name":"vc0","expression":"notnull(\"cint\")","outputType":"FLOAT"}],"columns":["vc","vc0"],"resultFormat":"compactedList"}
             druid.query.type scan
           Select Operator
             expressions: vc (type: boolean), vc0 (type: boolean)
             outputColumnNames: _col0, _col1
             ListSink
 
-PREHOOK: query: explain select substring(to_date(`__time`), 4) from druid_table_alltypesorc limit 5
-PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
-PREHOOK: Output: hdfs://### HDFS PATH ###
-POSTHOOK: query: explain select substring(to_date(`__time`), 4) from druid_table_alltypesorc limit 5
-POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
-POSTHOOK: Output: hdfs://### HDFS PATH ###
-STAGE DEPENDENCIES:
-  Stage-0 is a root stage
-
-STAGE PLANS:
-  Stage: Stage-0
-    Fetch Operator
-      limit: -1
-      Processor Tree:
-        TableScan
-          alias: druid_table_alltypesorc
-          properties:
-            druid.fieldNames vc
-            druid.fieldTypes string
-            druid.query.json {"queryType":"scan","dataSource":"default.druid_table_alltypesorc","intervals":["1900-01-01T00:00:00.000Z/3000-01-01T00:00:00.000Z"],"virtualColumns":[{"type":"expression","name":"vc","expression":"substring(timestamp_format(timestamp_floor(\"__time\",'P1D','','US/Pacific'),'yyyy-MM-dd','UTC'), 3, -1)","outputType":"STRING"}],"columns":["vc"],"resultFormat":"compactedList","limit":5}
-            druid.query.type scan
-          Select Operator
-            expressions: vc (type: string)
-            outputColumnNames: _col0
-            ListSink
-
-PREHOOK: query: select substring(to_date(`__time`), 4) from druid_table_alltypesorc limit 5
-PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
-PREHOOK: Output: hdfs://### HDFS PATH ###
-POSTHOOK: query: select substring(to_date(`__time`), 4) from druid_table_alltypesorc limit 5
-POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
-POSTHOOK: Output: hdfs://### HDFS PATH ###
-9-12-31
-9-12-31
-9-12-31
-9-12-31
-9-12-31
-PREHOOK: query: explain select substring(cast(to_date(`__time`) as string), 4) from druid_table_alltypesorc limit 5
-PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
-PREHOOK: Output: hdfs://### HDFS PATH ###
-POSTHOOK: query: explain select substring(cast(to_date(`__time`) as string), 4) from druid_table_alltypesorc limit 5
-POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
-POSTHOOK: Output: hdfs://### HDFS PATH ###
-STAGE DEPENDENCIES:
-  Stage-0 is a root stage
-
-STAGE PLANS:
-  Stage: Stage-0
-    Fetch Operator
-      limit: -1
-      Processor Tree:
-        TableScan
-          alias: druid_table_alltypesorc
-          properties:
-            druid.fieldNames vc
-            druid.fieldTypes string
-            druid.query.json {"queryType":"scan","dataSource":"default.druid_table_alltypesorc","intervals":["1900-01-01T00:00:00.000Z/3000-01-01T00:00:00.000Z"],"virtualColumns":[{"type":"expression","name":"vc","expression":"substring(timestamp_format(timestamp_floor(\"__time\",'P1D','','US/Pacific'),'yyyy-MM-dd','UTC'), 3, -1)","outputType":"STRING"}],"columns":["vc"],"resultFormat":"compactedList","limit":5}
-            druid.query.type scan
-          Select Operator
-            expressions: vc (type: string)
-            outputColumnNames: _col0
-            ListSink
-
-PREHOOK: query: select substring(cast(to_date(`__time`) as string), 4) from druid_table_alltypesorc limit 5
-PREHOOK: type: QUERY
-PREHOOK: Input: default@druid_table_alltypesorc
-PREHOOK: Output: hdfs://### HDFS PATH ###
-POSTHOOK: query: select substring(cast(to_date(`__time`) as string), 4) from druid_table_alltypesorc limit 5
-POSTHOOK: type: QUERY
-POSTHOOK: Input: default@druid_table_alltypesorc
-POSTHOOK: Output: hdfs://### HDFS PATH ###
-9-12-31
-9-12-31
-9-12-31
-9-12-31
-9-12-31

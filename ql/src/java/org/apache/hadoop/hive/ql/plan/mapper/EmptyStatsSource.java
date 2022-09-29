@@ -18,11 +18,10 @@
 
 package org.apache.hadoop.hive.ql.plan.mapper;
 
-import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import org.apache.hadoop.hive.ql.optimizer.signature.OpTreeSignature;
-import org.apache.hadoop.hive.ql.optimizer.signature.RelTreeSignature;
 import org.apache.hadoop.hive.ql.stats.OperatorStats;
 
 public final class EmptyStatsSource implements StatsSource {
@@ -43,16 +42,8 @@ public final class EmptyStatsSource implements StatsSource {
   }
 
   @Override
-  public Optional<OperatorStats> lookup(RelTreeSignature of) {
-    return Optional.empty();
-  }
-
-
-  @Override
-  public void load(List<PersistedRuntimeStats> statMap) {
-    throw new RuntimeException();
-    // TODO Auto-generated method stub
-    //
+  public void putAll(Map<OpTreeSignature, OperatorStats> map) {
+    throw new RuntimeException("This is an empty source!");
   }
 
 }

@@ -18,14 +18,17 @@
 
 package org.apache.hadoop.hive.ql;
 
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.ql.processors.CommandProcessorException;
+import org.apache.hadoop.hive.ql.io.AcidUtils;
+import org.apache.hadoop.hive.ql.lockmgr.TestDbTxnManager2;
+import org.apache.hadoop.hive.ql.processors.CommandProcessorResponse;
 import org.junit.Assert;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.ExpectedException;
 import org.junit.rules.TemporaryFolder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,13 +54,9 @@ public class TestTxnAddPartition extends TxnCommandsBaseForTests {
       ).getPath().replaceAll("\\\\", "/");
   @Rule
   public TemporaryFolder folder = new TemporaryFolder();
-  @Rule
-  public ExpectedException exception = ExpectedException.none();
-
-
 
   @Override
-  protected String getTestDataDir() {
+  String getTestDataDir() {
     return TEST_DATA_DIR;
   }
 
@@ -112,10 +111,10 @@ public class TestTxnAddPartition extends TxnCommandsBaseForTests {
 
     runStatementOnDriver("export table Tstage to '" + getWarehouseDir() + "/3'");
     //should be an error since p=3 exists
-    CommandProcessorException e =
-        runStatementOnDriverNegative("ALTER TABLE T ADD PARTITION (p=0) location '" + getWarehouseDir() + "/3/data'");
-    Assert.assertTrue("add existing partition",
-        e.getMessage() != null && e.getMessage().contains("Partition already exists"));
+    CommandProcessorResponse cpr = runStatementOnDriverNegative(
+        "ALTER TABLE T ADD PARTITION (p=0) location '" + getWarehouseDir() + "/3/data'");
+    Assert.assertTrue("add existing partition", cpr.getErrorMessage() != null
+        && cpr.getErrorMessage().contains("Partition already exists"));
 
     //should be no-op since p=3 exists
     String stmt = "ALTER TABLE T ADD IF NOT EXISTS " +
@@ -186,10 +185,10 @@ public class TestTxnAddPartition extends TxnCommandsBaseForTests {
 
     runStatementOnDriver("export table Tstage to '" + getWarehouseDir() + "/3'");
     //should be an error since p=3 exists
-    CommandProcessorException e =
-        runStatementOnDriverNegative("ALTER TABLE T ADD PARTITION (p=0) location '" + getWarehouseDir() + "/3/data'");
-    Assert.assertTrue("add existing partition",
-        e.getMessage() != null && e.getMessage().contains("Partition already exists"));
+    CommandProcessorResponse cpr = runStatementOnDriverNegative(
+        "ALTER TABLE T ADD PARTITION (p=0) location '" + getWarehouseDir() + "/3/data'");
+    Assert.assertTrue("add existing partition", cpr.getErrorMessage() != null
+        && cpr.getErrorMessage().contains("Partition already exists"));
 
     //should be no-op since p=3 exists
     runStatementOnDriver("ALTER TABLE T ADD IF NOT EXISTS " +
@@ -224,9 +223,9 @@ public class TestTxnAddPartition extends TxnCommandsBaseForTests {
     List<String> rs = runStatementOnDriver(
         "select ROW__ID, p, a, b, INPUT__FILE__NAME from T order by p, ROW__ID");
     String[][] expected = new String[][]{
-        {"{\"writeid\":1,\"bucketid\":536936448,\"rowid\":0}\t0\t0\t2",
+        {"{\"writeid\":1,\"bucketid\":536936448,\"rowid\":0}\t0\t1\t4",
             "warehouse/t/p=0/delta_0000001_0000001_0000/000001_0"},
-        {"{\"writeid\":1,\"bucketid\":536936448,\"rowid\":1}\t0\t1\t4",
+        {"{\"writeid\":1,\"bucketid\":536936448,\"rowid\":1}\t0\t0\t2",
             "warehouse/t/p=0/delta_0000001_0000001_0000/000001_0"}};
     checkExpected(rs, expected, "add partition (p=0)");
   }
@@ -252,8 +251,10 @@ public class TestTxnAddPartition extends TxnCommandsBaseForTests {
     runStatementOnDriver("insert into Tstage values(0,2),(1,4)");
     runStatementOnDriver("export table Tstage to '" + getWarehouseDir() + "/1'");
     FileSystem fs = FileSystem.get(hiveConf);
-    fs.rename(new Path(getWarehouseDir() + "/1/data/000000_0"), new Path(getWarehouseDir() + "/1/data/part-m000"));
-    fs.rename(new Path(getWarehouseDir() + "/1/data/000001_0"), new Path(getWarehouseDir() + "/1/data/part-m001"));
+    FileStatus[] status = fs.listStatus(new Path(getWarehouseDir() + "/1/data"),
+        AcidUtils.originalBucketFilter);
+    boolean b = fs.rename(new Path(getWarehouseDir() + "/1/data/000000_0"), new Path(getWarehouseDir() + "/1/data/part-m000"));
+    b = fs.rename(new Path(getWarehouseDir() + "/1/data/000001_0"), new Path(getWarehouseDir() + "/1/data/part-m001"));
 
     runStatementOnDriver("ALTER TABLE T ADD PARTITION (p=0) location '"
         + getWarehouseDir() + "/1/data'");
@@ -261,28 +262,18 @@ public class TestTxnAddPartition extends TxnCommandsBaseForTests {
     List<String> rs = runStatementOnDriver(
         "select ROW__ID, p, a, b, INPUT__FILE__NAME from T order by p, ROW__ID");
     String[][] expected = new String[][]{
-        {"{\"writeid\":1,\"bucketid\":536936448,\"rowid\":0}\t0\t0\t2",
+        {"{\"writeid\":1,\"bucketid\":536936448,\"rowid\":0}\t0\t1\t4",
             "warehouse/t/p=0/delta_0000001_0000001_0000/000001_0"},
-        {"{\"writeid\":1,\"bucketid\":536936448,\"rowid\":1}\t0\t1\t4",
+        {"{\"writeid\":1,\"bucketid\":536936448,\"rowid\":1}\t0\t0\t2",
             "warehouse/t/p=0/delta_0000001_0000001_0000/000001_0"}};
     checkExpected(rs, expected, "add partition (p=0)");
   }
-  
+
+  /**
+   * {@link TestDbTxnManager2#testAddPartitionLocks}
+   */
+  @Ignore
   @Test
-  public void addPartitionTransactional() throws Exception {
-    exception.expect(RuntimeException.class);
-    exception.expectMessage("was created by Acid write");
-
-    runStatementOnDriver("drop table if exists T");
-    runStatementOnDriver("drop table if exists Tstage");
-    runStatementOnDriver("create table T (a int, b int) partitioned by (p int) " +
-        "clustered by (a) into 2 buckets stored as orc tblproperties('transactional'='true')");
-    runStatementOnDriver("create table Tstage (a int, b int)  partitioned by (p int) clustered by (a) into 2 " +
-        "buckets stored as orc tblproperties('transactional'='true')");
-
-    runStatementOnDriver("insert into Tstage partition(p=1) values(0,2),(1,4)");
-
-    runStatementOnDriver("ALTER TABLE T ADD PARTITION (p=0) location '"
-        + getWarehouseDir() + "/tstage/p=1/delta_0000001_0000001_0000/bucket_00001_0'");
+  public void testLocks() throws Exception {
   }
 }

@@ -19,7 +19,6 @@
 package org.apache.hadoop.hive.ql.parse.repl.dump.events;
 
 import org.apache.hadoop.hive.metastore.api.NotificationEvent;
-import org.apache.hadoop.hive.metastore.messaging.json.JSONMessageEncoder;
 import org.apache.hadoop.hive.ql.parse.repl.DumpType;
 import org.junit.Test;
 
@@ -54,11 +53,9 @@ public class TestEventHandlerFactory {
 
   @Test
   public void shouldProvideDefaultHandlerWhenNothingRegisteredForThatEvent() {
-    NotificationEvent event = new NotificationEvent(Long.MAX_VALUE, Integer.MAX_VALUE,
-        "shouldGiveDefaultHandler", "s");
-    event.setMessageFormat(JSONMessageEncoder.FORMAT);
     EventHandler eventHandler =
-        EventHandlerFactory.handlerFor(event);
+        EventHandlerFactory.handlerFor(new NotificationEvent(Long.MAX_VALUE, Integer.MAX_VALUE,
+            "shouldGiveDefaultHandler", "s"));
     assertTrue(eventHandler instanceof DefaultHandler);
   }
 

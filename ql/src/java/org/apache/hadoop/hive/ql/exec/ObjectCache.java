@@ -48,6 +48,7 @@ public interface ObjectCache {
    *
    * @param <T>
    * @param key
+   *          function to generate the object if it's not there
    * @return the last cached object with the key, null if none.
    */
   public <T> T retrieve(String key) throws HiveException;

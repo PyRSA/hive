@@ -24,10 +24,9 @@ import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 
-
+import junit.framework.TestCase;
 
 import org.apache.hadoop.hive.metastore.Warehouse;
-import org.apache.hadoop.hive.ql.util.NullOrdering;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hadoop.fs.FSDataInputStream;
@@ -35,7 +34,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.CompilationOpContext;
-import org.apache.hadoop.hive.ql.TaskQueue;
+import org.apache.hadoop.hive.ql.DriverContext;
 import org.apache.hadoop.hive.ql.QueryState;
 import org.apache.hadoop.hive.ql.exec.mr.ExecDriver;
 import org.apache.hadoop.hive.ql.exec.mr.MapRedTask;
@@ -64,21 +63,18 @@ import org.apache.hadoop.hive.serde.serdeConstants;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
 import org.apache.hadoop.hive.shims.ShimLoader;
 import org.apache.hadoop.mapred.TextInputFormat;
-import static org.junit.Assert.assertEquals;
-import org.junit.Before;
-import org.junit.Test;
 
 /**
  * Mimics the actual query compiler in generating end to end plans and testing
  * them out.
  *
  */
-public class TestExecDriver {
+public class TestExecDriver extends TestCase {
 
   static QueryState queryState;
   static HiveConf conf;
 
-  private static final String TMPDIR;
+  private static final String tmpdir;
   private static final Logger LOG = LoggerFactory.getLogger(TestExecDriver.class);
   private static final Path tmppath;
   private static Hive db;
@@ -96,19 +92,19 @@ public class TestExecDriver {
 
       SessionState.start(conf);
 
-      TMPDIR = System.getProperty("test.tmp.dir");
-      tmppath = new Path(TMPDIR);
+      tmpdir = System.getProperty("test.tmp.dir");
+      tmppath = new Path(tmpdir);
 
       fs = FileSystem.get(conf);
       if (fs.exists(tmppath) &&
           !ShimLoader.getHadoopShims().isDirectory(fs.getFileStatus(tmppath))) {
-        throw new RuntimeException(TMPDIR + " exists but is not a directory");
+        throw new RuntimeException(tmpdir + " exists but is not a directory");
       }
 
       if (!fs.exists(tmppath)) {
         if (!fs.mkdirs(tmppath)) {
           throw new RuntimeException("Could not make scratch directory "
-              + TMPDIR);
+              + tmpdir);
         }
       }
       LOG.info("Directory of actual files: " + tmppath);
@@ -146,7 +142,7 @@ public class TestExecDriver {
         db.createTable(src, cols, null, TextInputFormat.class,
             HiveIgnoreKeyTextOutputFormat.class);
         db.loadTable(hadoopDataFile[i], src, LoadFileType.KEEP_EXISTING,
-           true, false, false, true, null, 0, false, false);
+           true, false, false, false, null, 0, false);
         i++;
       }
 
@@ -157,8 +153,8 @@ public class TestExecDriver {
 
   MapredWork mr;
 
-  @Before
-  public void setUp() {
+  @Override
+  protected void setUp() {
     mr = PlanUtils.getMapRedWork();
     ctx = new CompilationOpContext();
   }
@@ -172,18 +168,18 @@ public class TestExecDriver {
     String testFileDir = conf.get("test.data.files");
 
     // inbuilt assumption that the testdir has only one output file.
-    Path diTest = new Path(tmppath, testdir);
-    if (!fs.exists(diTest)) {
-      throw new RuntimeException(TMPDIR + File.separator + testdir + " does not exist");
+    Path di_test = new Path(tmppath, testdir);
+    if (!fs.exists(di_test)) {
+      throw new RuntimeException(tmpdir + File.separator + testdir + " does not exist");
     }
-    if (!ShimLoader.getHadoopShims().isDirectory(fs.getFileStatus(diTest))) {
-      throw new RuntimeException(TMPDIR + File.separator + testdir + " is not a directory");
+    if (!ShimLoader.getHadoopShims().isDirectory(fs.getFileStatus(di_test))) {
+      throw new RuntimeException(tmpdir + File.separator + testdir + " is not a directory");
     }
-    FSDataInputStream fiTest = fs.open((fs.listStatus(diTest))[0].getPath());
+    FSDataInputStream fi_test = fs.open((fs.listStatus(di_test))[0].getPath());
 
-    FileInputStream fiGold = new FileInputStream(new File(testFileDir, datafile));
-    if (!Utilities.contentsEqual(fiGold, fiTest, false)) {
-      LOG.error(diTest.toString() + " does not match " + datafile);
+    FileInputStream fi_gold = new FileInputStream(new File(testFileDir,datafile));
+    if (!Utilities.contentsEqual(fi_gold, fi_test, false)) {
+      LOG.error(di_test.toString() + " does not match " + datafile);
       assertEquals(false, true);
     }
   }
@@ -217,7 +213,7 @@ public class TestExecDriver {
   @SuppressWarnings("unchecked")
   private void populateMapPlan1(Table src) throws Exception {
 
-    Operator<FileSinkDesc> op2 = OperatorFactory.get(ctx, new FileSinkDesc(new Path(TMPDIR + File.separator
+    Operator<FileSinkDesc> op2 = OperatorFactory.get(ctx, new FileSinkDesc(new Path(tmpdir + File.separator
         + "mapplan1.out"), Utilities.defaultTd, true));
     Operator<FilterDesc> op1 = OperatorFactory.get(getTestFilterDesc("key"), op2);
 
@@ -227,7 +223,7 @@ public class TestExecDriver {
   @SuppressWarnings("unchecked")
   private void populateMapPlan2(Table src) throws Exception {
 
-    Operator<FileSinkDesc> op3 = OperatorFactory.get(ctx, new FileSinkDesc(new Path(TMPDIR + File.separator
+    Operator<FileSinkDesc> op3 = OperatorFactory.get(ctx, new FileSinkDesc(new Path(tmpdir + File.separator
         + "mapplan2.out"), Utilities.defaultTd, false));
 
     Operator<ScriptDesc> op2 = OperatorFactory.get(new ScriptDesc("cat",
@@ -253,7 +249,7 @@ public class TestExecDriver {
     Operator<ReduceSinkDesc> op1 = OperatorFactory.get(ctx, PlanUtils
         .getReduceSinkDesc(Utilities.makeList(getStringColumn("key")),
         Utilities.makeList(getStringColumn("value")), outputColumns, true,
-        -1, 1, -1, AcidUtils.Operation.NOT_ACID, NullOrdering.NULLS_LAST));
+        -1, 1, -1, AcidUtils.Operation.NOT_ACID));
 
     addMapWork(mr, src, "a", op1);
     ReduceWork rWork = new ReduceWork();
@@ -263,7 +259,7 @@ public class TestExecDriver {
     mr.setReduceWork(rWork);
 
     // reduce side work
-    Operator<FileSinkDesc> op3 = OperatorFactory.get(ctx, new FileSinkDesc(new Path(TMPDIR + File.separator
+    Operator<FileSinkDesc> op3 = OperatorFactory.get(ctx, new FileSinkDesc(new Path(tmpdir + File.separator
         + "mapredplan1.out"), Utilities.defaultTd, false));
 
     List<ExprNodeDesc> cols = new ArrayList<ExprNodeDesc>();
@@ -286,7 +282,7 @@ public class TestExecDriver {
         .getReduceSinkDesc(Utilities.makeList(getStringColumn("key")),
         Utilities
         .makeList(getStringColumn("key"), getStringColumn("value")),
-        outputColumns, false, -1, 1, -1, AcidUtils.Operation.NOT_ACID, NullOrdering.NULLS_LAST));
+        outputColumns, false, -1, 1, -1, AcidUtils.Operation.NOT_ACID));
 
     addMapWork(mr, src, "a", op1);
     ReduceWork rWork = new ReduceWork();
@@ -296,7 +292,7 @@ public class TestExecDriver {
     mr.setReduceWork(rWork);
 
     // reduce side work
-    Operator<FileSinkDesc> op4 = OperatorFactory.get(ctx, new FileSinkDesc(new Path(TMPDIR + File.separator
+    Operator<FileSinkDesc> op4 = OperatorFactory.get(ctx, new FileSinkDesc(new Path(tmpdir + File.separator
         + "mapredplan2.out"), Utilities.defaultTd, false));
 
     Operator<FilterDesc> op3 = OperatorFactory.get(getTestFilterDesc("0"), op4);
@@ -322,14 +318,14 @@ public class TestExecDriver {
     Operator<ReduceSinkDesc> op1 = OperatorFactory.get(ctx, PlanUtils
         .getReduceSinkDesc(Utilities.makeList(getStringColumn("key")),
         Utilities.makeList(getStringColumn("value")), outputColumns, true,
-        Byte.valueOf((byte) 0), 1, -1, AcidUtils.Operation.NOT_ACID, NullOrdering.NULLS_LAST));
+        Byte.valueOf((byte) 0), 1, -1, AcidUtils.Operation.NOT_ACID));
 
     addMapWork(mr, src, "a", op1);
 
     Operator<ReduceSinkDesc> op2 = OperatorFactory.get(ctx, PlanUtils
         .getReduceSinkDesc(Utilities.makeList(getStringColumn("key")),
         Utilities.makeList(getStringColumn("key")), outputColumns, true,
-        Byte.valueOf((byte) 1), Integer.MAX_VALUE, -1, AcidUtils.Operation.NOT_ACID, NullOrdering.NULLS_LAST));
+        Byte.valueOf((byte) 1), Integer.MAX_VALUE, -1, AcidUtils.Operation.NOT_ACID));
 
     addMapWork(mr, src2, "b", op2);
     ReduceWork rWork = new ReduceWork();
@@ -342,7 +338,7 @@ public class TestExecDriver {
     rWork.getTagToValueDesc().add(op2.getConf().getValueSerializeInfo());
 
     // reduce side work
-    Operator<FileSinkDesc> op4 = OperatorFactory.get(ctx, new FileSinkDesc(new Path(TMPDIR + File.separator
+    Operator<FileSinkDesc> op4 = OperatorFactory.get(ctx, new FileSinkDesc(new Path(tmpdir + File.separator
         + "mapredplan3.out"), Utilities.defaultTd, false));
 
     Operator<SelectDesc> op5 = OperatorFactory.get(new SelectDesc(Utilities
@@ -365,8 +361,7 @@ public class TestExecDriver {
     Operator<ReduceSinkDesc> op1 = OperatorFactory.get(ctx, PlanUtils
         .getReduceSinkDesc(Utilities.makeList(getStringColumn("tkey")),
         Utilities.makeList(getStringColumn("tkey"),
-        getStringColumn("tvalue")), outputColumns, false, -1, 1, -1,
-                AcidUtils.Operation.NOT_ACID, NullOrdering.NULLS_LAST));
+        getStringColumn("tvalue")), outputColumns, false, -1, 1, -1, AcidUtils.Operation.NOT_ACID));
 
     Operator<ScriptDesc> op0 = OperatorFactory.get(new ScriptDesc("cat",
         PlanUtils.getDefaultTableDesc("" + Utilities.tabCode, "key,value"),
@@ -386,7 +381,7 @@ public class TestExecDriver {
     mr.setReduceWork(rWork);
 
     // reduce side work
-    Operator<FileSinkDesc> op3 = OperatorFactory.get(ctx, new FileSinkDesc(new Path(TMPDIR + File.separator
+    Operator<FileSinkDesc> op3 = OperatorFactory.get(ctx, new FileSinkDesc(new Path(tmpdir + File.separator
         + "mapredplan4.out"), Utilities.defaultTd, false));
     List<ExprNodeDesc> cols = new ArrayList<ExprNodeDesc>();
     cols.add(getStringColumn(Utilities.ReduceField.KEY + ".reducesinkkey" + 0));
@@ -411,7 +406,7 @@ public class TestExecDriver {
     Operator<ReduceSinkDesc> op0 = OperatorFactory.get(ctx, PlanUtils
         .getReduceSinkDesc(Utilities.makeList(getStringColumn("0")), Utilities
         .makeList(getStringColumn("0"), getStringColumn("1")),
-        outputColumns, false, -1, 1, -1, AcidUtils.Operation.NOT_ACID, NullOrdering.NULLS_LAST));
+        outputColumns, false, -1, 1, -1, AcidUtils.Operation.NOT_ACID));
 
     Operator<SelectDesc> op4 = OperatorFactory.get(new SelectDesc(Utilities
         .makeList(getStringColumn("key"), getStringColumn("value")),
@@ -425,7 +420,7 @@ public class TestExecDriver {
     rWork.getTagToValueDesc().add(op0.getConf().getValueSerializeInfo());
 
     // reduce side work
-    Operator<FileSinkDesc> op3 = OperatorFactory.get(ctx, new FileSinkDesc(new Path(TMPDIR + File.separator
+    Operator<FileSinkDesc> op3 = OperatorFactory.get(ctx, new FileSinkDesc(new Path(tmpdir + File.separator
         + "mapredplan5.out"), Utilities.defaultTd, false));
 
     List<ExprNodeDesc> cols = new ArrayList<ExprNodeDesc>();
@@ -446,8 +441,7 @@ public class TestExecDriver {
     Operator<ReduceSinkDesc> op1 = OperatorFactory.get(ctx, PlanUtils
         .getReduceSinkDesc(Utilities.makeList(getStringColumn("tkey")),
         Utilities.makeList(getStringColumn("tkey"),
-        getStringColumn("tvalue")), outputColumns, false, -1, 1, -1,
-                AcidUtils.Operation.NOT_ACID, NullOrdering.NULLS_LAST));
+        getStringColumn("tvalue")), outputColumns, false, -1, 1, -1, AcidUtils.Operation.NOT_ACID));
 
     Operator<ScriptDesc> op0 = OperatorFactory.get(new ScriptDesc(
         "\'cat\'", PlanUtils.getDefaultTableDesc("" + Utilities.tabCode,
@@ -468,7 +462,7 @@ public class TestExecDriver {
     rWork.getTagToValueDesc().add(op1.getConf().getValueSerializeInfo());
 
     // reduce side work
-    Operator<FileSinkDesc> op3 = OperatorFactory.get(ctx, new FileSinkDesc(new Path(TMPDIR + File.separator
+    Operator<FileSinkDesc> op3 = OperatorFactory.get(ctx, new FileSinkDesc(new Path(tmpdir + File.separator
         + "mapredplan6.out"), Utilities.defaultTd, false));
 
     Operator<FilterDesc> op2 = OperatorFactory.get(getTestFilterDesc("0"), op3);
@@ -484,10 +478,10 @@ public class TestExecDriver {
   private void executePlan() throws Exception {
     String testName = new Exception().getStackTrace()[1].getMethodName();
     MapRedTask mrtask = new MapRedTask();
-    TaskQueue taskQueue = new TaskQueue();
+    DriverContext dctx = new DriverContext ();
     mrtask.setWork(mr);
-    mrtask.initialize(queryState, null, taskQueue, null);
-    int exitVal = mrtask.execute();
+    mrtask.initialize(queryState, null, dctx, null);
+    int exitVal =  mrtask.execute(dctx);
 
     if (exitVal != 0) {
       LOG.error(testName + " execution failed with exit status: "
@@ -497,7 +491,6 @@ public class TestExecDriver {
     LOG.info(testName + " execution completed successfully");
   }
 
-  @Test
   public void testMapPlan1() throws Exception {
 
     LOG.info("Beginning testMapPlan1");
@@ -506,7 +499,6 @@ public class TestExecDriver {
     fileDiff("lt100.txt.deflate", "mapplan1.out");
   }
 
-  @Test
   public void testMapPlan2() throws Exception {
 
     LOG.info("Beginning testMapPlan2");
@@ -515,7 +507,6 @@ public class TestExecDriver {
     fileDiff("lt100.txt", "mapplan2.out");
   }
 
-  @Test
   public void testMapRedPlan1() throws Exception {
 
     LOG.info("Beginning testMapRedPlan1");
@@ -525,7 +516,6 @@ public class TestExecDriver {
     fileDiff("kv1.val.sorted.txt", "mapredplan1.out");
   }
 
-  @Test
   public void testMapRedPlan2() throws Exception {
 
     LOG.info("Beginning testMapPlan2");
@@ -535,7 +525,6 @@ public class TestExecDriver {
     fileDiff("lt100.sorted.txt", "mapredplan2.out");
   }
 
-  @Test
   public void testMapRedPlan3() throws Exception {
 
     LOG.info("Beginning testMapPlan3");
@@ -545,7 +534,6 @@ public class TestExecDriver {
     fileDiff("kv1kv2.cogroup.txt", "mapredplan3.out");
   }
 
-  @Test
   public void testMapRedPlan4() throws Exception {
 
     LOG.info("Beginning testMapPlan4");
@@ -555,7 +543,6 @@ public class TestExecDriver {
     fileDiff("kv1.string-sorted.txt", "mapredplan4.out");
   }
 
-  @Test
   public void testMapRedPlan5() throws Exception {
 
     LOG.info("Beginning testMapPlan5");
@@ -565,7 +552,6 @@ public class TestExecDriver {
     fileDiff("kv1.string-sorted.txt", "mapredplan5.out");
   }
 
-  @Test
   public void testMapRedPlan6() throws Exception {
 
     LOG.info("Beginning testMapPlan6");

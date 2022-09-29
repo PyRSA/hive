@@ -29,16 +29,10 @@ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
 import org.apache.hadoop.io.Text;
 
+import junit.framework.TestCase;
 
-import static org.junit.Assert.assertEquals;
-import org.junit.Test;
+public class TestGenericUDFTrunc extends TestCase {
 
-/**
- * TestGenericUDFTrunc.
- */
-public class TestGenericUDFTrunc {
-
-  @Test
   public void testStringToDateWithMonthFormat() throws HiveException {
     GenericUDFTrunc udf = new GenericUDFTrunc();
     ObjectInspector valueOI0 = PrimitiveObjectInspectorFactory.javaStringObjectInspector;
@@ -117,7 +111,6 @@ public class TestGenericUDFTrunc {
     runAndVerify("2016-02-01", udf, initArgs, evalArgs);
   }
 
-  @Test
   public void testStringToDateWithQuarterFormat() throws HiveException {
     GenericUDFTrunc udf = new GenericUDFTrunc();
     ObjectInspector valueOI0 = PrimitiveObjectInspectorFactory.javaStringObjectInspector;
@@ -220,7 +213,6 @@ public class TestGenericUDFTrunc {
     runAndVerify("2016-10-01", udf, initArgs, evalArgs);
   }
 
-  @Test
   public void testStringToDateWithYearFormat() throws HiveException {
     GenericUDFTrunc udf = new GenericUDFTrunc();
     ObjectInspector valueOI0 = PrimitiveObjectInspectorFactory.javaStringObjectInspector;
@@ -299,7 +291,6 @@ public class TestGenericUDFTrunc {
     runAndVerify("2016-01-01", udf, initArgs, evalArgs);
   }
 
-  @Test
   public void testTimestampToDateWithMonthFormat() throws HiveException {
     GenericUDFTrunc udf = new GenericUDFTrunc();
     ObjectInspector valueOI0 = PrimitiveObjectInspectorFactory.writableTimestampObjectInspector;
@@ -394,7 +385,6 @@ public class TestGenericUDFTrunc {
     runAndVerify("2016-02-01", udf, initArgs, evalArgs);
   }
 
-  @Test
   public void testTimestampToDateWithQuarterFormat() throws HiveException {
     GenericUDFTrunc udf = new GenericUDFTrunc();
     ObjectInspector valueOI0 = PrimitiveObjectInspectorFactory.writableTimestampObjectInspector;
@@ -519,7 +509,6 @@ public class TestGenericUDFTrunc {
     runAndVerify("2016-10-01", udf, initArgs, evalArgs);
   }
 
-  @Test
   public void testTimestampToDateWithYearFormat() throws HiveException {
     GenericUDFTrunc udf = new GenericUDFTrunc();
     ObjectInspector valueOI0 = PrimitiveObjectInspectorFactory.writableTimestampObjectInspector;
@@ -614,7 +603,6 @@ public class TestGenericUDFTrunc {
     runAndVerify("2016-01-01", udf, initArgs, evalArgs);
   }
 
-  @Test
   public void testDateWritableToDateWithMonthFormat() throws HiveException {
     GenericUDFTrunc udf = new GenericUDFTrunc();
     ObjectInspector valueOI0 = PrimitiveObjectInspectorFactory.writableDateObjectInspector;
@@ -660,7 +648,6 @@ public class TestGenericUDFTrunc {
     runAndVerify("2016-02-01", udf, initArgs, evalArgs);
   }
 
-  @Test
   public void testDateWritableToDateWithQuarterFormat() throws HiveException {
     GenericUDFTrunc udf = new GenericUDFTrunc();
     ObjectInspector valueOI0 = PrimitiveObjectInspectorFactory.writableDateObjectInspector;
@@ -718,7 +705,6 @@ public class TestGenericUDFTrunc {
     runAndVerify("2016-10-01", udf, initArgs, evalArgs);
   }
 
-  @Test
   public void testDateWritableToDateWithYearFormat() throws HiveException {
     GenericUDFTrunc udf = new GenericUDFTrunc();
     ObjectInspector valueOI0 = PrimitiveObjectInspectorFactory.writableDateObjectInspector;

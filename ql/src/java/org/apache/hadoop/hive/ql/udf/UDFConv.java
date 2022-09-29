@@ -139,7 +139,7 @@ public class UDFConv extends UDF {
   }
 
   /**
-   * Convert numbers between different number bases. If toBase&gt;0 the result is
+   * Convert numbers between different number bases. If toBase>0 the result is
    * unsigned, otherwise it is signed.
    *
    */
@@ -157,9 +157,6 @@ public class UDFConv extends UDF {
     }
 
     byte[] num = n.getBytes();
-    if (num.length == 0) {
-      return null;
-    }
     boolean negative = (num[0] == '-');
     int first = 0;
     if (negative) {

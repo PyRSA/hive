@@ -44,7 +44,7 @@ public class UDFSpace extends UDF {
       len = 0;
     }
 
-    if (result.getLength() >= len) {
+    if (result.getBytes().length >= len) {
       result.set(result.getBytes(), 0, len);
     } else {
       byte[] spaces = new byte[len];

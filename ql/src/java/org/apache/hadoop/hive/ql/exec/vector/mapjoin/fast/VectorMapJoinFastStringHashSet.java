@@ -21,7 +21,6 @@ package org.apache.hadoop.hive.ql.exec.vector.mapjoin.fast;
 import java.io.IOException;
 
 import org.apache.hadoop.hive.ql.metadata.HiveException;
-import org.apache.hadoop.hive.ql.plan.TableDesc;
 import org.apache.hadoop.io.BytesWritable;
 
 /*
@@ -34,20 +33,15 @@ public class VectorMapJoinFastStringHashSet extends VectorMapJoinFastBytesHashSe
   private VectorMapJoinFastStringCommon stringCommon;
 
   @Override
-  public void putRow(long hashCode, BytesWritable currentKey, BytesWritable currentValue)
-      throws HiveException, IOException {
-
-    // Ignore NULL keys (HashSet not used for FULL OUTER).
-    stringCommon.adaptPutRow(this, currentKey, currentValue, hashCode);
+  public void putRow(BytesWritable currentKey, BytesWritable currentValue) throws HiveException, IOException {
+    stringCommon.adaptPutRow(this, currentKey, currentValue);
   }
 
   public VectorMapJoinFastStringHashSet(
-      boolean isFullOuter,
-      int initialCapacity, float loadFactor, int writeBuffersSize, long estimatedKeyCount, TableDesc tableDesc) {
-    super(
-        isFullOuter,
-        initialCapacity, loadFactor, writeBuffersSize, estimatedKeyCount);
-    stringCommon = new VectorMapJoinFastStringCommon(tableDesc);
+      boolean isOuterJoin,
+      int initialCapacity, float loadFactor, int writeBuffersSize, long estimatedKeyCount) {
+    super(initialCapacity, loadFactor, writeBuffersSize, estimatedKeyCount);
+    stringCommon = new VectorMapJoinFastStringCommon(isOuterJoin);
   }
 
   @Override

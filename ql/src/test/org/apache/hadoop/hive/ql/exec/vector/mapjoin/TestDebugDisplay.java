@@ -18,15 +18,13 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.mapjoin;
 
-
-import org.junit.Test;
+import junit.framework.TestCase;
 
 /**
  * Unit test for the vectorized conversion to and from row object[].
  */
-public class TestDebugDisplay {
+public class TestDebugDisplay extends TestCase {
 
-  @Test
   public void testDebugDisplay() throws Throwable {
 
   try {

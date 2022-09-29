@@ -2,6 +2,7 @@ set hive.strict.checks.bucketing=false;
 
 set hive.auto.convert.join=false;
 
+set hive.exec.dynamic.partition.mode=nonstrict;
 
 
 
@@ -16,8 +17,7 @@ CREATE TABLE stage_bucket_big_n17
 key BIGINT,
 value STRING
 )
-PARTITIONED BY (file_tag STRING)
-TBLPROPERTIES('bucketing_version'='1');
+PARTITIONED BY (file_tag STRING);
 
 CREATE TABLE bucket_big_n17
 (
@@ -33,8 +33,7 @@ CREATE TABLE stage_bucket_small_n17
 key BIGINT,
 value string
 )
-PARTITIONED BY (file_tag STRING)
-TBLPROPERTIES('bucketing_version'='1');
+PARTITIONED BY (file_tag STRING);
 
 CREATE TABLE bucket_small_n17
 (

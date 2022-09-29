@@ -19,16 +19,12 @@
 package org.apache.hadoop.hive.ql;
 
 import java.util.ArrayList;
-import java.util.List;
 
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.ql.reexec.IReExecutionPlugin;
 import org.apache.hadoop.hive.ql.reexec.ReExecDriver;
-import org.apache.hadoop.hive.ql.reexec.ReExecuteLostAMQueryPlugin;
-import org.apache.hadoop.hive.ql.reexec.ReCompileWithoutCBOPlugin;
 import org.apache.hadoop.hive.ql.reexec.ReExecutionOverlayPlugin;
-import org.apache.hadoop.hive.ql.reexec.ReExecutionDagSubmitPlugin;
 import org.apache.hadoop.hive.ql.reexec.ReOptimizePlugin;
 
 import com.google.common.base.Strings;
@@ -36,25 +32,21 @@ import com.google.common.base.Strings;
 /**
  * Constructs a driver for ql clients.
  */
-public final class DriverFactory {
-
-  private DriverFactory() {
-    throw new UnsupportedOperationException("DriverFactory should not be instantiated!");
-  }
+public class DriverFactory {
 
   public static IDriver newDriver(HiveConf conf) {
-    return newDriver(getNewQueryState(conf), null);
+    return newDriver(getNewQueryState(conf), null, null);
   }
 
-  public static IDriver newDriver(QueryState queryState, QueryInfo queryInfo) {
+  public static IDriver newDriver(QueryState queryState, String userName, QueryInfo queryInfo) {
     boolean enabled = queryState.getConf().getBoolVar(ConfVars.HIVE_QUERY_REEXECUTION_ENABLED);
     if (!enabled) {
-      return new Driver(queryState, queryInfo);
+      return new Driver(queryState, userName, queryInfo);
     }
 
     String strategies = queryState.getConf().getVar(ConfVars.HIVE_QUERY_REEXECUTION_STRATEGIES);
     strategies = Strings.nullToEmpty(strategies).trim().toLowerCase();
-    List<IReExecutionPlugin> plugins = new ArrayList<>();
+    ArrayList<IReExecutionPlugin> plugins = new ArrayList<>();
     for (String string : strategies.split(",")) {
       if (string.trim().isEmpty()) {
         continue;
@@ -62,30 +54,21 @@ public final class DriverFactory {
       plugins.add(buildReExecPlugin(string));
     }
 
-    return new ReExecDriver(queryState, queryInfo, plugins);
+    return new ReExecDriver(queryState, userName, queryInfo, plugins);
   }
 
   private static IReExecutionPlugin buildReExecPlugin(String name) throws RuntimeException {
-    if ("overlay".equals(name)) {
+    if (name.equals("overlay")) {
       return new ReExecutionOverlayPlugin();
     }
-    if ("reoptimize".equals(name)) {
+    if (name.equals("reoptimize")) {
       return new ReOptimizePlugin();
-    }
-    if ("reexecute_lost_am".equals(name)) {
-      return new ReExecuteLostAMQueryPlugin();
-    }
-    if ("recompile_without_cbo".equals(name)) {
-      return new ReCompileWithoutCBOPlugin();
-    }
-    if (name.equals("dagsubmit")) {
-      return new ReExecutionDagSubmitPlugin();
     }
     throw new RuntimeException(
         "Unknown re-execution plugin: " + name + " (" + ConfVars.HIVE_QUERY_REEXECUTION_STRATEGIES.varname + ")");
   }
 
-  public static QueryState getNewQueryState(HiveConf conf) {
+  private static QueryState getNewQueryState(HiveConf conf) {
     return new QueryState.Builder().withGenerateNewQueryId(true).withHiveConf(conf).build();
   }
 }

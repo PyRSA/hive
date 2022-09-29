@@ -22,7 +22,6 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 
-import org.apache.calcite.plan.RelOptPredicateList;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.rel.RelNode;
@@ -35,11 +34,10 @@ import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexShuttle;
-import org.apache.calcite.rex.RexSimplify;
-import org.apache.calcite.rex.RexUnknownAs;
 import org.apache.calcite.rex.RexUtil;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.util.Pair;
+import org.apache.hadoop.hive.common.StatsSetupConst;
 import org.apache.hadoop.hive.ql.optimizer.calcite.RelOptHiveTable;
 import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveIn;
 import org.apache.hadoop.hive.ql.plan.ColStatistics;
@@ -54,12 +52,12 @@ import com.google.common.collect.Lists;
  * column statistics (if available).
  *
  * For instance, given the following predicate:
- *   a &gt; 5
+ *   a > 5
  * we can infer that the predicate will evaluate to false if the max
  * value for column a is 4.
  *
  * Currently we support the simplification of:
- *  - =, &gt;=, &lt;=, &gt;, &lt;
+ *  - =, >=, <=, >, <
  *  - IN
  *  - IS_NULL / IS_NOT_NULL
  */
@@ -216,7 +214,7 @@ public class HiveReduceExpressionsWithStatsRule extends RelOptRule {
             RexCall constStruct = (RexCall) call.getOperands().get(i);
             boolean allTrue = true;
             boolean addOperand = true;
-            for (int j = 0; j < constStruct.getOperands().size(); j++) {
+            for (int j = 0; i < constStruct.getOperands().size(); j++) {
               RexNode operand = constStruct.getOperands().get(j);
               if (operand instanceof RexLiteral) {
                 RexLiteral literal = (RexLiteral) operand;
@@ -274,11 +272,7 @@ public class HiveReduceExpressionsWithStatsRule extends RelOptRule {
       // If we did not reduce, check the children nodes
       RexNode node = super.visitCall(call);
       if (node != call) {
-        // FIXME if this rule will make some changes; then it will invoke simplify on all subtrees during exiting the recursion
-        RexSimplify simplify =
-            new RexSimplify(rexBuilder, RelOptPredicateList.EMPTY, filterOp.getCluster().getPlanner().getExecutor());
-        node = simplify.simplifyUnknownAs(node,RexUnknownAs.UNKNOWN);
-
+        node = RexUtil.simplify(rexBuilder, node);
       }
       return node;
     }

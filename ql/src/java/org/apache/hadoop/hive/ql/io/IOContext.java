@@ -18,7 +18,6 @@
 
 package org.apache.hadoop.hive.ql.io;
 
-import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 
 /**
@@ -50,8 +49,6 @@ public class IOContext {
    * supports {@link org.apache.hadoop.hive.ql.metadata.VirtualColumn#ROWID}
    */
   private  RecordIdentifier ri;
-  private boolean isDeletedRecord;
-  private PositionDeleteInfo pdi;
 
   public static enum Comparison {
     GREATER,
@@ -179,31 +176,6 @@ public class IOContext {
     this.ri = ri;
   }
 
-  public void parseRecordIdentifier(Configuration configuration) {
-    BucketIdentifier bucketIdentifier = BucketIdentifier.from(configuration, inputPath);
-    if (bucketIdentifier == null) {
-      this.ri = null;
-    } else {
-      this.ri = new RecordIdentifier(bucketIdentifier.getWriteId(), bucketIdentifier.getBucketProperty(), 0);
-    }
-  }
-
-  public void parsePositionDeleteInfo(Configuration configuration) {
-    this.pdi = PositionDeleteInfo.parseFromConf(configuration);
-  }
-
-  public PositionDeleteInfo getPositionDeleteInfo() {
-    return pdi;
-  }
-
-  public boolean isDeletedRecord() {
-    return isDeletedRecord;
-  }
-
-  public void setDeletedRecord(boolean deletedRecord) {
-    isDeletedRecord = deletedRecord;
-  }
-
   /**
    * The thread local IOContext is static, we may need to restart the search if, for instance,
    * multiple files are being searched as part of a CombinedHiveRecordReader
@@ -215,4 +187,5 @@ public class IOContext {
     this.comparison = null;
     this.genericUDFClassName = null;
   }
+
 }

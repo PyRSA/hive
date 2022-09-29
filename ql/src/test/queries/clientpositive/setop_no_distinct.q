@@ -1,5 +1,3 @@
--- SORT_QUERY_RESULTS
-
 set hive.mapred.mode=nonstrict;
 set hive.cbo.enable=true;
 

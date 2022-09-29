@@ -28,9 +28,9 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.apache.commons.lang3.tuple.MutablePair;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hive.common.ObjectPair;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.CompilationOpContext;
 import org.apache.hadoop.hive.ql.exec.persistence.RowContainer;
@@ -47,6 +47,8 @@ import org.apache.hadoop.hive.ql.plan.api.OperatorType;
 import org.apache.hadoop.hive.serde2.ColumnProjectionUtils;
 import org.apache.hadoop.hive.serde2.objectinspector.InspectableObject;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
+import org.apache.hadoop.io.WritableComparable;
+import org.apache.hadoop.io.WritableComparator;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.util.PriorityQueue;
@@ -202,10 +204,10 @@ public class SMBMapJoinOperator extends AbstractMapJoinOperator<SMBJoinDesc> imp
 
       TableScanOperator ts = (TableScanOperator)aliasToWork.get(alias);
       // push down projections
-      ColumnProjectionUtils.appendReadColumns(jobClone, ts.getNeededColumnIDs(), ts.getNeededColumns(),
-              ts.getNeededNestedColumnPaths(), ts.conf.hasVirtualCols());
-      // push down filters and as of information
-      HiveInputFormat.pushFiltersAndAsOf(jobClone, ts, null);
+      ColumnProjectionUtils.appendReadColumns(
+          jobClone, ts.getNeededColumnIDs(), ts.getNeededColumns(), ts.getNeededNestedColumnPaths());
+      // push down filters
+      HiveInputFormat.pushFilters(jobClone, ts, null);
 
       AcidUtils.setAcidOperationalProperties(jobClone, ts.getConf().isTranscationalTable(),
           ts.getConf().getAcidOperationalProperties());
@@ -286,7 +288,6 @@ public class SMBMapJoinOperator extends AbstractMapJoinOperator<SMBJoinDesc> imp
 
     //have we reached a new key group?
     boolean nextKeyGroup = processKey(alias, key);
-    addToAliasFilterTags(alias, value, nextKeyGroup);
     if (nextKeyGroup) {
       //assert this.nextGroupStorage[alias].size() == 0;
       this.nextGroupStorage[alias].addRow(value);
@@ -467,8 +468,16 @@ public class SMBMapJoinOperator extends AbstractMapJoinOperator<SMBJoinDesc> imp
     }
 
     for (int i = 0; i < k1.size(); i++) {
-      ret = WritableComparatorFactory.get(k1.get(i), nullsafes == null ? false : nullsafes[i], null)
-              .compare(k1.get(i), k2.get(i));
+      WritableComparable key_1 = (WritableComparable) k1.get(i);
+      WritableComparable key_2 = (WritableComparable) k2.get(i);
+      if (key_1 == null && key_2 == null) {
+        return nullsafes != null && nullsafes[i] ? 0 : -1; // just return k1 is smaller than k2
+      } else if (key_1 == null) {
+        return -1;
+      } else if (key_2 == null) {
+        return 1;
+      }
+      ret = WritableComparator.get(key_1.getClass()).compare(key_1, key_2);
       if(ret != 0) {
         return ret;
       }
@@ -534,7 +543,9 @@ public class SMBMapJoinOperator extends AbstractMapJoinOperator<SMBJoinDesc> imp
     BucketMatcher bucketMatcher = ReflectionUtil.newInstance(bucketMatcherCls, null);
 
     getExecContext().setFileId(bucketMatcherCxt.createFileId(currentInputPath.toString()));
-    LOG.info("set task id: " + getExecContext().getFileId());
+    if (LOG.isInfoEnabled()) {
+      LOG.info("set task id: " + getExecContext().getFileId());
+    }
 
     bucketMatcher.setAliasBucketFileNameMapping(bucketMatcherCxt
         .getAliasBucketFileNameMapping());
@@ -685,7 +696,7 @@ public class SMBMapJoinOperator extends AbstractMapJoinOperator<SMBJoinDesc> imp
 
     // index of FetchOperator which is providing smallest one
     transient Integer currentMinSegment;
-    transient MutablePair<List<Object>, InspectableObject>[] keys;
+    transient ObjectPair<List<Object>, InspectableObject>[] keys;
 
     public MergeQueue(String alias, FetchWork fetchWork, JobConf jobConf,
         Operator<? extends OperatorDesc> forwardOp,
@@ -726,7 +737,7 @@ public class SMBMapJoinOperator extends AbstractMapJoinOperator<SMBJoinDesc> imp
     private FetchOperator[] segmentsForSize(int segmentLen) {
       if (segments == null || segments.length < segmentLen) {
         FetchOperator[] newSegments = new FetchOperator[segmentLen];
-        MutablePair<List<Object>, InspectableObject>[] newKeys = new MutablePair[segmentLen];
+        ObjectPair<List<Object>, InspectableObject>[] newKeys = new ObjectPair[segmentLen];
         if (segments != null) {
           System.arraycopy(segments, 0, newSegments, 0, segments.length);
           System.arraycopy(keys, 0, newKeys, 0, keys.length);
@@ -749,7 +760,7 @@ public class SMBMapJoinOperator extends AbstractMapJoinOperator<SMBJoinDesc> imp
 
     @Override
     protected boolean lessThan(Object a, Object b) {
-      return compareKeys(keys[(Integer) a].getLeft(), keys[(Integer)b].getLeft()) < 0;
+      return compareKeys(keys[(Integer) a].getFirst(), keys[(Integer)b].getFirst()) < 0;
     }
 
     public final InspectableObject getNextRow() throws IOException {
@@ -758,12 +769,13 @@ public class SMBMapJoinOperator extends AbstractMapJoinOperator<SMBJoinDesc> imp
       }
       Integer current = top();
       if (current == null) {
-        LOG.info("MergeQueue forwarded " + counter + " rows");
+        if (LOG.isInfoEnabled()) {
+          LOG.info("MergeQueue forwarded " + counter + " rows");
+        }
         return null;
       }
       counter++;
-      currentMinSegment = current;
-      return keys[currentMinSegment].getRight();
+      return keys[currentMinSegment = current].getSecond();
     }
 
     private void adjustPriorityQueue(Integer current) throws IOException {
@@ -804,7 +816,7 @@ public class SMBMapJoinOperator extends AbstractMapJoinOperator<SMBJoinDesc> imp
       while (nextRow != null) {
         sinkOp.reset();
         if (keys[current] == null) {
-          keys[current] = new MutablePair<List<Object>, InspectableObject>();
+          keys[current] = new ObjectPair<List<Object>, InspectableObject>();
         }
 
         // Pass the row though the operator tree. It is guaranteed that not more than 1 row can
@@ -815,8 +827,8 @@ public class SMBMapJoinOperator extends AbstractMapJoinOperator<SMBJoinDesc> imp
         // It is possible that the row got absorbed in the operator tree.
         if (nextRow.o != null) {
           // todo this should be changed to be evaluated lazily, especially for single segment case
-          keys[current].setLeft(JoinUtil.computeKeys(nextRow.o, keyFields, keyFieldOIs));
-          keys[current].setRight(nextRow);
+          keys[current].setFirst(JoinUtil.computeKeys(nextRow.o, keyFields, keyFieldOIs));
+          keys[current].setSecond(nextRow);
           return true;
         }
         nextRow = segments[current].getNextRow();

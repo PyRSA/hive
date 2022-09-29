@@ -18,22 +18,18 @@
 
 package org.apache.hadoop.hive.ql.udf.generic;
 
-
+import junit.framework.TestCase;
 import org.apache.hadoop.hive.ql.exec.errors.DataConstraintViolationError;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
 import org.apache.hadoop.io.BooleanWritable;
-import static org.junit.Assert.fail;
-import static org.junit.Assert.assertTrue;
-import org.junit.Test;
 
 /**
  * Test class for {@link GenericUDFEnforceConstraint}.
  */
-public class TestGenericUDFEnforceConstraint {
+public class TestGenericUDFEnforceConstraint extends TestCase {
 
-  @Test
   public void testNull() throws HiveException {
     try {
       GenericUDFEnforceConstraint udf = new GenericUDFEnforceConstraint();
@@ -51,7 +47,6 @@ public class TestGenericUDFEnforceConstraint {
     }
   }
 
-  @Test
   public void testInvalidArgumentsLength() throws HiveException {
     try {
       GenericUDFEnforceConstraint udf = new GenericUDFEnforceConstraint();
@@ -66,7 +61,6 @@ public class TestGenericUDFEnforceConstraint {
     }
   }
 
-  @Test
   public void testCorrect() throws HiveException {
     GenericUDFEnforceConstraint udf = new GenericUDFEnforceConstraint();
     ObjectInspector valueOI = PrimitiveObjectInspectorFactory.writableBooleanObjectInspector;

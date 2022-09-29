@@ -106,7 +106,7 @@ public class FlatFileInputFormat<T> extends
 
     /**
      * Implements configurable so it can use the configuration to find the right
-     * classes Note: ReflectionUtils will automagically call setConf with the
+     * classes Note: ReflectionUtils will automatigically call setConf with the
      * right configuration.
      */
     private Configuration conf;
@@ -121,6 +121,11 @@ public class FlatFileInputFormat<T> extends
       return conf;
     }
 
+    /**
+     * @return the actual class being deserialized.
+     * @exception does
+     *              not currently throw IOException
+     */
     @Override
     public Class<S> getRealClass() throws IOException {
       return (Class<S>) conf.getClass(SerializationSubclassKey, null,
@@ -140,6 +145,8 @@ public class FlatFileInputFormat<T> extends
      * deserialized; in this context, that assumption isn't necessarily true.
      *
      * @return the serialization object for this context
+     * @exception does
+     *              not currently throw any IOException
      */
     @Override
     public Serialization<S> getSerialization() throws IOException {

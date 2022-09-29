@@ -1,5 +1,3 @@
---! qt:dataset:part
-
 set hive.vectorized.execution.enabled=false;
 
 -- SORT_QUERY_RESULTS

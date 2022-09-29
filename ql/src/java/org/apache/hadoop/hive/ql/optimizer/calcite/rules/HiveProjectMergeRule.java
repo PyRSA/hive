@@ -20,14 +20,11 @@ package org.apache.hadoop.hive.ql.optimizer.calcite.rules;
 import java.util.Set;
 
 import org.apache.calcite.plan.RelOptRuleCall;
-import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.core.Project;
 import org.apache.calcite.rel.rules.ProjectMergeRule;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexOver;
-import org.apache.calcite.tools.RelBuilder;
 import org.apache.calcite.tools.RelBuilderFactory;
-import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.hadoop.hive.ql.optimizer.calcite.HiveCalciteUtil;
 import org.apache.hadoop.hive.ql.optimizer.calcite.HiveRelFactories;
 
@@ -56,35 +53,17 @@ public class HiveProjectMergeRule extends ProjectMergeRule {
     // other
     final Project topProject = call.rel(0);
     final Project bottomProject = call.rel(1);
-    for (RexNode expr : topProject.getProjects()) {
+    for (RexNode expr : topProject.getChildExps()) {
       if (expr instanceof RexOver) {
         Set<Integer> positions = HiveCalciteUtil.getInputRefs(expr);
         for (int pos : positions) {
-          if (bottomProject.getProjects().get(pos) instanceof RexOver) {
+          if (bottomProject.getChildExps().get(pos) instanceof RexOver) {
             return false;
           }
         }
       }
     }
     return super.matches(call);
-  }
-
-  public void onMatch(RelOptRuleCall call) {
-    final Project topProject = call.rel(0);
-    final Project bottomProject = call.rel(1);
-
-    // If top project does not reference any column at the bottom project,
-    // we can just remove botton project
-    final ImmutableBitSet topRefs =
-        RelOptUtil.InputFinder.bits(topProject.getProjects(), null);
-    if (topRefs.isEmpty()) {
-      RelBuilder relBuilder = call.builder();
-      relBuilder.push(bottomProject.getInput());
-      relBuilder.project(topProject.getProjects());
-      call.transformTo(relBuilder.build());
-      return;
-    }
-    super.onMatch(call);
   }
 
 }

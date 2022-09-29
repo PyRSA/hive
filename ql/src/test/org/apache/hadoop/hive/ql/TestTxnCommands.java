@@ -27,35 +27,18 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import org.apache.hadoop.hive.common.FileUtils;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.hadoop.conf.Configuration;
+
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.LocatedFileStatus;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.fs.RemoteIterator;
-import org.apache.hadoop.hive.conf.Constants;
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.metastore.DefaultMetaStoreFilterHookImpl;
 import org.apache.hadoop.hive.metastore.HiveMetaStoreClient;
 import org.apache.hadoop.hive.metastore.IMetaStoreClient;
 import org.apache.hadoop.hive.metastore.MetastoreTaskThread;
-import org.apache.hadoop.hive.metastore.MetaStoreFilterHook;
-import org.apache.hadoop.hive.metastore.api.ColumnStatisticsObj;
-import org.apache.hadoop.hive.metastore.api.CompactionType;
 import org.apache.hadoop.hive.metastore.api.GetOpenTxnsInfoResponse;
 import org.apache.hadoop.hive.metastore.api.LockState;
 import org.apache.hadoop.hive.metastore.api.LockType;
-import org.apache.hadoop.hive.metastore.api.LongColumnStatsData;
-import org.apache.hadoop.hive.metastore.api.MetaException;
-import org.apache.hadoop.hive.metastore.api.NoSuchObjectException;
 import org.apache.hadoop.hive.metastore.api.ShowCompactRequest;
 import org.apache.hadoop.hive.metastore.api.ShowCompactResponse;
 import org.apache.hadoop.hive.metastore.api.ShowLocksRequest;
@@ -64,30 +47,20 @@ import org.apache.hadoop.hive.metastore.api.TxnInfo;
 import org.apache.hadoop.hive.metastore.api.TxnState;
 import org.apache.hadoop.hive.metastore.conf.MetastoreConf;
 import org.apache.hadoop.hive.metastore.txn.AcidHouseKeeperService;
-import org.apache.hadoop.hive.metastore.utils.TestTxnDbUtil;
+import org.apache.hadoop.hive.metastore.txn.TxnDbUtil;
 import org.apache.hadoop.hive.metastore.txn.TxnStore;
 import org.apache.hadoop.hive.metastore.txn.TxnUtils;
 import org.apache.hadoop.hive.ql.io.AcidOutputFormat;
 import org.apache.hadoop.hive.ql.io.AcidUtils;
 import org.apache.hadoop.hive.ql.io.BucketCodec;
 import org.apache.hadoop.hive.ql.lockmgr.TestDbTxnManager2;
-import org.apache.hadoop.hive.ql.metadata.Hive;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
-import org.apache.hadoop.hive.ql.processors.CommandProcessorException;
-import org.apache.hadoop.hive.ql.session.SessionState;
-import org.apache.hadoop.hive.ql.txn.compactor.CompactorTestUtilities;
-import org.apache.thrift.TException;
+import org.apache.hadoop.hive.ql.processors.CommandProcessorResponse;
 import org.junit.Assert;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.google.common.collect.Lists;
-
-import static java.util.Arrays.asList;
-import static org.apache.commons.collections.CollectionUtils.isEqualCollection;
-import static org.apache.hadoop.hive.common.AcidConstants.SOFT_DELETE_TABLE_PATTERN;
 
 /**
  * The LockManager is not ready, but for no-concurrency straight-line path we can
@@ -101,45 +74,12 @@ import static org.apache.hadoop.hive.common.AcidConstants.SOFT_DELETE_TABLE_PATT
 public class TestTxnCommands extends TxnCommandsBaseForTests {
   static final private Logger LOG = LoggerFactory.getLogger(TestTxnCommands.class);
   private static final String TEST_DATA_DIR = new File(System.getProperty("java.io.tmpdir") +
-      File.separator + TestTxnCommands.class.getCanonicalName() + "-" + System.currentTimeMillis()
+    File.separator + TestTxnCommands.class.getCanonicalName()
+    + "-" + System.currentTimeMillis()
   ).getPath().replaceAll("\\\\", "/");
-  
   @Override
-  protected String getTestDataDir() {
+  String getTestDataDir() {
     return TEST_DATA_DIR;
-  }
-
-  @Override
-  void initHiveConf() {
-    super.initHiveConf();
-    //TestTxnCommandsWithSplitUpdateAndVectorization has the vectorized version
-    //of these tests.
-    HiveConf.setBoolVar(hiveConf, HiveConf.ConfVars.HIVE_VECTORIZATION_ENABLED, false);
-    HiveConf.setBoolVar(hiveConf, HiveConf.ConfVars.HIVE_ACID_DROP_PARTITION_USE_BASE, false);
-    HiveConf.setBoolVar(hiveConf, HiveConf.ConfVars.HIVE_ACID_RENAME_PARTITION_MAKE_COPY, false);
-    HiveConf.setBoolVar(hiveConf, HiveConf.ConfVars.HIVE_ACID_CREATE_TABLE_USE_SUFFIX, false);
-    HiveConf.setBoolVar(hiveConf, HiveConf.ConfVars.HIVE_ACID_TRUNCATE_USE_BASE, false);
-    
-    MetastoreConf.setClass(hiveConf, MetastoreConf.ConfVars.FILTER_HOOK,
-      DummyMetaStoreFilterHookImpl.class, MetaStoreFilterHook.class);
-
-    HiveConf.setVar(hiveConf, HiveConf.ConfVars.HIVE_METASTORE_WAREHOUSE_EXTERNAL, 
-      new Path(getWarehouseDir(), "ext").toUri().getPath());
-  }
-
-  public static class DummyMetaStoreFilterHookImpl extends DefaultMetaStoreFilterHookImpl {
-    private static boolean blockResults = false;
-    
-    public DummyMetaStoreFilterHookImpl(Configuration conf) {
-      super(conf);
-    }
-    @Override
-    public List<String> filterTableNames(String catName, String dbName, List<String> tableList) {
-      if (blockResults) {
-        return new ArrayList<>();
-      }
-      return tableList;
-    }
   }
 
   /**
@@ -155,7 +95,7 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
     Assert.assertEquals(1, rs.size());
     Assert.assertEquals("1", rs.get(0));
     hiveConf.setBoolVar(HiveConf.ConfVars.HIVETESTMODEROLLBACKTXN, true);
-    runStatementOnDriver("insert overwrite table " + Table.ACIDTBL + " values(3,2)");
+    runStatementOnDriver("insert into " + Table.ACIDTBL + " values(3,2)");
     hiveConf.setBoolVar(HiveConf.ConfVars.HIVETESTMODEROLLBACKTXN, false);
     runStatementOnDriver("insert into " + Table.ACIDTBL + " values(5,6)");
     rs = runStatementOnDriver("select a from " + Table.ACIDTBL + " order by a");
@@ -163,7 +103,6 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
     Assert.assertEquals("1", rs.get(0));
     Assert.assertEquals("5", rs.get(1));
   }
-
   @Ignore("not needed but useful for testing")
   @Test
   public void testNonAcidInsert() throws Exception {
@@ -186,7 +125,7 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
 //      FileDump.printJsonData(conf, bucket.toString(), delta);
 //    }
 //    catch(FileNotFoundException ex) {
-//      ; //this happens if you change BUCKET_COUNT
+      ;//this happens if you change BUCKET_COUNT
 //    }
     delta.close();
   }
@@ -215,9 +154,8 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
     dumpTableData(Table.ACIDTBL, 1, 0);
     dumpTableData(Table.ACIDTBL, 2, 0);
     runStatementOnDriver("select a,b from " + Table.ACIDTBL + " order by a,b");
-    CommandProcessorException e = runStatementOnDriverNegative("COMMIT"); //txn started implicitly by previous statement
-    Assert.assertEquals("Error didn't match: " + e,
-        ErrorMsg.OP_NOT_ALLOWED_WITHOUT_TXN.getErrorCode(), e.getErrorCode());
+    CommandProcessorResponse cpr = runStatementOnDriverNegative("COMMIT");//txn started implicitly by previous statement
+    Assert.assertEquals("Error didn't match: " + cpr, ErrorMsg.OP_NOT_ALLOWED_WITHOUT_TXN.getErrorCode(), cpr.getErrorCode());
     List<String> rs1 = runStatementOnDriver("select a,b from " + Table.ACIDTBL + " order by a,b");
     Assert.assertEquals("Data didn't match inside tx (rs0)", allData, rs1);
   }
@@ -249,7 +187,7 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
     Assert.assertEquals(imported.toString(), "insert_only",
         imported.getParameters().get("transactional_properties"));
     Path importPath = new Path(imported.getSd().getLocation());
-    FileStatus[] stat = fs.listStatus(importPath, FileUtils.HIDDEN_FILES_PATH_FILTER);
+    FileStatus[] stat = fs.listStatus(importPath, AcidUtils.hiddenFileFilter);
     Assert.assertEquals(Arrays.toString(stat), 1, stat.length);
     assertIsDelta(stat[0]);
     List<String> allData = stringifyValues(rows1);
@@ -277,7 +215,7 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
     Assert.assertNull(imported.toString(),
         imported.getParameters().get("transactional_properties"));
     importPath = new Path(imported.getSd().getLocation());
-    stat = fs.listStatus(importPath, FileUtils.HIDDEN_FILES_PATH_FILTER);
+    stat = fs.listStatus(importPath, AcidUtils.hiddenFileFilter);
     allData = stringifyValues(rows2);
     Collections.sort(allData);
     rs = runStatementOnDriver(String.format("select a,b from %s order by a,b", importName));
@@ -285,443 +223,6 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
     runStatementOnDriver("drop table if exists " + importName);
     runStatementOnDriver("drop table if exists " + tableName);
     msClient.close();
-  }
-
-  private static final class QueryRunnable implements Runnable {
-    private final CountDownLatch cdlIn, cdlOut;
-    private final String query;
-    private final HiveConf hiveConf;
-
-    QueryRunnable(HiveConf hiveConf, String query, CountDownLatch cdlIn, CountDownLatch cdlOut) {
-      this.query = query;
-      this.cdlIn = cdlIn;
-      this.cdlOut = cdlOut;
-      this.hiveConf = new HiveConf(hiveConf);
-    }
-
-    @Override
-    public void run() {
-      SessionState ss = SessionState.start(hiveConf);
-      try {
-        ss.applyAuthorizationPolicy();
-      } catch (HiveException e) {
-        throw new RuntimeException(e);
-      }
-      QueryState qs = new QueryState.Builder().withHiveConf(hiveConf).nonIsolated().build();
-      try (Driver d = new Driver(qs)) {
-        LOG.info("Ready to run the query: " + query);
-        syncThreadStart(cdlIn, cdlOut);
-        try {
-          try {
-            d.run(query);
-          } catch (CommandProcessorException e) {
-            throw new RuntimeException(query + " failed: " + e);
-          }
-          d.getResults(new ArrayList<String>());
-        } catch (Exception e) {
-          throw new RuntimeException(e);
-        }
-      }
-    }
-  }
-
-
-  private static void syncThreadStart(final CountDownLatch cdlIn, final CountDownLatch cdlOut) {
-    cdlIn.countDown();
-    try {
-      cdlOut.await();
-    } catch (InterruptedException e) {
-      throw new RuntimeException(e);
-    }
-  }
-
-  @Test
-  public void testParallelInsertStats() throws Exception {
-    final int TASK_COUNT = 4;
-    String tableName = "mm_table";
-    List<ColumnStatisticsObj> stats;
-    IMetaStoreClient msClient = prepareParallelTest(tableName, 0);
-
-    String[] queries = new String[TASK_COUNT];
-    for (int i = 0; i < queries.length; ++i) {
-      queries[i] = String.format("insert into %s (a) values (" + i + ")", tableName);
-    }
-
-    runParallelQueries(queries);
-
-    // Verify stats are either invalid, or valid and correct.
-    stats = getTxnTableStats(msClient, tableName);
-    boolean hasStats = 0 != stats.size();
-    if (hasStats) {
-      verifyLongStats(TASK_COUNT, 0, TASK_COUNT - 1, stats);
-    }
-
-    runStatementOnDriver(String.format("insert into %s (a) values (" + TASK_COUNT + ")", tableName));
-    if (!hasStats) {
-      // Stats should still be invalid if they were invalid.
-      stats = getTxnTableStats(msClient, tableName);
-      Assert.assertEquals(0, stats.size());
-    }
-
-    // Stats should be valid after analyze.
-    runStatementOnDriver(String.format("analyze table %s compute statistics for columns", tableName));
-    verifyLongStats(TASK_COUNT + 1, 0, TASK_COUNT, getTxnTableStats(msClient, tableName));
-  }
-
-  private void verifyLongStats(int dvCount, int min, int max, List<ColumnStatisticsObj> stats) {
-    Assert.assertEquals(1, stats.size());
-    LongColumnStatsData data = stats.get(0).getStatsData().getLongStats();
-    Assert.assertEquals(min, data.getLowValue());
-    Assert.assertEquals(max, data.getHighValue());
-    Assert.assertEquals(dvCount, data.getNumDVs());
-  }
-
-  private void runParallelQueries(String[] queries)
-      throws InterruptedException, ExecutionException {
-    ExecutorService executor = Executors.newFixedThreadPool(queries.length);
-    final CountDownLatch cdlIn = new CountDownLatch(queries.length), cdlOut = new CountDownLatch(1);
-    Future<?>[] tasks = new Future[queries.length];
-    for (int i = 0; i < tasks.length; ++i) {
-      tasks[i] = executor.submit(new QueryRunnable(hiveConf, queries[i], cdlIn, cdlOut));
-    }
-    cdlIn.await(); // Wait for all threads to be ready.
-    cdlOut.countDown(); // Release them at the same time.
-    for (int i = 0; i < tasks.length; ++i) {
-      tasks[i].get();
-    }
-  }
-
-  private IMetaStoreClient prepareParallelTest(String tableName, int val)
-      throws Exception, MetaException, TException, NoSuchObjectException {
-    hiveConf.setBoolean("hive.stats.autogather", true);
-    hiveConf.setBoolean("hive.stats.column.autogather", true);
-    // Need to close the thread local Hive object so that configuration change is reflected to HMS.
-    Hive.closeCurrent();
-    runStatementOnDriver("drop table if exists " + tableName);
-    runStatementOnDriver(String.format("create table %s (a int) stored as orc " +
-        "TBLPROPERTIES ('transactional'='true', 'transactional_properties'='insert_only')",
-        tableName));
-    runStatementOnDriver(String.format("insert into %s (a) values (" + val + ")", tableName));
-    runStatementOnDriver(String.format("insert into %s (a) values (" + val + ")", tableName));
-    IMetaStoreClient msClient = new HiveMetaStoreClient(hiveConf);
-    // Stats should be valid after serial inserts.
-    List<ColumnStatisticsObj> stats = getTxnTableStats(msClient, tableName);
-    Assert.assertEquals(1, stats.size());
-    return msClient;
-  }
-
-  @Test
-  public void testAddAndDropConstraintAdvancingWriteIds() throws Exception {
-
-    String tableName = "constraints_table";
-    hiveConf.setBoolean("hive.stats.autogather", true);
-    hiveConf.setBoolean("hive.stats.column.autogather", true);
-    // Need to close the thread local Hive object so that configuration change is reflected to HMS.
-    Hive.closeCurrent();
-    runStatementOnDriver("drop table if exists " + tableName);
-    runStatementOnDriver(String.format("create table %s (a int, b string) stored as orc " +
-        "TBLPROPERTIES ('transactional'='true', 'transactional_properties'='insert_only')",
-        tableName));
-    runStatementOnDriver(String.format("insert into %s (a) values (0)", tableName));
-    IMetaStoreClient msClient = new HiveMetaStoreClient(hiveConf);
-    String validWriteIds = msClient.getValidWriteIds("default." + tableName).toString();
-    LOG.info("ValidWriteIds before add constraint::"+ validWriteIds);
-    Assert.assertEquals("default.constraints_table:1:9223372036854775807::", validWriteIds);
-    runStatementOnDriver(String.format("alter table %s  ADD CONSTRAINT a_PK PRIMARY KEY (`a`) DISABLE NOVALIDATE", tableName));
-    validWriteIds  = msClient.getValidWriteIds("default." + tableName).toString();
-    LOG.info("ValidWriteIds after add constraint primary key::"+ validWriteIds);
-    Assert.assertEquals("default.constraints_table:2:9223372036854775807::", validWriteIds);
-    runStatementOnDriver(String.format("alter table %s CHANGE COLUMN b b STRING NOT NULL", tableName));
-    validWriteIds  = msClient.getValidWriteIds("default." + tableName).toString();
-    LOG.info("ValidWriteIds after add constraint not null::"+ validWriteIds);
-    Assert.assertEquals("default.constraints_table:3:9223372036854775807::", validWriteIds);
-    runStatementOnDriver(String.format("alter table %s ADD CONSTRAINT check1 CHECK (a <= 25)", tableName));
-    validWriteIds  = msClient.getValidWriteIds("default." + tableName).toString();
-    LOG.info("ValidWriteIds after add constraint check::"+ validWriteIds);
-    Assert.assertEquals("default.constraints_table:4:9223372036854775807::", validWriteIds);
-    runStatementOnDriver(String.format("alter table %s ADD CONSTRAINT unique1 UNIQUE (a, b) DISABLE", tableName));
-    validWriteIds  = msClient.getValidWriteIds("default." + tableName).toString();
-    LOG.info("ValidWriteIds after add constraint unique::"+ validWriteIds);
-    Assert.assertEquals("default.constraints_table:5:9223372036854775807::", validWriteIds);
-
-    LOG.info("ValidWriteIds before drop constraint::"+ validWriteIds);
-    runStatementOnDriver(String.format("alter table %s  DROP CONSTRAINT a_PK", tableName));
-    validWriteIds  = msClient.getValidWriteIds("default." + tableName).toString();
-    Assert.assertEquals("default.constraints_table:6:9223372036854775807::", validWriteIds);
-    LOG.info("ValidWriteIds after drop constraint primary key::"+ validWriteIds);
-    runStatementOnDriver(String.format("alter table %s  DROP CONSTRAINT check1", tableName));
-    validWriteIds  = msClient.getValidWriteIds("default." + tableName).toString();
-    Assert.assertEquals("default.constraints_table:7:9223372036854775807::", validWriteIds);
-    LOG.info("ValidWriteIds after drop constraint check::"+ validWriteIds);
-    runStatementOnDriver(String.format("alter table %s  DROP CONSTRAINT unique1", tableName));
-    validWriteIds  = msClient.getValidWriteIds("default." + tableName).toString();
-    Assert.assertEquals("default.constraints_table:8:9223372036854775807::", validWriteIds);
-    LOG.info("ValidWriteIds after drop constraint unique::"+ validWriteIds);
-    runStatementOnDriver(String.format("alter table %s CHANGE COLUMN b b STRING", tableName));
-    validWriteIds  = msClient.getValidWriteIds("default." + tableName).toString();
-    Assert.assertEquals("default.constraints_table:9:9223372036854775807::", validWriteIds);
-
-  }
-
-  /**
-   * If you are disabling or removing this test case, it probably means now we support exchange partition for
-   * transactional tables. If that is the case, we also have to make sure we advance the Write IDs during exchange
-   * partition DDL for transactional tables. You can look at https://github.com/apache/hive/pull/2465 as an example.
-   * @throws Exception
-   */
-  @Test
-  public void exchangePartitionShouldNotWorkForTransactionalTables() throws Exception {
-    runStatementOnDriver("create database IF NOT EXISTS db1");
-    runStatementOnDriver("create database IF NOT EXISTS db2");
-
-    runStatementOnDriver("CREATE TABLE db1.exchange_part_test1 (f1 string) PARTITIONED BY (ds STRING)");
-
-    String tableName = "db2.exchange_part_test2";
-    runStatementOnDriver(String.format("CREATE TABLE %s (f1 string) PARTITIONED BY (ds STRING) " +
-    "TBLPROPERTIES ('transactional'='true', 'transactional_properties'='insert_only')"
-    ,tableName));
-
-    runStatementOnDriver("ALTER TABLE db2.exchange_part_test2 ADD PARTITION (ds='2013-04-05')");
-
-    try {
-      runStatementOnDriver("ALTER TABLE db1.exchange_part_test1 EXCHANGE PARTITION (ds='2013-04-05') " +
-              "WITH TABLE db2.exchange_part_test2");
-      Assert.fail("Exchange partition should not be allowed for transaction tables" );
-    }catch(Exception e) {
-      Assert.assertTrue(e.getMessage().contains("Exchange partition is not allowed with transactional tables"));
-    }
-  }
-
-  @Test
-  public void truncateTableAdvancingWriteId() throws Exception {
-    runStatementOnDriver("create database IF NOT EXISTS trunc_db");
-
-    String tableName = "trunc_db.trunc_table";
-    IMetaStoreClient msClient = new HiveMetaStoreClient(hiveConf);
-
-    runStatementOnDriver(String.format("CREATE TABLE %s (f1 string) PARTITIONED BY (ds STRING) " +
-                    "TBLPROPERTIES ('transactional'='true', 'transactional_properties'='insert_only')"
-            , tableName));
-
-    String validWriteIds = msClient.getValidWriteIds(tableName).toString();
-    LOG.info("ValidWriteIds before truncate table::" + validWriteIds);
-    Assert.assertEquals("trunc_db.trunc_table:0:9223372036854775807::", validWriteIds);
-
-    runStatementOnDriver("TRUNCATE TABLE trunc_db.trunc_table");
-    validWriteIds = msClient.getValidWriteIds(tableName).toString();
-    LOG.info("ValidWriteIds after truncate table::" + validWriteIds);
-    Assert.assertEquals("trunc_db.trunc_table:1:9223372036854775807::", validWriteIds);
-
-  }
-
-  @Test
-  public void testAddAndDropPartitionAdvancingWriteIds() throws Exception {
-    runStatementOnDriver("create database IF NOT EXISTS db1");
-
-    String tableName = "db1.add_drop_partition";
-    IMetaStoreClient msClient = new HiveMetaStoreClient(hiveConf);
-
-    runStatementOnDriver(String.format("CREATE TABLE %s (f1 string) PARTITIONED BY (ds STRING) " +
-    "TBLPROPERTIES ('transactional'='true', 'transactional_properties'='insert_only')"
-    ,tableName));
-
-    String validWriteIds = msClient.getValidWriteIds(tableName).toString();
-    LOG.info("ValidWriteIds before add partition::"+ validWriteIds);
-    Assert.assertEquals("db1.add_drop_partition:0:9223372036854775807::", validWriteIds);
-    validWriteIds = msClient.getValidWriteIds(tableName).toString();
-    runStatementOnDriver("ALTER TABLE db1.add_drop_partition ADD PARTITION (ds='2013-04-05')");
-    validWriteIds = msClient.getValidWriteIds(tableName).toString();
-    LOG.info("ValidWriteIds after add partition::"+ validWriteIds);
-    Assert.assertEquals("db1.add_drop_partition:1:9223372036854775807::", validWriteIds);
-    runStatementOnDriver("ALTER TABLE db1.add_drop_partition DROP PARTITION (ds='2013-04-05')");
-    validWriteIds = msClient.getValidWriteIds(tableName).toString();
-    LOG.info("ValidWriteIds after drop partition::"+ validWriteIds);
-    Assert.assertEquals("db1.add_drop_partition:2:9223372036854775807::", validWriteIds);
-
-  }
-
-  @Test
-  public void testDDLsAdvancingWriteIds() throws Exception {
-    hiveConf.setBoolVar(HiveConf.ConfVars.TRANSACTIONAL_CONCATENATE_NOBLOCK, true);
-
-    String tableName = "alter_table";
-    runStatementOnDriver("drop table if exists " + tableName);
-    runStatementOnDriver(String.format("create table %s (a int, b string, c BIGINT, d INT) " +
-        "PARTITIONED BY (ds STRING)" +
-        "TBLPROPERTIES ('transactional'='true', 'transactional_properties'='insert_only')",
-        tableName));
-    runStatementOnDriver(String.format("insert into %s (a) values (0)", tableName));
-    IMetaStoreClient msClient = new HiveMetaStoreClient(hiveConf);
-    String validWriteIds = msClient.getValidWriteIds("default." + tableName).toString();
-    Assert.assertEquals("default.alter_table:1:9223372036854775807::", validWriteIds);
-
-    runStatementOnDriver(String.format("alter table %s SET OWNER USER user_name", tableName));
-    validWriteIds  = msClient.getValidWriteIds("default." + tableName).toString();
-    Assert.assertEquals("default.alter_table:2:9223372036854775807::", validWriteIds);
-
-    runStatementOnDriver(String.format("alter table %s CLUSTERED BY(c) SORTED BY(d) INTO 32 BUCKETS", tableName));
-    validWriteIds  = msClient.getValidWriteIds("default." + tableName).toString();
-    Assert.assertEquals("default.alter_table:3:9223372036854775807::", validWriteIds);
-
-    runStatementOnDriver(String.format("ALTER TABLE %s ADD PARTITION (ds='2013-04-05')", tableName));
-    validWriteIds  = msClient.getValidWriteIds("default." + tableName).toString();
-    Assert.assertEquals("default.alter_table:4:9223372036854775807::", validWriteIds);
-
-    runStatementOnDriver(String.format("ALTER TABLE %s SET SERDEPROPERTIES ('field.delim'='\\u0001')", tableName));
-    validWriteIds  = msClient.getValidWriteIds("default." + tableName).toString();
-    Assert.assertEquals("default.alter_table:5:9223372036854775807::", validWriteIds);
-
-    runStatementOnDriver(String.format("ALTER TABLE %s PARTITION (ds='2013-04-05') SET FILEFORMAT PARQUET", tableName));
-    validWriteIds  = msClient.getValidWriteIds("default." + tableName).toString();
-    Assert.assertEquals("default.alter_table:6:9223372036854775807::", validWriteIds);
-
-    // We should not advance the Write ID during compaction, since it affects the performance of
-    // materialized views. So, below assertion ensures that we do not advance the write during compaction.
-    runStatementOnDriver(String.format("ALTER TABLE %s PARTITION (ds='2013-04-05') COMPACT 'minor'", tableName));
-    validWriteIds = msClient.getValidWriteIds("default." + tableName).toString();
-    Assert.assertEquals("default.alter_table:6:9223372036854775807::", validWriteIds);
-
-    //Process the compaction request because otherwise the CONCATENATE (major compaction) command on the same table and
-    // partition would be refused.
-    runWorker(hiveConf);
-    runCleaner(hiveConf);
-
-    runStatementOnDriver(String.format("ALTER TABLE %s PARTITION (ds='2013-04-05') CONCATENATE", tableName));
-    validWriteIds = msClient.getValidWriteIds("default." + tableName).toString();
-    Assert.assertEquals("default.alter_table:7:9223372036854775807::", validWriteIds);
-
-    runStatementOnDriver(String.format("ALTER TABLE %s SKEWED BY (a) ON (1,2)", tableName));
-    validWriteIds = msClient.getValidWriteIds("default." + tableName).toString();
-    Assert.assertEquals("default.alter_table:8:9223372036854775807::", validWriteIds);
-
-    runStatementOnDriver(String.format("ALTER TABLE %s SET SKEWED LOCATION (1='hdfs://127.0.0.1:8020/abcd/1')",
-      tableName));
-    validWriteIds = msClient.getValidWriteIds("default." + tableName).toString();
-    Assert.assertEquals("default.alter_table:9:9223372036854775807::", validWriteIds);
-
-    runStatementOnDriver(String.format("ALTER TABLE %s NOT SKEWED", tableName));
-    validWriteIds = msClient.getValidWriteIds("default." + tableName).toString();
-    Assert.assertEquals("default.alter_table:10:9223372036854775807::", validWriteIds);
-
-    runStatementOnDriver(String.format("ALTER TABLE %s UNSET SERDEPROPERTIES ('field.delim')", tableName));
-    validWriteIds = msClient.getValidWriteIds("default." + tableName).toString();
-    Assert.assertEquals("default.alter_table:11:9223372036854775807::", validWriteIds);
-
-  }
-
-  @Test
-  public void testParallelInsertAnalyzeStats() throws Exception {
-    String tableName = "mm_table";
-    List<ColumnStatisticsObj> stats;
-    IMetaStoreClient msClient = prepareParallelTest(tableName, 0);
-
-    String[] queries = {
-        String.format("insert into %s (a) values (999)", tableName),
-        String.format("analyze table %s compute statistics for columns", tableName)
-    };
-    runParallelQueries(queries);
-
-    // Verify stats are either invalid, or valid and correct.
-    stats = getTxnTableStats(msClient, tableName);
-    boolean hasStats = 0 != stats.size();
-    if (hasStats) {
-      verifyLongStats(2, 0, 999, stats);
-    }
-
-    runStatementOnDriver(String.format("insert into %s (a) values (1000)", tableName));
-    if (!hasStats) {
-      // Stats should still be invalid if they were invalid.
-      stats = getTxnTableStats(msClient, tableName);
-      Assert.assertEquals(0, stats.size());
-    }
-
-    // Stats should be valid after analyze.
-    runStatementOnDriver(String.format("analyze table %s compute statistics for columns", tableName));
-    verifyLongStats(3, 0, 1000, getTxnTableStats(msClient, tableName));
-  }
-
-  @Test
-  public void testParallelTruncateAnalyzeStats() throws Exception {
-    String tableName = "mm_table";
-    List<ColumnStatisticsObj> stats;
-    IMetaStoreClient msClient = prepareParallelTest(tableName, 0);
-
-    String[] queries = {
-        String.format("truncate table %s", tableName),
-        String.format("analyze table %s compute statistics for columns", tableName)
-    };
-    runParallelQueries(queries);
-
-    // Verify stats are either invalid, or valid and correct.
-    stats = getTxnTableStats(msClient, tableName);
-    boolean hasStats = 0 != stats.size();
-    if (hasStats) {
-      // Either the truncate run before or the analyze
-      if (stats.get(0).getStatsData().getLongStats().getNumDVs() > 0) {
-        verifyLongStats(1, 0, 0, stats);
-      } else {
-        verifyLongStats(0, 0, 0, stats);
-      }
-    }
-
-    // Stats should be valid after analyze.
-    runStatementOnDriver(String.format("analyze table %s compute statistics for columns", tableName));
-    verifyLongStats(0, 0, 0, getTxnTableStats(msClient, tableName));
-  }
-
-
-  @Test
-  public void testTxnStatsOnOff() throws Exception {
-    String tableName = "mm_table";
-    hiveConf.setBoolean("hive.stats.autogather", true);
-    hiveConf.setBoolean("hive.stats.column.autogather", true);
-    // Need to close the thread local Hive object so that configuration change is reflected to HMS.
-    Hive.closeCurrent();
-    runStatementOnDriver("drop table if exists " + tableName);
-    runStatementOnDriver(String.format("create table %s (a int) stored as orc " +
-        "TBLPROPERTIES ('transactional'='true', 'transactional_properties'='insert_only')",
-        tableName));
-
-    runStatementOnDriver(String.format("insert into %s (a) values (1)", tableName));
-    IMetaStoreClient msClient = new HiveMetaStoreClient(hiveConf);
-    List<ColumnStatisticsObj> stats = getTxnTableStats(msClient, tableName);
-    Assert.assertEquals(1, stats.size());
-    runStatementOnDriver(String.format("insert into %s (a) values (1)", tableName));
-    stats = getTxnTableStats(msClient, tableName);
-    Assert.assertEquals(1, stats.size());
-    msClient.close();
-    hiveConf.setBoolean(MetastoreConf.ConfVars.HIVE_TXN_STATS_ENABLED.getVarname(), false);
-    msClient = new HiveMetaStoreClient(hiveConf);
-    // Even though the stats are valid in metastore, txn stats are disabled.
-    stats = getTxnTableStats(msClient, tableName);
-    Assert.assertEquals(0, stats.size());
-    msClient.close();
-    hiveConf.setBoolean(MetastoreConf.ConfVars.HIVE_TXN_STATS_ENABLED.getVarname(), true);
-    msClient = new HiveMetaStoreClient(hiveConf);
-    stats = getTxnTableStats(msClient, tableName);
-    // Now the stats are visible again.
-    Assert.assertEquals(1, stats.size());
-    msClient.close();
-    hiveConf.setBoolean(MetastoreConf.ConfVars.HIVE_TXN_STATS_ENABLED.getVarname(), false);
-    // Need to close the thread local Hive object so that configuration change is reflected to HMS.
-    Hive.closeCurrent();
-    // Running the query with stats disabled will cause stats in metastore itself to become invalid.
-    runStatementOnDriver(String.format("insert into %s (a) values (1)", tableName));
-    hiveConf.setBoolean(MetastoreConf.ConfVars.HIVE_TXN_STATS_ENABLED.getVarname(), true);
-    msClient = new HiveMetaStoreClient(hiveConf);
-    stats = getTxnTableStats(msClient, tableName);
-    Assert.assertEquals(0, stats.size());
-    msClient.close();
-  }
-
-  public List<ColumnStatisticsObj> getTxnTableStats(IMetaStoreClient msClient,
-      String tableName) throws TException, NoSuchObjectException, MetaException {
-    String validWriteIds;
-    List<ColumnStatisticsObj> stats;
-    validWriteIds = msClient.getValidWriteIds("default." + tableName).toString();
-    stats = msClient.getTableColumnStatistics(
-        "default", tableName, Lists.newArrayList("a"), Constants.HIVE_ENGINE, validWriteIds);
-    return stats;
   }
 
   private void assertIsDelta(FileStatus stat) {
@@ -746,7 +247,7 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
     queue.add(path);
     while (!queue.isEmpty()) {
       Path next = queue.pollFirst();
-      FileStatus[] stats = fs.listStatus(next, FileUtils.HIDDEN_FILES_PATH_FILTER);
+      FileStatus[] stats = fs.listStatus(next, AcidUtils.hiddenFileFilter);
       for (FileStatus stat : stats) {
         Path child = stat.getPath();
         paths.add(child.toString());
@@ -766,26 +267,25 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
   @Test
   public void testErrors() throws Exception {
     runStatementOnDriver("start transaction");
-    CommandProcessorException e1 = runStatementOnDriverNegative("create table foo(x int, y int)");
-    Assert.assertEquals("Expected DDL to fail in an open txn",
-        ErrorMsg.OP_NOT_ALLOWED_IN_TXN.getErrorCode(), e1.getErrorCode());
-    CommandProcessorException e2 = runStatementOnDriverNegative("update " + Table.ACIDTBL + " set a = 1 where b != 1");
+    CommandProcessorResponse cpr2 = runStatementOnDriverNegative("create table foo(x int, y int)");
+    Assert.assertEquals("Expected DDL to fail in an open txn", ErrorMsg.OP_NOT_ALLOWED_IN_TXN.getErrorCode(), cpr2.getErrorCode());
+    CommandProcessorResponse cpr3 = runStatementOnDriverNegative("update " + Table.ACIDTBL + " set a = 1 where b != 1");
     Assert.assertEquals("Expected update of bucket column to fail",
-        "FAILED: SemanticException [Error 10302]: Updating values of bucketing columns is not supported.  Column a.",
-        e2.getMessage());
+      "FAILED: SemanticException [Error 10302]: Updating values of bucketing columns is not supported.  Column a.",
+      cpr3.getErrorMessage());
     Assert.assertEquals("Expected update of bucket column to fail",
-        ErrorMsg.UPDATE_CANNOT_UPDATE_BUCKET_VALUE.getErrorCode(), e2.getErrorCode());
-    CommandProcessorException e3 = runStatementOnDriverNegative("commit"); //not allowed in w/o tx
-    Assert.assertEquals("Error didn't match: " + e3,
-        ErrorMsg.OP_NOT_ALLOWED_WITHOUT_TXN.getErrorCode(), e3.getErrorCode());
-    CommandProcessorException e4 = runStatementOnDriverNegative("rollback"); //not allowed in w/o tx
-    Assert.assertEquals("Error didn't match: " + e4,
-        ErrorMsg.OP_NOT_ALLOWED_WITHOUT_TXN.getErrorCode(), e4.getErrorCode());
+      ErrorMsg.UPDATE_CANNOT_UPDATE_BUCKET_VALUE.getErrorCode(), cpr3.getErrorCode());
+    cpr3 = runStatementOnDriverNegative("commit");//not allowed in w/o tx
+    Assert.assertEquals("Error didn't match: " + cpr3,
+      ErrorMsg.OP_NOT_ALLOWED_WITHOUT_TXN.getErrorCode(), cpr3.getErrorCode());
+    cpr3 = runStatementOnDriverNegative("rollback");//not allowed in w/o tx
+    Assert.assertEquals("Error didn't match: " + cpr3,
+      ErrorMsg.OP_NOT_ALLOWED_WITHOUT_TXN.getErrorCode(), cpr3.getErrorCode());
     runStatementOnDriver("start transaction");
-    CommandProcessorException e5 = runStatementOnDriverNegative("start transaction"); //not allowed in a tx
+    cpr3 = runStatementOnDriverNegative("start transaction");//not allowed in a tx
     Assert.assertEquals("Expected start transaction to fail",
-        ErrorMsg.OP_NOT_ALLOWED_IN_TXN.getErrorCode(), e5.getErrorCode());
-    runStatementOnDriver("start transaction"); //ok since previously opened txn was killed
+      ErrorMsg.OP_NOT_ALLOWED_IN_TXN.getErrorCode(), cpr3.getErrorCode());
+    runStatementOnDriver("start transaction");//ok since previously opened txn was killed
     runStatementOnDriver("insert into " + Table.ACIDTBL + "(a,b) values(1,2)");
     List<String> rs0 = runStatementOnDriver("select a,b from " + Table.ACIDTBL + " order by a,b");
     Assert.assertEquals("Can't see my own write", 1, rs0.size());
@@ -793,7 +293,6 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
     rs0 = runStatementOnDriver("select a,b from " + Table.ACIDTBL + " order by a,b");
     Assert.assertEquals("Can't see my own write", 1, rs0.size());
   }
-
   @Test
   public void testReadMyOwnInsert() throws Exception {
     runStatementOnDriver("START TRANSACTION");
@@ -815,10 +314,10 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
     List<String> rs0 = runStatementOnDriver("select a,b from " + Table.ACIDTBL + " order by a,b");
     Assert.assertEquals("Can't see my own write", 1, rs0.size());
     //next command should produce an error
-    CommandProcessorException e = runStatementOnDriverNegative("select * from no_such_table");
+    CommandProcessorResponse cpr = runStatementOnDriverNegative("select * from no_such_table");
     Assert.assertEquals("Txn didn't fail?",
-        "FAILED: SemanticException [Error 10001]: Line 1:14 Table not found 'no_such_table'",
-        e.getMessage());
+      "FAILED: SemanticException [Error 10001]: Line 1:14 Table not found 'no_such_table'",
+      cpr.getErrorMessage());
     runStatementOnDriver("start transaction");
     List<String> rs1 = runStatementOnDriver("select a,b from " + Table.ACIDTBL + " order by a,b");
     runStatementOnDriver("commit");
@@ -850,22 +349,6 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
     List<String> rs1 = runStatementOnDriver("select a,b from " + Table.ACIDTBL + " order by a,b");
     Assert.assertEquals("Content didn't match after commit rs1", allData, rs1);
   }
-
-  @Test
-  public void testDeleteOfMultipleInserts() throws Exception {
-    runStatementOnDriver("START TRANSACTION");
-    int[][] rows1 = {{1,2},{3,4}};
-    runStatementOnDriver("insert into " + Table.ACIDTBL + "(a,b) " + makeValuesClause(rows1));
-    int[][] rows2 = {{5,6},{7,8}};
-    runStatementOnDriver("insert into " + Table.ACIDTBL + "(a,b) " + makeValuesClause(rows2));
-    runStatementOnDriver("commit");
-    runStatementOnDriver("delete from " + Table.ACIDTBL + " where b = 2");
-    runStatementOnDriver("delete from " + Table.ACIDTBL + " where b = 8");
-    List<String> rs2 = runStatementOnDriver("select a,b from " + Table.ACIDTBL + " order by a,b");
-    int[][] remain = {{3,4},{5,6}};
-    Assert.assertEquals("Content didn't match after delete ", stringifyValues(remain), rs2);
-  }
-
   @Test
   public void testDelete() throws Exception {
     int[][] rows1 = {{1,2},{3,4}};
@@ -963,7 +446,7 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
   @Test
   public void testDeleteIn() throws Exception {
     runStatementOnDriver("delete from " + Table.ACIDTBL + " where a IN (SELECT A.a from " +
-        Table.ACIDTBL + "  A)");
+      Table.ACIDTBL + "  A)");
     int[][] tableData = {{1,2},{3,2},{5,2},{1,3},{3,3},{5,3}};
     runStatementOnDriver("insert into " + Table.ACIDTBL + "(a,b) " + makeValuesClause(tableData));
     runStatementOnDriver("insert into " + Table.ACIDTBL2 + "(a,b,c) values(1,7,17),(3,7,17)");
@@ -986,9 +469,8 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
     //this will abort the txn
     houseKeeperService.run();
     //this should fail because txn aborted due to timeout
-    CommandProcessorException e = runStatementOnDriverNegative("delete from " + Table.ACIDTBL + " where a = 5");
-    Assert.assertTrue("Actual: " + e.getMessage(),
-        e.getMessage().contains("Transaction manager has aborted the transaction txnid:1"));
+    CommandProcessorResponse cpr = runStatementOnDriverNegative("delete from " + Table.ACIDTBL + " where a = 5");
+    Assert.assertTrue("Actual: " + cpr.getErrorMessage(), cpr.getErrorMessage().contains("Transaction manager has aborted the transaction txnid:1"));
 
     //now test that we don't timeout locks we should not
     //heartbeater should be running in the background every 1/2 second
@@ -1012,10 +494,9 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
       }
     }
     Assert.assertNotNull(txnInfo);
-    Assert.assertEquals(16, txnInfo.getId());
+    Assert.assertEquals(14, txnInfo.getId());
     Assert.assertEquals(TxnState.OPEN, txnInfo.getState());
-    String s = TestTxnDbUtil
-        .queryToString(hiveConf, "select TXN_STARTED, TXN_LAST_HEARTBEAT from TXNS where TXN_ID = " + txnInfo.getId(), false);
+    String s =TxnDbUtil.queryToString(hiveConf, "select TXN_STARTED, TXN_LAST_HEARTBEAT from TXNS where TXN_ID = " + txnInfo.getId(), false);
     String[] vals = s.split("\\s+");
     Assert.assertEquals("Didn't get expected timestamps", 2, vals.length);
     long lastHeartbeat = Long.parseLong(vals[1]);
@@ -1039,11 +520,11 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
     TestDbTxnManager2.checkLock(LockType.SHARED_READ, LockState.ACQUIRED, "default", Table.ACIDTBL.name, null, slr.getLocks());
 
     //should've done several heartbeats
-    s = TestTxnDbUtil.queryToString(hiveConf, "select TXN_STARTED, TXN_LAST_HEARTBEAT from TXNS where TXN_ID = " + txnInfo.getId(), false);
+    s =TxnDbUtil.queryToString(hiveConf, "select TXN_STARTED, TXN_LAST_HEARTBEAT from TXNS where TXN_ID = " + txnInfo.getId(), false);
     vals = s.split("\\s+");
     Assert.assertEquals("Didn't get expected timestamps", 2, vals.length);
     Assert.assertTrue("Heartbeat didn't progress: (old,new) (" + lastHeartbeat + "," + vals[1]+ ")",
-        lastHeartbeat < Long.parseLong(vals[1]));
+       lastHeartbeat < Long.parseLong(vals[1]));
 
     runStatementOnDriver("rollback");
     slr = txnHandler.showLocks(new ShowLocksRequest());
@@ -1069,22 +550,21 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
   }
   @Test
   public void testMergeNegative() throws Exception {
-    CommandProcessorException e = runStatementOnDriverNegative(
-        "MERGE INTO " + Table.ACIDTBL + " target\n" +
-        "USING " + Table.NONACIDORCTBL + " source ON target.a = source.a\n" +
-        "WHEN MATCHED THEN UPDATE set b = 1\n" +
-        "WHEN MATCHED THEN DELETE\n" +
-        "WHEN NOT MATCHED AND a < 1 THEN INSERT VALUES(1,2)");
-    Assert.assertEquals(ErrorMsg.MERGE_PREDIACTE_REQUIRED, ((HiveException)e.getCause()).getCanonicalErrorMsg());
+    CommandProcessorResponse cpr = runStatementOnDriverNegative("MERGE INTO " + Table.ACIDTBL +
+      " target USING " + Table.NONACIDORCTBL +
+      " source\nON target.a = source.a " +
+      "\nWHEN MATCHED THEN UPDATE set b = 1 " +
+      "\nWHEN MATCHED THEN DELETE " +
+      "\nWHEN NOT MATCHED AND a < 1 THEN INSERT VALUES(1,2)");
+    Assert.assertEquals(ErrorMsg.MERGE_PREDIACTE_REQUIRED, ((HiveException)cpr.getException()).getCanonicalErrorMsg());
   }
   @Test
   public void testMergeNegative2() throws Exception {
-    CommandProcessorException e = runStatementOnDriverNegative(
-        "MERGE INTO "+ Table.ACIDTBL +
-        " target USING " + Table.NONACIDORCTBL + "\n source ON target.pk = source.pk " +
-        "\nWHEN MATCHED THEN UPDATE set b = 1 " +
-        "\nWHEN MATCHED THEN UPDATE set b=a");
-    Assert.assertEquals(ErrorMsg.MERGE_TOO_MANY_UPDATE, ((HiveException)e.getCause()).getCanonicalErrorMsg());
+    CommandProcessorResponse cpr = runStatementOnDriverNegative("MERGE INTO "+ Table.ACIDTBL +
+      " target USING " + Table.NONACIDORCTBL + "\n source ON target.pk = source.pk " +
+      "\nWHEN MATCHED THEN UPDATE set b = 1 " +
+      "\nWHEN MATCHED THEN UPDATE set b=a");
+    Assert.assertEquals(ErrorMsg.MERGE_TOO_MANY_UPDATE, ((HiveException)cpr.getException()).getCanonicalErrorMsg());
   }
 
   /**
@@ -1100,25 +580,25 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
     runStatementOnDriver("drop table if exists " + target);
     runStatementOnDriver("drop table if exists " + src);
     runStatementOnDriver("create table " + target + "(i int," +
-        "`d?*de e` decimal(5,2)," +
-        "vc varchar(128)) clustered by (i) into 2 buckets stored as orc TBLPROPERTIES ('transactional'='true')");
+      "`d?*de e` decimal(5,2)," +
+      "vc varchar(128)) clustered by (i) into 2 buckets stored as orc TBLPROPERTIES ('transactional'='true')");
     runStatementOnDriver("create table " + src + "(gh int, j decimal(5,2), k varchar(128))");
     runStatementOnDriver("merge into " + target + " as `d/8` using " + src + " as `a/b` on i=gh " +
-        "\nwhen matched and i > 5 then delete " +
-        "\nwhen matched then update set vc='blah' " +
-        "\nwhen not matched then insert values(1,2.1,'baz')");
+      "\nwhen matched and i > 5 then delete " +
+      "\nwhen matched then update set vc='blah' " +
+    "\nwhen not matched then insert values(1,2.1,'baz')");
     runStatementOnDriver("merge into " + target + " as `d/8` using " + src + " as `a/b` on i=gh " +
-        "\nwhen matched and i > 5 then delete " +
-        "\nwhen matched then update set vc='blah',  `d?*de e` = current_timestamp()  " +
-        "\nwhen not matched then insert values(1,2.1, concat('baz', current_timestamp()))");
+      "\nwhen matched and i > 5 then delete " +
+      "\nwhen matched then update set vc='blah',  `d?*de e` = current_timestamp()  " +
+      "\nwhen not matched then insert values(1,2.1, concat('baz', current_timestamp()))");
     runStatementOnDriver("merge into " + target + " as `d/8` using " + src + " as `a/b` on i=gh " +
-        "\nwhen matched and i > 5 then delete " +
-        "\nwhen matched then update set vc='blah' " +
-        "\nwhen not matched then insert values(1,2.1,'a\\b')");
+      "\nwhen matched and i > 5 then delete " +
+      "\nwhen matched then update set vc='blah' " +
+      "\nwhen not matched then insert values(1,2.1,'a\\b')");
     runStatementOnDriver("merge into " + target + " as `d/8` using " + src + " as `a/b` on i=gh " +
-        "\nwhen matched and i > 5 then delete " +
-        "\nwhen matched then update set vc='∆∋'" +
-        "\nwhen not matched then insert values(`a/b`.gh,`a/b`.j,'c\\t')");
+      "\nwhen matched and i > 5 then delete " +
+      "\nwhen matched then update set vc='∆∋'" +
+      "\nwhen not matched then insert values(`a/b`.gh,`a/b`.j,'c\\t')");
   }
   @Test
   public void testQuotedIdentifier2() throws Exception {
@@ -1127,17 +607,17 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
     runStatementOnDriver("drop table if exists " + target);
     runStatementOnDriver("drop table if exists " + src);
     runStatementOnDriver("create table " + target + "(i int," +
-        "`d?*de e` decimal(5,2)," +
-        "vc varchar(128)) clustered by (i) into 2 buckets stored as orc TBLPROPERTIES ('transactional'='true')");
+      "`d?*de e` decimal(5,2)," +
+      "vc varchar(128)) clustered by (i) into 2 buckets stored as orc TBLPROPERTIES ('transactional'='true')");
     runStatementOnDriver("create table " + src + "(`g/h` int, j decimal(5,2), k varchar(128))");
     runStatementOnDriver("merge into " + target + " as `d/8` using " + src + " as `a/b` on i=`g/h`" +
-        "\nwhen matched and `g/h` > 5 then delete " +
-        "\nwhen matched and `g/h` < 0 then update set vc='∆∋', `d?*de e` =  `d?*de e` * j + 1" +
-        "\nwhen not matched and `d?*de e` <> 0 then insert values(`a/b`.`g/h`,`a/b`.j,`a/b`.k)");
+      "\nwhen matched and `g/h` > 5 then delete " +
+      "\nwhen matched and `g/h` < 0 then update set vc='∆∋', `d?*de e` =  `d?*de e` * j + 1" +
+      "\nwhen not matched and `d?*de e` <> 0 then insert values(`a/b`.`g/h`,`a/b`.j,`a/b`.k)");
     runStatementOnDriver("merge into " + target + " as `d/8` using " + src + " as `a/b` on i=`g/h`" +
-        "\nwhen matched and `g/h` > 5 then delete" +
-        "\n when matched and `g/h` < 0 then update set vc='∆∋'  , `d?*de e` =  `d?*de e` * j + 1  " +
-        "\n when not matched and `d?*de e` <> 0 then insert values(`a/b`.`g/h`,`a/b`.j,`a/b`.k)");
+      "\nwhen matched and `g/h` > 5 then delete" +
+      "\n when matched and `g/h` < 0 then update set vc='∆∋'  , `d?*de e` =  `d?*de e` * j + 1  " +
+      "\n when not matched and `d?*de e` <> 0 then insert values(`a/b`.`g/h`,`a/b`.j,`a/b`.k)");
   }
   /**
    * https://www.linkedin.com/pulse/how-load-slowly-changing-dimension-type-2-using-oracle-padhy
@@ -1169,8 +649,8 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
       List<String> r2 = runStatementOnDriver(teeCurMatch);
     }
     String stmt = "merge into target t using (" + teeCurMatch + ") s on t.key=s.key and t.cur=1 and s.`o/p\\n`=1 " +
-        "when matched then update set cur=0 " +
-        "when not matched then insert values(s.key,s.data,1)";
+      "when matched then update set cur=0 " +
+      "when not matched then insert values(s.key,s.data,1)";
     //to allow cross join from 'teeCurMatch'
     hiveConf.setBoolVar(HiveConf.ConfVars.HIVE_STRICT_CHECKS_CARTESIAN, false);
     runStatementOnDriver(stmt);
@@ -1194,10 +674,10 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
     runStatementOnDriver("insert into source " + makeValuesClause(sourceVals));
 
     String baseSrc =  "select source.*, 0 c from source " +
-        "union all " +
-        "select source.*, 1 c from source " +
-        "inner join target " +
-        "on source.key=target.key where target.cur=1";
+      "union all " +
+      "select source.*, 1 c from source " +
+      "inner join target " +
+      "on source.key=target.key where target.cur=1";
     if(false) {
       //this is just for debug
       List<String> r1 = runStatementOnDriver(baseSrc);
@@ -1206,10 +686,10 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
           "\non t.key=s.key and t.cur=s.c and t.cur=1");
     }
     String stmt = "merge into target t using " +
-        "(" + baseSrc + ") s " +
-        "on t.key=s.key and t.cur=s.c and t.cur=1 " +
-        "when matched then update set cur=0 " +
-        "when not matched then insert values(s.key,s.data,1)";
+      "(" + baseSrc + ") s " +
+      "on t.key=s.key and t.cur=s.c and t.cur=1 " +
+      "when matched then update set cur=0 " +
+      "when not matched then insert values(s.key,s.data,1)";
 
     runStatementOnDriver(stmt);
     int[][] resultVals = {{1,5,0},{1,7,1},{1,18,0},{2,6,1},{3,8,1}};
@@ -1220,10 +700,10 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
   @Test
   public void testMergeOnTezEdges() throws Exception {
     String query = "merge into " + Table.ACIDTBL +
-        " as t using " + Table.NONACIDORCTBL + " s ON t.a = s.a " +
-        "WHEN MATCHED AND s.a > 8 THEN DELETE " +
-        "WHEN MATCHED THEN UPDATE SET b = 7 " +
-        "WHEN NOT MATCHED THEN INSERT VALUES(s.a, s.b) ";
+      " as t using " + Table.NONACIDORCTBL + " s ON t.a = s.a " +
+      "WHEN MATCHED AND s.a > 8 THEN DELETE " +
+      "WHEN MATCHED THEN UPDATE SET b = 7 " +
+      "WHEN NOT MATCHED THEN INSERT VALUES(s.a, s.b) ";
     d.destroy();
     HiveConf hc = new HiveConf(hiveConf);
     hc.setVar(HiveConf.ConfVars.HIVE_EXECUTION_ENGINE, "tez");
@@ -1237,29 +717,13 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
       sb.append(s).append('\n');
     }
     LOG.info("Explain1: " + sb);
-    /*
-     Edges:
-     Reducer 2 <- Map 1 (SIMPLE_EDGE), Map 8 (SIMPLE_EDGE)
-     Reducer 3 <- Reducer 2 (SIMPLE_EDGE)
-     Reducer 4 <- Reducer 2 (SIMPLE_EDGE)
-     Reducer 5 <- Reducer 2 (CUSTOM_SIMPLE_EDGE)
-     Reducer 6 <- Reducer 2 (SIMPLE_EDGE)
-     Reducer 7 <- Reducer 2 (CUSTOM_SIMPLE_EDGE)
-     */
     for(int i = 0; i < explain.size(); i++) {
       if(explain.get(i).contains("Edges:")) {
-        Assert.assertTrue("At i+1=" + (i+1) + explain.get(i + 1),
-            explain.get(i + 1).contains("Reducer 2 <- Map 1 (SIMPLE_EDGE), Map 8 (SIMPLE_EDGE)"));
-        Assert.assertTrue("At i+1=" + (i+2) + explain.get(i + 2),
-            explain.get(i + 2).contains("Reducer 3 <- Reducer 2 (SIMPLE_EDGE)"));
-        Assert.assertTrue("At i+1=" + (i+3) + explain.get(i + 3),
-            explain.get(i + 3).contains("Reducer 4 <- Reducer 2 (SIMPLE_EDGE)"));
-        Assert.assertTrue("At i+1=" + (i+4) + explain.get(i + 4),
-            explain.get(i + 4).contains("Reducer 5 <- Reducer 2 (SIMPLE_EDGE)"));
-        Assert.assertTrue("At i+1=" + (i+5) + explain.get(i + 5),
-            explain.get(i + 5).contains("Reducer 6 <- Reducer 2 (SIMPLE_EDGE)"));
-        Assert.assertTrue("At i+1=" + (i+6) + explain.get(i + 6),
-            explain.get(i + 6).contains("Reducer 7 <- Reducer 2 (SIMPLE_EDGE)"));
+        Assert.assertTrue("At i+1=" + (i+1) + explain.get(i + 1), explain.get(i + 1).contains("Reducer 2 <- Map 1 (SIMPLE_EDGE), Map 7 (SIMPLE_EDGE)"));
+        Assert.assertTrue("At i+1=" + (i+2) + explain.get(i + 2), explain.get(i + 2).contains("Reducer 3 <- Reducer 2 (SIMPLE_EDGE)"));
+        Assert.assertTrue("At i+1=" + (i+3) + explain.get(i + 3), explain.get(i + 3).contains("Reducer 4 <- Reducer 2 (SIMPLE_EDGE)"));
+        Assert.assertTrue("At i+1=" + (i+4) + explain.get(i + 4), explain.get(i + 4).contains("Reducer 5 <- Reducer 2 (SIMPLE_EDGE)"));
+        Assert.assertTrue("At i+1=" + (i+5) + explain.get(i + 5), explain.get(i + 5).contains("Reducer 6 <- Reducer 2 (CUSTOM_SIMPLE_EDGE)"));
         break;
       }
     }
@@ -1271,10 +735,10 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
     int[][] vals = {{2,1},{4,3},{5,6},{7,8}};
     runStatementOnDriver("insert into " + Table.ACIDTBL + " " + makeValuesClause(vals));
     String query = "merge into " + Table.ACIDTBL +
-        " as t using " + Table.NONACIDORCTBL + " s ON t.a = s.a " +
-        "WHEN MATCHED AND s.a < 3 THEN update set b = 0 " + //updates (2,1) -> (2,0)
-        "WHEN MATCHED and t.a > 3 and t.a < 5 THEN DELETE " +//deletes (4,3)
-        "WHEN NOT MATCHED THEN INSERT VALUES(s.a, s.b) "; //inserts (11,11)
+      " as t using " + Table.NONACIDORCTBL + " s ON t.a = s.a " +
+      "WHEN MATCHED AND s.a < 3 THEN update set b = 0 " + //updates (2,1) -> (2,0)
+      "WHEN MATCHED and t.a > 3 and t.a < 5 THEN DELETE " +//deletes (4,3)
+      "WHEN NOT MATCHED THEN INSERT VALUES(s.a, s.b) ";//inserts (11,11)
     runStatementOnDriver(query);
 
     List<String> r = runStatementOnDriver("select a,b from " + Table.ACIDTBL + " order by a,b");
@@ -1294,9 +758,9 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
     int[][] vals = {{2,1},{4,3},{5,6},{7,8}};
     runStatementOnDriver("insert into " + Table.ACIDTBL + " " + makeValuesClause(vals));
     String query = "merge into " + Table.ACIDTBL +
-        " as t using " + Table.NONACIDORCTBL + " s ON t.a = s.a " +
-        "WHEN MATCHED AND s.a < 3 THEN update set b = 0 " +
-        "WHEN MATCHED and t.a > 3 and t.a < 5 THEN DELETE ";
+      " as t using " + Table.NONACIDORCTBL + " s ON t.a = s.a " +
+      "WHEN MATCHED AND s.a < 3 THEN update set b = 0 " +
+      "WHEN MATCHED and t.a > 3 and t.a < 5 THEN DELETE ";
     runStatementOnDriver(query);
 
     List<String> r = runStatementOnDriver("select a,b from " + Table.ACIDTBL + " order by a,b");
@@ -1310,10 +774,10 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
     int[][] targetVals = {{2,1},{4,3},{5,6},{7,8}};
     runStatementOnDriver("insert into " + Table.ACIDTBL + " " + makeValuesClause(targetVals));
     String query = "merge into " + Table.ACIDTBL +
-        " as t using " + Table.NONACIDORCTBL + " s ON t.a = s.a " +
-        "WHEN MATCHED and s.a < 5 THEN DELETE " +
-        "WHEN MATCHED AND s.a < 3 THEN update set b = 0 " +
-        "WHEN NOT MATCHED THEN INSERT VALUES(s.a, s.b) ";
+      " as t using " + Table.NONACIDORCTBL + " s ON t.a = s.a " +
+      "WHEN MATCHED and s.a < 5 THEN DELETE " +
+      "WHEN MATCHED AND s.a < 3 THEN update set b = 0 " +
+      "WHEN NOT MATCHED THEN INSERT VALUES(s.a, s.b) ";
     runStatementOnDriver(query);
 
     List<String> r = runStatementOnDriver("select a,b from " + Table.ACIDTBL + " order by a,b");
@@ -1332,44 +796,39 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
     int[][] targetVals = {{2,1},{4,3},{5,6},{7,8}};
     runStatementOnDriver("insert into " + Table.ACIDTBL + " " + makeValuesClause(targetVals));
     String query = "merge into " + Table.ACIDTBL +
-        " as t using " + Table.NONACIDORCTBL + " s ON t.a = s.a " +
-        "WHEN MATCHED and s.a < 5 THEN DELETE " +
-        "WHEN MATCHED AND s.a < 3 THEN update set b = 0 " +
-        "WHEN NOT MATCHED THEN INSERT VALUES(s.a, s.b) ";
+      " as t using " + Table.NONACIDORCTBL + " s ON t.a = s.a " +
+      "WHEN MATCHED and s.a < 5 THEN DELETE " +
+      "WHEN MATCHED AND s.a < 3 THEN update set b = 0 " +
+      "WHEN NOT MATCHED THEN INSERT VALUES(s.a, s.b) ";
     runStatementOnDriverNegative(query);
     runStatementOnDriver("insert into " + Table.ACIDTBLPART + " partition(p) values(1,1,'p1'),(2,2,'p1'),(3,3,'p1'),(4,4,'p2')");
     query = "merge into " + Table.ACIDTBLPART +
-        " as t using " + Table.NONACIDORCTBL + " s ON t.a = s.a " +
-        "WHEN MATCHED and s.a < 5 THEN DELETE " +
-        "WHEN MATCHED AND s.a < 3 THEN update set b = 0 " +
-        "WHEN NOT MATCHED THEN INSERT VALUES(s.a, s.b, 'p1') ";
+      " as t using " + Table.NONACIDORCTBL + " s ON t.a = s.a " +
+      "WHEN MATCHED and s.a < 5 THEN DELETE " +
+      "WHEN MATCHED AND s.a < 3 THEN update set b = 0 " +
+      "WHEN NOT MATCHED THEN INSERT VALUES(s.a, s.b, 'p1') ";
     runStatementOnDriverNegative(query);
   }
   @Test
   public void testSetClauseFakeColumn() throws Exception {
-    CommandProcessorException e1 = runStatementOnDriverNegative(
-        "MERGE INTO "+ Table.ACIDTBL + " target\n" +
-        "USING " + Table.NONACIDORCTBL + "\n" +
-        " source ON target.a = source.a\n" +
-        "WHEN MATCHED THEN UPDATE set t = 1");
+    CommandProcessorResponse cpr = runStatementOnDriverNegative("MERGE INTO "+ Table.ACIDTBL +
+      " target USING " + Table.NONACIDORCTBL +
+      "\n source ON target.a = source.a " +
+      "\nWHEN MATCHED THEN UPDATE set t = 1");
     Assert.assertEquals(ErrorMsg.INVALID_TARGET_COLUMN_IN_SET_CLAUSE,
-        ((HiveException)e1.getCause()).getCanonicalErrorMsg());
-
-    CommandProcessorException e2 = runStatementOnDriverNegative("update " + Table.ACIDTBL + " set t = 1");
+      ((HiveException)cpr.getException()).getCanonicalErrorMsg());
+    cpr = runStatementOnDriverNegative("update " + Table.ACIDTBL + " set t = 1");
     Assert.assertEquals(ErrorMsg.INVALID_TARGET_COLUMN_IN_SET_CLAUSE,
-        ((HiveException)e2.getCause()).getCanonicalErrorMsg());
+      ((HiveException)cpr.getException()).getCanonicalErrorMsg());
   }
-
   @Test
   public void testBadOnClause() throws Exception {
-    CommandProcessorException e =
-        runStatementOnDriverNegative(
-            "merge into " + Table.ACIDTBL + " trgt\n" +
-            "using (select *\n" +
-            "       from " + Table.NONACIDORCTBL + " src) sub on sub.a = target.a\n" +
-            "when not matched then insert values (sub.a,sub.b)");
-    Assert.assertTrue("Error didn't match: " + e, e.getMessage().contains(
-        "No columns from target table 'trgt' found in ON clause '`sub`.`a` = `target`.`a`' of MERGE statement."));
+    CommandProcessorResponse cpr = runStatementOnDriverNegative("merge into " + Table.ACIDTBL +
+      " trgt using (select * from " + Table.NONACIDORCTBL +
+      "src) sub on sub.a = target.a when not matched then insert values (sub.a,sub.b)");
+    Assert.assertTrue("Error didn't match: " + cpr, cpr.getErrorMessage().contains(
+      "No columns from target table 'trgt' found in ON clause '`sub`.`a` = `target`.`a`' of MERGE statement."));
+
   }
 
   /**
@@ -1388,7 +847,7 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
       }
     }, 5000);
     long start = System.currentTimeMillis();
-    runStatementOnDriver("alter table " + Table.ACIDTBL + " compact 'major' AND WAIT");
+    runStatementOnDriver("alter table "+ TestTxnCommands2.Table.ACIDTBL +" compact 'major' AND WAIT");
     //no Worker so it stays in initiated state
     //w/o AND WAIT the above alter table retunrs almost immediately, so the test here to check that
     //> 2 seconds pass, i.e. that the command in Driver actually blocks before cancel is fired
@@ -1417,34 +876,54 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
     //create a delta directory
     runStatementOnDriver("insert into " + Table.NONACIDORCTBL + "(a,b) values(1,17)");
 
-    boolean isVectorized = hiveConf.getBoolVar(HiveConf.ConfVars.HIVE_VECTORIZATION_ENABLED);
-    String query = "select ROW__ID, a, b" + (isVectorized ? " from  " : ", INPUT__FILE__NAME from ") +  Table.NONACIDORCTBL + " order by ROW__ID";
-    String[][] expected = new String[][] {
-      {"{\"writeid\":0,\"bucketid\":536936448,\"rowid\":0}\t1\t2", "nonacidorctbl/000001_0"},
-      {"{\"writeid\":0,\"bucketid\":536936448,\"rowid\":1}\t0\t12", "nonacidorctbl/000001_0_copy_1"},
-      {"{\"writeid\":0,\"bucketid\":536936448,\"rowid\":2}\t1\t5", "nonacidorctbl/000001_0_copy_1"},
-      {"{\"writeid\":10000001,\"bucketid\":536936448,\"rowid\":0}\t1\t17", "nonacidorctbl/delta_10000001_10000001_0000/bucket_00001_0"}
-    };
-    checkResult(expected, query, isVectorized, "before compact", LOG);
-
+    //make sure we assign correct Ids
+    List<String> rs = runStatementOnDriver("select ROW__ID, a, b, INPUT__FILE__NAME from " +  Table.NONACIDORCTBL + " order by ROW__ID");
+    LOG.warn("before compact");
+    for(String s : rs) {
+      LOG.warn(s);
+    }
     Assert.assertEquals(536870912,
-        BucketCodec.V1.encode(new AcidOutputFormat.Options(hiveConf).bucket(0)));
+      BucketCodec.V1.encode(new AcidOutputFormat.Options(hiveConf).bucket(0)));
     Assert.assertEquals(536936448,
-        BucketCodec.V1.encode(new AcidOutputFormat.Options(hiveConf).bucket(1)));
-
+      BucketCodec.V1.encode(new AcidOutputFormat.Options(hiveConf).bucket(1)));
+    Assert.assertEquals("", 4, rs.size());
+    Assert.assertTrue(rs.get(0),
+            rs.get(0).startsWith("{\"writeid\":0,\"bucketid\":536936448,\"rowid\":0}\t1\t2"));
+    Assert.assertTrue(rs.get(0), rs.get(0).endsWith("nonacidorctbl/000001_0"));
+    Assert.assertTrue(rs.get(1),
+            rs.get(1).startsWith("{\"writeid\":0,\"bucketid\":536936448,\"rowid\":1}\t1\t5"));
+    Assert.assertTrue(rs.get(1), rs.get(1).endsWith("nonacidorctbl/000001_0_copy_1"));
+    Assert.assertTrue(rs.get(2),
+            rs.get(2).startsWith("{\"writeid\":0,\"bucketid\":536936448,\"rowid\":2}\t0\t12"));
+    Assert.assertTrue(rs.get(2), rs.get(2).endsWith("nonacidorctbl/000001_0_copy_1"));
+    Assert.assertTrue(rs.get(3),
+            rs.get(3).startsWith("{\"writeid\":10000001,\"bucketid\":536936448,\"rowid\":0}\t1\t17"));
+    Assert.assertTrue(rs.get(3), rs.get(3)
+        .endsWith("nonacidorctbl/delta_10000001_10000001_0000/bucket_00001"));
     //run Compaction
-    runStatementOnDriver("alter table " + Table.NONACIDORCTBL + " compact 'major'");
-    runWorker(hiveConf);
+    runStatementOnDriver("alter table "+ TestTxnCommands2.Table.NONACIDORCTBL +" compact 'major'");
+    TestTxnCommands2.runWorker(hiveConf);
+    rs = runStatementOnDriver("select ROW__ID, a, b, INPUT__FILE__NAME from " +
+        Table.NONACIDORCTBL + " order by ROW__ID");
+    LOG.warn("after compact");
+    for(String s : rs) {
+      LOG.warn(s);
+    }
+    Assert.assertEquals("", 4, rs.size());
+    Assert.assertTrue(rs.get(0),
+            rs.get(0).startsWith("{\"writeid\":0,\"bucketid\":536936448,\"rowid\":0}\t1\t2"));
+    Assert.assertTrue(rs.get(0), rs.get(0).endsWith("nonacidorctbl/base_10000001/bucket_00001"));
+    Assert.assertTrue(rs.get(1),
+            rs.get(1).startsWith("{\"writeid\":0,\"bucketid\":536936448,\"rowid\":1}\t1\t5"));
+    Assert.assertTrue(rs.get(1), rs.get(1).endsWith("nonacidorctbl/base_10000001/bucket_00001"));
+    Assert.assertTrue(rs.get(2),
+            rs.get(2).startsWith("{\"writeid\":0,\"bucketid\":536936448,\"rowid\":2}\t0\t12"));
+    Assert.assertTrue(rs.get(2), rs.get(2).endsWith("nonacidorctbl/base_10000001/bucket_00001"));
+    Assert.assertTrue(rs.get(3),
+            rs.get(3)
+                .startsWith("{\"writeid\":10000001,\"bucketid\":536936448,\"rowid\":0}\t1\t17"));
+    Assert.assertTrue(rs.get(3), rs.get(3).endsWith("nonacidorctbl/base_10000001/bucket_00001"));
 
-    query = "select ROW__ID, a, b" + (isVectorized ? "" : ", INPUT__FILE__NAME") + " from "
-        + Table.NONACIDORCTBL + " order by ROW__ID";
-    String[][] expected2 = new String[][] {
-        {"{\"writeid\":0,\"bucketid\":536936448,\"rowid\":0}\t1\t2", "nonacidorctbl/base_10000001_v0000021/bucket_00001"},
-        {"{\"writeid\":0,\"bucketid\":536936448,\"rowid\":1}\t0\t12", "nonacidorctbl/base_10000001_v0000021/bucket_00001"},
-        {"{\"writeid\":0,\"bucketid\":536936448,\"rowid\":2}\t1\t5", "nonacidorctbl/base_10000001_v0000021/bucket_00001"},
-        {"{\"writeid\":10000001,\"bucketid\":536936448,\"rowid\":0}\t1\t17", "nonacidorctbl/base_10000001_v0000021/bucket_00001"}
-    };
-    checkResult(expected2, query, isVectorized, "after major compact", LOG);
     //make sure they are the same before and after compaction
   }
   //@Ignore("see bucket_num_reducers_acid.q")
@@ -1460,8 +939,8 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
     hc.setBoolVar(HiveConf.ConfVars.HIVE_EXPLAIN_USER, false);
     d = new Driver(hc);
     d.setMaxRows(10000);
-    runStatementOnDriver("insert into " + Table.ACIDTBL + " values(1,1)"); //txn X write to bucket1
-    runStatementOnDriver("insert into " + Table.ACIDTBL + " values(0,0),(3,3)"); // txn X + 1 write to bucket0 + bucket1
+    runStatementOnDriver("insert into " + Table.ACIDTBL + " values(1,1)");//txn X write to bucket1
+    runStatementOnDriver("insert into " + Table.ACIDTBL + " values(0,0),(3,3)");// txn X + 1 write to bucket0 + bucket1
     runStatementOnDriver("update " + Table.ACIDTBL + " set b = -1");
     List<String> r = runStatementOnDriver("select * from " + Table.ACIDTBL + " order by a, b");
     int[][] expected = {{0, -1}, {1, -1}, {3, -1}};
@@ -1481,10 +960,10 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
     d.setMaxRows(10000);
     runStatementOnDriver("create table fourbuckets (a int, b int) clustered by (a) into 4 buckets stored as orc TBLPROPERTIES ('transactional'='true')");
     //below value for a is bucket id, for b - txn id (logically)
-    runStatementOnDriver("insert into fourbuckets values(0,1),(1,1)"); //txn X write to b0 + b1
-    runStatementOnDriver("insert into fourbuckets values(2,2),(3,2)"); // txn X + 1 write to b2 + b3
-    runStatementOnDriver("insert into fourbuckets values(0,3),(1,3)"); //txn X + 2 write to b0 + b1
-    runStatementOnDriver("insert into fourbuckets values(2,4),(3,4)"); //txn X + 3 write to b2 + b3
+    runStatementOnDriver("insert into fourbuckets values(0,1),(1,1)");//txn X write to b0 + b1
+    runStatementOnDriver("insert into fourbuckets values(2,2),(3,2)");// txn X + 1 write to b2 + b3
+    runStatementOnDriver("insert into fourbuckets values(0,3),(1,3)");//txn X + 2 write to b0 + b1
+    runStatementOnDriver("insert into fourbuckets values(2,4),(3,4)");//txn X + 3 write to b2 + b3
     //so with 2 FileSinks and 4 buckets, FS1 should see (0,1),(2,2),(0,3)(2,4) since data is sorted by ROW__ID where tnxid is the first component
     //FS2 should see (1,1),(3,2),(1,3),(3,4)
 
@@ -1494,627 +973,59 @@ public class TestTxnCommands extends TxnCommandsBaseForTests {
     Assert.assertEquals(stringifyValues(expected), r);
   }
   @Test
-  public void testVersioningVersionFileEnabled() throws Exception {
-    acidVersionTest(true);
-  }
-
-  @Test
-  public void testVersioningVersionFileDisabled() throws Exception {
-    acidVersionTest(false);
-  }
-
-  private void acidVersionTest(boolean enableVersionFile) throws Exception {
-    boolean originalEnableVersionFile = hiveConf.getBoolVar(HiveConf.ConfVars.HIVE_WRITE_ACID_VERSION_FILE);
-    hiveConf.setBoolVar(HiveConf.ConfVars.HIVE_WRITE_ACID_VERSION_FILE, enableVersionFile);
-
+  public void testVersioning() throws Exception {
     hiveConf.set(MetastoreConf.ConfVars.CREATE_TABLES_AS_ACID.getVarname(), "true");
-    // Need to close the thread local Hive object so that configuration change is reflected to HMS.
-    Hive.closeCurrent();
     runStatementOnDriver("drop table if exists T");
     runStatementOnDriver("create table T (a int, b int) stored as orc");
     int[][] data = {{1, 2}};
     //create 1 delta file bucket_00000
     runStatementOnDriver("insert into T" + makeValuesClause(data));
-    runStatementOnDriver("update T set a=3 where b=2");
 
+    //delete the bucket files so now we have empty delta dirs
+    List<String> rs = runStatementOnDriver("select distinct INPUT__FILE__NAME from T");
     FileSystem fs = FileSystem.get(hiveConf);
-    RemoteIterator<LocatedFileStatus> files = fs.listFiles(new Path(getWarehouseDir(), "t"), true);
-    CompactorTestUtilities.checkAcidVersion(files, fs, enableVersionFile,
-        new String[] { AcidUtils.DELTA_PREFIX, AcidUtils.DELETE_DELTA_PREFIX });
+    Assert.assertTrue(rs != null && rs.size() == 1 && rs.get(0).contains(AcidUtils.DELTA_PREFIX));
+    Path  filePath = new Path(rs.get(0));
+    int version = AcidUtils.OrcAcidVersion.getAcidVersionFromDataFile(filePath, fs);
+    //check it has expected version marker
+    Assert.assertEquals("Unexpected version marker in " + filePath,
+        AcidUtils.OrcAcidVersion.ORC_ACID_VERSION, version);
 
-    runStatementOnDriver("alter table T compact 'minor'");
-    runWorker(hiveConf);
+    //check that delta dir has a version file with expected value
+    filePath = filePath.getParent();
+    Assert.assertTrue(filePath.getName().startsWith(AcidUtils.DELTA_PREFIX));
+    int versionFromMetaFile = AcidUtils.OrcAcidVersion
+                                  .getAcidVersionFromMetaFile(filePath, fs);
+    Assert.assertEquals("Unexpected version marker in " + filePath,
+        AcidUtils.OrcAcidVersion.ORC_ACID_VERSION, versionFromMetaFile);
 
-    // Check status of compaction job
+    runStatementOnDriver("insert into T" + makeValuesClause(data));
+    runStatementOnDriver("alter table T compact 'major'");
+    TestTxnCommands2.runWorker(hiveConf);
+
+    //check status of compaction job
     TxnStore txnHandler = TxnUtils.getTxnStore(hiveConf);
     ShowCompactResponse resp = txnHandler.showCompact(new ShowCompactRequest());
     Assert.assertEquals("Unexpected number of compactions in history", 1, resp.getCompactsSize());
     Assert.assertEquals("Unexpected 0 compaction state",
         TxnStore.CLEANING_RESPONSE, resp.getCompacts().get(0).getState());
     Assert.assertTrue(resp.getCompacts().get(0).getHadoopJobId().startsWith("job_local"));
-    Assert.assertTrue(resp.getCompacts().get(0).getType().equals(CompactionType.MINOR));
 
-    // Check the files after minor compaction
-    files = fs.listFiles(new Path(getWarehouseDir(), "t"), true);
-    CompactorTestUtilities.checkAcidVersion(files, fs, enableVersionFile,
-        new String[] { AcidUtils.DELTA_PREFIX, AcidUtils.DELETE_DELTA_PREFIX });
-
-    runStatementOnDriver("insert into T" + makeValuesClause(data));
-
-    runStatementOnDriver("alter table T compact 'major'");
-    runWorker(hiveConf);
-
-    // Check status of compaction job
-    txnHandler = TxnUtils.getTxnStore(hiveConf);
-    resp = txnHandler.showCompact(new ShowCompactRequest());
-    Assert.assertEquals("Unexpected number of compactions in history", 2, resp.getCompactsSize());
-    Assert.assertEquals("Unexpected 1 compaction state",
-        TxnStore.CLEANING_RESPONSE, resp.getCompacts().get(1).getState());
-    Assert.assertTrue(resp.getCompacts().get(1).getHadoopJobId().startsWith("job_local"));
-
-    // Check the files after major compaction
-    files = fs.listFiles(new Path(getWarehouseDir(), "t"), true);
-    CompactorTestUtilities.checkAcidVersion(files, fs, enableVersionFile,
-        new String[] { AcidUtils.DELTA_PREFIX, AcidUtils.DELETE_DELTA_PREFIX, AcidUtils.BASE_PREFIX });
-
-    hiveConf.setBoolVar(HiveConf.ConfVars.HIVE_WRITE_ACID_VERSION_FILE, originalEnableVersionFile);
-  }
-
-  @Test
-  public void testTruncateWithBase() throws Exception{
-    HiveConf.setBoolVar(hiveConf, HiveConf.ConfVars.HIVE_ACID_TRUNCATE_USE_BASE, true);
-    
-    runStatementOnDriver("insert into " + Table.ACIDTBL + " values(1,2),(3,4)");
-    runStatementOnDriver("truncate table " + Table.ACIDTBL);
-
-    FileSystem fs = FileSystem.get(hiveConf);
-    FileStatus[] stat = fs.listStatus(new Path(getWarehouseDir(), Table.ACIDTBL.toString().toLowerCase()),
-        AcidUtils.baseFileFilter);
-    if (1 != stat.length) {
-      Assert.fail("Expecting 1 base and found " + stat.length + " files " + Arrays.toString(stat));
-    }
-    String name = stat[0].getPath().getName();
-    Assert.assertEquals("base_0000002", name);
-
-    List<String> r = runStatementOnDriver("select * from " + Table.ACIDTBL);
-    Assert.assertEquals(0, r.size());
-  }
-
-  @Test
-  public void testTruncateWithBaseAllPartition() throws Exception{
-    HiveConf.setBoolVar(hiveConf, HiveConf.ConfVars.HIVE_ACID_TRUNCATE_USE_BASE, true);
-    
-    runStatementOnDriver("insert into " + Table.ACIDTBLPART + " partition(p='a') values(1,2),(3,4)");
-    runStatementOnDriver("insert into " + Table.ACIDTBLPART + " partition(p='b') values(1,2),(3,4)");
-    runStatementOnDriver("truncate table " + Table.ACIDTBLPART);
-
-    FileSystem fs = FileSystem.get(hiveConf);
-    FileStatus[] stat = fs.listStatus(new Path(getWarehouseDir(), Table.ACIDTBLPART.toString().toLowerCase() + "/p=a"),
-        AcidUtils.baseFileFilter);
-    if (1 != stat.length) {
-      Assert.fail("Expecting 1 base and found " + stat.length + " files " + Arrays.toString(stat));
-    }
-    String name = stat[0].getPath().getName();
-    Assert.assertEquals("base_0000003", name);
-
-    List<String> r = runStatementOnDriver("select * from " + Table.ACIDTBLPART);
-    Assert.assertEquals(0, r.size());
-  }
-
-  @Test
-  public void testTruncateWithBaseOnePartition() throws Exception{
-    HiveConf.setBoolVar(hiveConf, HiveConf.ConfVars.HIVE_ACID_TRUNCATE_USE_BASE, true);
-    
-    runStatementOnDriver("insert into " + Table.ACIDTBLPART + " partition(p='a') values(1,2),(3,4)");
-    runStatementOnDriver("insert into " + Table.ACIDTBLPART + " partition(p='b') values(5,5),(4,4)");
-    runStatementOnDriver("truncate table " + Table.ACIDTBLPART + " partition(p='b')");
-
-    FileSystem fs = FileSystem.get(hiveConf);
-    FileStatus[] stat = fs.listStatus(new Path(getWarehouseDir(), Table.ACIDTBLPART.toString().toLowerCase() + "/p=b"),
-        AcidUtils.baseFileFilter);
-    if (1 != stat.length) {
-      Assert.fail("Expecting 1 base and found " + stat.length + " files " + Arrays.toString(stat));
-    }
-    String name = stat[0].getPath().getName();
-    Assert.assertEquals("base_0000003", name);
-    stat = fs.listStatus(new Path(getWarehouseDir(), Table.ACIDTBLPART.toString().toLowerCase() + "/p=a"),
-        AcidUtils.deltaFileFilter);
-    if (1 != stat.length) {
-      Assert.fail("Expecting 1 delta and found " + stat.length + " files " + Arrays.toString(stat));
-    }
-
-    List<String> r = runStatementOnDriver("select * from " + Table.ACIDTBLPART);
-    Assert.assertEquals(2, r.size());
-  }
-
-  @Test
-  public void testDropWithBaseAndRecreateOnePartition() throws Exception {
-    dropWithBaseOnePartition(true);
-  }
-  @Test
-  public void testDropWithBaseOnePartition() throws Exception {
-    dropWithBaseOnePartition(false);
-  }
-  
-  private void dropWithBaseOnePartition(boolean reCreate) throws Exception {
-    runStatementOnDriver("insert into " + Table.ACIDTBLPART + " partition (p='a') values (1,2),(3,4)");
-    runStatementOnDriver("insert into " + Table.ACIDTBLPART + " partition (p='b') values (5,5),(4,4)");
-
-    HiveConf.setBoolVar(hiveConf, HiveConf.ConfVars.HIVE_ACID_DROP_PARTITION_USE_BASE, true);
-    runStatementOnDriver("alter table " + Table.ACIDTBLPART + " drop partition (p='b')");
-
-    FileSystem fs = FileSystem.get(hiveConf);
-    FileStatus[] stat = fs.listStatus(new Path(getWarehouseDir(), Table.ACIDTBLPART.toString().toLowerCase() + "/p=b"),
-        AcidUtils.baseFileFilter);
-    if (1 != stat.length) {
-      Assert.fail("Expecting 1 base and found " + Arrays.toString(stat));
-    }
-    String name = stat[0].getPath().getName();
-    Assert.assertEquals("base_0000003", name);
-    
-    List<String> r = runStatementOnDriver("select * from " + Table.ACIDTBLPART);
-    Assert.assertEquals(2, r.size());
-    Assert.assertTrue(isEqualCollection(r, asList("1\t2\ta", "3\t4\ta")));
-    
-    TxnStore txnHandler = TxnUtils.getTxnStore(hiveConf);
-    ShowCompactResponse resp = txnHandler.showCompact(new ShowCompactRequest());
-    
-    Assert.assertEquals("Unexpected number of compactions in history", 1, resp.getCompactsSize());
-    Assert.assertTrue(resp.getCompacts().stream().anyMatch(
-        ci -> TxnStore.CLEANING_RESPONSE.equals(ci.getState()) && "p=b".equals(ci.getPartitionname())));
-    if (reCreate) {
-      runStatementOnDriver("insert into " + Table.ACIDTBLPART + " partition (p='b') values (3,3)");
-    }
-    runCleaner(hiveConf);
-    
-    stat = fs.listStatus(new Path(getWarehouseDir(), Table.ACIDTBLPART.toString().toLowerCase()),
-        path -> path.getName().equals("p=b"));
-    if ((reCreate ? 1 : 0) != stat.length) {
-      Assert.fail("Partition data was " + (reCreate ? "" : "not") + " removed from FS");
-    }
-    if (reCreate) {
-      r = runStatementOnDriver("select * from " + Table.ACIDTBLPART);
-      Assert.assertEquals(3, r.size());
-      Assert.assertTrue(isEqualCollection(r, asList("1\t2\ta", "3\t4\ta", "3\t3\tb")));
-    }
-  }
-
-  @Test
-  public void testDropWithBaseMultiplePartitions() throws Exception {
-    runStatementOnDriver("insert into " + Table.ACIDTBLNESTEDPART + " partition (p1='a', p2='a', p3='a') values (1,1),(2,2)");
-    runStatementOnDriver("insert into " + Table.ACIDTBLNESTEDPART + " partition (p1='a', p2='a', p3='b') values (3,3),(4,4)");
-    runStatementOnDriver("insert into " + Table.ACIDTBLNESTEDPART + " partition (p1='a', p2='b', p3='c') values (7,7),(8,8)");
-    
-    HiveConf.setBoolVar(hiveConf, HiveConf.ConfVars.HIVE_ACID_DROP_PARTITION_USE_BASE, true);
-    runStatementOnDriver("alter table " + Table.ACIDTBLNESTEDPART + " drop partition (p2='a')");
-    
-    TxnStore txnHandler = TxnUtils.getTxnStore(hiveConf);
-    ShowCompactResponse resp = txnHandler.showCompact(new ShowCompactRequest());
-    Assert.assertEquals("Unexpected number of compactions in history", 2, resp.getCompactsSize());
-    
-    FileSystem fs = FileSystem.get(hiveConf);
-    FileStatus[] stat;
-
-    for (char p : asList('a', 'b')) {
-      String partName = "p1=a/p2=a/p3=" + p;
-      Assert.assertTrue(resp.getCompacts().stream().anyMatch(
-          ci -> TxnStore.CLEANING_RESPONSE.equals(ci.getState()) && partName.equals(ci.getPartitionname())));
-      
-      stat = fs.listStatus(new Path(getWarehouseDir(), Table.ACIDTBLNESTEDPART.toString().toLowerCase() + "/" + partName),
-          AcidUtils.baseFileFilter);
-      if (1 != stat.length) {
-        Assert.fail("Expecting 1 base and found " + stat.length + " files " + Arrays.toString(stat));
-      }
-      String name = stat[0].getPath().getName();
-      Assert.assertEquals("base_0000004", name);
-    }
-    stat = fs.listStatus(new Path(getWarehouseDir(), Table.ACIDTBLNESTEDPART.toString().toLowerCase() + "/p1=a/p2=b/p3=c"),
-        AcidUtils.baseFileFilter);
-    if (0 != stat.length) {
-      Assert.fail("Expecting no base and found " + stat.length + " files " + Arrays.toString(stat));
-    }
-    
-    List<String> r = runStatementOnDriver("select * from " + Table.ACIDTBLNESTEDPART);
-    Assert.assertEquals(2, r.size());
-    
-    runCleaner(hiveConf);
-
-    for (char p : asList('a', 'b')) {
-      stat = fs.listStatus(new Path(getWarehouseDir(), Table.ACIDTBLNESTEDPART.toString().toLowerCase() + "/p1=a/p2=a"),
-          path -> path.getName().equals("p3=" + p));
-      if (0 != stat.length) {
-        Assert.fail("Partition data was not removed from FS");
-      }
-    }
-  }
-  
-  @Test
-  public void testDropDatabaseCascadePerTableNonBlocking() throws Exception {
-    MetastoreConf.setLongVar(hiveConf, MetastoreConf.ConfVars.BATCH_RETRIEVE_MAX, 1);
-    dropDatabaseCascadeNonBlocking();
-  }
-
-  @Test
-  public void testDropDatabaseCascadePerDbNonBlocking() throws Exception {
-    dropDatabaseCascadeNonBlocking();
-  }
-  
-  @Test
-  public void testDropDatabaseCascadePerDbNonBlockingFilterTableNames() throws Exception {
-    DummyMetaStoreFilterHookImpl.blockResults = true;
-    dropDatabaseCascadeNonBlocking();
-  }
-  
-  private void dropDatabaseCascadeNonBlocking() throws Exception {
-    String database = "mydb";
-    String tableName = "tab_acid";
-    
-    runStatementOnDriver("drop database if exists " + database + " cascade");
-    runStatementOnDriver("create database " + database);
-    
-    // Create transactional table/materialized view with lockless-reads feature disabled
-    runStatementOnDriver("create table " + database + "." + tableName + "1 (a int, b int) " +
-      "partitioned by (ds string) stored as orc TBLPROPERTIES ('transactional'='true')");
-    runStatementOnDriver("insert into " + database + "." + tableName + "1 partition(ds) values(1,2,'foo'),(3,4,'bar')");
-
-    runStatementOnDriver("create materialized view " + database + ".mv_" + tableName + "1 " +
-      "partitioned on (ds) stored as orc TBLPROPERTIES ('transactional'='true')" +
-      "as select a, ds from " + database + "." + tableName + "1 where b > 1");
-    
-    HiveConf.setBoolVar(hiveConf, HiveConf.ConfVars.HIVE_ACID_LOCKLESS_READS_ENABLED, true);
-    // Create transactional table/materialized view with lockless-reads feature enabled
-    runStatementOnDriver("create table " + database + "." + tableName + "2 (a int, b int) " +
-      "partitioned by (ds string) stored as orc TBLPROPERTIES ('transactional'='true')");
-    runStatementOnDriver("insert into " + database + "." + tableName + "2 partition(ds) values(1,2,'foo'),(3,4,'bar')");
-
-    runStatementOnDriver("create materialized view " + database + ".mv_" + tableName + "2 " +
-      "partitioned on (ds) stored as orc TBLPROPERTIES ('transactional'='true')" +
-      "as select a, ds from " + database + "." + tableName + "2 where b > 1");
-
-    // Create external partition data
-    runStatementOnDriver("drop table if exists Tstage");
-    runStatementOnDriver("create table Tstage (a int, b int) stored as orc" +
-      " tblproperties('transactional'='false')");
-    runStatementOnDriver("insert into Tstage values(0,2),(0,4)");
-    
-    runStatementOnDriver("export table Tstage to '" + getWarehouseDir() + "/1'");
-    runStatementOnDriver("export table Tstage to '" + getWarehouseDir() + "/2'");
-    
-    // Create external table
-    runStatementOnDriver("create external table " + database + ".tab_ext (a int, b int) " +
-      "partitioned by (ds string) stored as parquet");
-    runStatementOnDriver("insert into " + database + ".tab_ext partition(ds) values(1,2,'foo'),(3,4,'bar')");
-    // Add partition with external location
-    runStatementOnDriver("alter table " + database + ".tab_ext add partition (ds='baz') location '" +getWarehouseDir() + "/1/data'");
-
-    // Create managed table
-    runStatementOnDriver("create table " + database + ".tab_nonacid (a int, b int) " +
-      "partitioned by (ds string) stored as parquet");
-    runStatementOnDriver("insert into " + database + ".tab_nonacid partition(ds) values(1,2,'foo'),(3,4,'bar')");
-    // Add partition with external location
-    runStatementOnDriver("alter table " + database + ".tab_nonacid add partition (ds='baz') location '" +getWarehouseDir() + "/2/data'");
-   
-    // Drop database cascade
-    runStatementOnDriver("drop database " + database + " cascade");
-
-    FileSystem fs = FileSystem.get(hiveConf);
-    FileStatus[] stat = fs.listStatus(new Path(getWarehouseDir(), database + ".db"),
-      t -> t.getName().matches("(mv_)?" + tableName + "2" + SOFT_DELETE_TABLE_PATTERN));
-    if (2 != stat.length) {
-      Assert.fail("Table data was removed from FS");
-    }
-    stat = fs.listStatus(new Path(getWarehouseDir(), database + ".db"));
-    Assert.assertEquals(2, stat.length);
-    // External table under warehouse external location should be removed
-    stat = fs.listStatus(new Path(getWarehouseDir(), "ext"));
-    Assert.assertEquals(0, stat.length);
-    // External partition for the external table should remain
-    stat = fs.listStatus(new Path(getWarehouseDir(),"1"),
-      t -> t.getName().equals("data"));
-    Assert.assertEquals(1, stat.length);
-    // External partition for managed table should be removed
-    stat = fs.listStatus(new Path(getWarehouseDir(), "2"),
-      t -> t.getName().equals("data"));
-    Assert.assertEquals(0, stat.length);
-
-    runCleaner(hiveConf);
-
-    stat = fs.listStatus(new Path(getWarehouseDir(), database + ".db"),
-      t -> t.getName().matches("(mv_)?" + tableName + "2" + SOFT_DELETE_TABLE_PATTERN));
-    if (stat.length != 0) {
-      Assert.fail("Table data was not removed from FS");
-    }
-  }
-  
-  @Test
-  public void testDropTableWithSuffix() throws Exception {
-    String tableName = "tab_acid";
-    runStatementOnDriver("drop table if exists " + tableName);
-    HiveConf.setBoolVar(hiveConf, HiveConf.ConfVars.HIVE_ACID_CREATE_TABLE_USE_SUFFIX, true);
-
-    runStatementOnDriver("create table " + tableName + "(a int, b int) stored as orc TBLPROPERTIES ('transactional'='true')");
-    runStatementOnDriver("insert into " + tableName + " values(1,2),(3,4)");
-    runStatementOnDriver("drop table " + tableName);
-
-    int count = TestTxnDbUtil.countQueryAgent(hiveConf, 
-      "select count(*) from TXN_TO_WRITE_ID where T2W_TABLE = '" + tableName + "'");
-    Assert.assertEquals(1, count);
-    
-    FileSystem fs = FileSystem.get(hiveConf);
-    FileStatus[] stat = fs.listStatus(new Path(getWarehouseDir()),
-      t -> t.getName().matches(tableName + SOFT_DELETE_TABLE_PATTERN));
-    if (1 != stat.length) {
-      Assert.fail("Table data was removed from FS");
-    }
-    MetastoreTaskThread houseKeeperService = new AcidHouseKeeperService();
-    houseKeeperService.setConf(hiveConf);
-    
-    houseKeeperService.run();
-    count = TestTxnDbUtil.countQueryAgent(hiveConf,
-      "select count(*) from TXN_TO_WRITE_ID where T2W_TABLE = '" + tableName + "'");
-    Assert.assertEquals(0, count);
-
-    try {
-      runStatementOnDriver("select * from " + tableName);
-    } catch (Exception ex) {
-      Assert.assertTrue(ex.getMessage().contains(
-        ErrorMsg.INVALID_TABLE.getMsg(StringUtils.wrap(tableName, "'"))));
-    }
-    // Check status of compaction job
-    TxnStore txnHandler = TxnUtils.getTxnStore(hiveConf);
-    ShowCompactResponse resp = txnHandler.showCompact(new ShowCompactRequest());
-    
-    Assert.assertEquals("Unexpected number of compactions in history", 1, resp.getCompactsSize());
-    Assert.assertEquals("Unexpected 0 compaction state",
-      TxnStore.CLEANING_RESPONSE, resp.getCompacts().get(0).getState());
-
-    runCleaner(hiveConf);
-    
-    FileStatus[] status = fs.listStatus(new Path(getWarehouseDir()),
-      t -> t.getName().matches(tableName + SOFT_DELETE_TABLE_PATTERN));
-    Assert.assertEquals(0, status.length);
-  }
-
-  @Test
-  public void testDropTableWithoutSuffix() throws Exception {
-    String tableName = "tab_acid";
-    runStatementOnDriver("drop table if exists " + tableName);
-    
-    for (boolean enabled : asList(false, true)) {
-      HiveConf.setBoolVar(hiveConf, HiveConf.ConfVars.HIVE_ACID_CREATE_TABLE_USE_SUFFIX, enabled);
-      runStatementOnDriver("create table " + tableName + "(a int, b int) stored as orc TBLPROPERTIES ('transactional'='true')");
-      runStatementOnDriver("insert into " + tableName + " values(1,2),(3,4)");
-      
-      HiveConf.setBoolVar(hiveConf, HiveConf.ConfVars.HIVE_ACID_CREATE_TABLE_USE_SUFFIX, !enabled);
-      runStatementOnDriver("drop table " + tableName);
-
-      int count = TestTxnDbUtil.countQueryAgent(hiveConf,
-        "select count(*) from TXN_TO_WRITE_ID where T2W_TABLE = '" + tableName + "'");
-      Assert.assertEquals(0, count);
-
-      FileSystem fs = FileSystem.get(hiveConf);
-      FileStatus[] stat = fs.listStatus(new Path(getWarehouseDir()),
-        t -> t.getName().equals(tableName));
-      Assert.assertEquals(0, stat.length);
-
-      try {
-        runStatementOnDriver("select * from " + tableName);
-      } catch (Exception ex) {
-        Assert.assertTrue(ex.getMessage().contains(
-          ErrorMsg.INVALID_TABLE.getMsg(StringUtils.wrap(tableName, "'"))));
-      }
-      // Check status of compaction job
-      TxnStore txnHandler = TxnUtils.getTxnStore(hiveConf);
-      ShowCompactResponse resp = txnHandler.showCompact(new ShowCompactRequest());
-      Assert.assertEquals("Unexpected number of compactions in history", 0, resp.getCompactsSize());
-    }
-  }
-
-  @Test
-  public void testDropMaterializedViewWithSuffix() throws Exception {
-    String tableName = "tab_acid";
-    String mviewName = "mv_" + tableName;
-    runStatementOnDriver("drop materialized view if exists " + mviewName);
-    runStatementOnDriver("drop table if exists " + tableName);
-    HiveConf.setBoolVar(hiveConf, HiveConf.ConfVars.HIVE_ACID_CREATE_TABLE_USE_SUFFIX, true);
-
-    runStatementOnDriver("create table " + tableName + "(a int, b int) stored as orc TBLPROPERTIES ('transactional'='true')");
-    runStatementOnDriver("insert into " + tableName + " values(1,2),(3,4)");
-    runStatementOnDriver("create materialized view " + mviewName + " stored as orc TBLPROPERTIES ('transactional'='true') " +
-      "as select a from tab_acid where b > 1");
-    runStatementOnDriver("drop materialized view " + mviewName);
-
-    int count = TestTxnDbUtil.countQueryAgent(hiveConf,
-      "select count(*) from TXN_TO_WRITE_ID where T2W_TABLE = '" + mviewName + "'");
-    Assert.assertEquals(1, count);
-
-    FileSystem fs = FileSystem.get(hiveConf);
-    FileStatus[] stat = fs.listStatus(new Path(getWarehouseDir()),
-      t -> t.getName().matches(mviewName + SOFT_DELETE_TABLE_PATTERN));
-    if (1 != stat.length) {
-      Assert.fail("Materialized view data was removed from FS");
-    }
-    MetastoreTaskThread houseKeeperService = new AcidHouseKeeperService();
-    houseKeeperService.setConf(hiveConf);
-
-    houseKeeperService.run();
-    count = TestTxnDbUtil.countQueryAgent(hiveConf,
-      "select count(*) from TXN_TO_WRITE_ID where T2W_TABLE = '" + mviewName + "'");
-    Assert.assertEquals(0, count);
-
-    try {
-      runStatementOnDriver("select * from " + mviewName);
-    } catch (Exception ex) {
-      Assert.assertTrue(ex.getMessage().contains(
-        ErrorMsg.INVALID_TABLE.getMsg(StringUtils.wrap(mviewName, "'"))));
-    }
-    // Check status of compaction job
-    TxnStore txnHandler = TxnUtils.getTxnStore(hiveConf);
-    ShowCompactResponse resp = txnHandler.showCompact(new ShowCompactRequest());
-
-    Assert.assertEquals("Unexpected number of compactions in history", 1, resp.getCompactsSize());
-    Assert.assertEquals("Unexpected 0 compaction state",
-      TxnStore.CLEANING_RESPONSE, resp.getCompacts().get(0).getState());
-
-    runCleaner(hiveConf);
-
-    FileStatus[] status = fs.listStatus(new Path(getWarehouseDir()),
-      t -> t.getName().matches(mviewName + SOFT_DELETE_TABLE_PATTERN));
-    Assert.assertEquals(0, status.length);
-  }
-
-  @Test
-  public void testDropMaterializedViewWithoutSuffix() throws Exception {
-    String tableName = "tab_acid";
-    String mviewName = "mv_" + tableName;
-    runStatementOnDriver("drop materialized view if exists " + mviewName);
-
-    for (boolean enabled : asList(false, true)) {
-      runStatementOnDriver("drop table if exists " + tableName);
-      HiveConf.setBoolVar(hiveConf, HiveConf.ConfVars.HIVE_ACID_CREATE_TABLE_USE_SUFFIX, enabled);
-      
-      runStatementOnDriver("create table " + tableName + "(a int, b int) stored as orc TBLPROPERTIES ('transactional'='true')");
-      runStatementOnDriver("insert into " + tableName + " values(1,2),(3,4)");
-      runStatementOnDriver("create materialized view " + mviewName + " stored as orc TBLPROPERTIES ('transactional'='true') " +
-        "as select a from tab_acid where b > 1");
-
-      HiveConf.setBoolVar(hiveConf, HiveConf.ConfVars.HIVE_ACID_CREATE_TABLE_USE_SUFFIX, !enabled);
-      runStatementOnDriver("drop materialized view " + mviewName);
-
-      int count = TestTxnDbUtil.countQueryAgent(hiveConf,
-        "select count(*) from TXN_TO_WRITE_ID where T2W_TABLE = '" + mviewName + "'");
-      Assert.assertEquals(0, count);
-
-      FileSystem fs = FileSystem.get(hiveConf);
-      FileStatus[] stat = fs.listStatus(new Path(getWarehouseDir()),
-        t -> t.getName().equals(mviewName));
-      Assert.assertEquals(0, stat.length);
-
-      try {
-        runStatementOnDriver("select * from " + mviewName);
-      } catch (Exception ex) {
-        Assert.assertTrue(ex.getMessage().contains(
-          ErrorMsg.INVALID_TABLE.getMsg(StringUtils.wrap(mviewName, "'"))));
-      }
-      // Check status of compaction job
-      TxnStore txnHandler = TxnUtils.getTxnStore(hiveConf);
-      ShowCompactResponse resp = txnHandler.showCompact(new ShowCompactRequest());
-      Assert.assertEquals("Unexpected number of compactions in history", 0, resp.getCompactsSize());
-    }
-  }
-
-  @Test
-  public void testRenameMakeCopyPartition() throws Exception {
-    runStatementOnDriver("insert into " + Table.ACIDTBLPART + " partition (p='a') values (1,2),(3,4)");
-    runStatementOnDriver("insert into " + Table.ACIDTBLPART + " partition (p='b') values (5,5),(4,4)");
-
-    HiveConf.setBoolVar(hiveConf, HiveConf.ConfVars.HIVE_ACID_RENAME_PARTITION_MAKE_COPY, true);
-    runStatementOnDriver("alter table " + Table.ACIDTBLPART + " partition (p='b') rename to partition (p='c')");
-
-    FileSystem fs = FileSystem.get(hiveConf);
-    FileStatus[] stat = fs.listStatus(new Path(getWarehouseDir(), Table.ACIDTBLPART.toString().toLowerCase() + "/p=b"),
-      AcidUtils.baseFileFilter);
-    if (1 != stat.length) {
-      Assert.fail("Expecting 1 base and found " + stat.length + " files " + Arrays.toString(stat));
-    }
-    String name = stat[0].getPath().getName();
-    Assert.assertEquals("base_0000003", name);
-    stat = fs.listStatus(new Path(getWarehouseDir(), Table.ACIDTBLPART.toString().toLowerCase() + "/p=a"),
-      AcidUtils.baseFileFilter);
-    if (0 != stat.length) {
-      Assert.fail("Expecting no base and found " + stat.length + " files " + Arrays.toString(stat));
-    }
-    
-    List<String> r = runStatementOnDriver("select * from " + Table.ACIDTBLPART + " where p='b'");
-    Assert.assertEquals(0, r.size());
-
-    r = runStatementOnDriver("select * from " + Table.ACIDTBLPART);
-    Assert.assertEquals(4, r.size());
-
-    TxnStore txnHandler = TxnUtils.getTxnStore(hiveConf);
-    ShowCompactResponse resp = txnHandler.showCompact(new ShowCompactRequest());
-
-    Assert.assertEquals("Unexpected number of compactions in history", 1, resp.getCompactsSize());
-    Assert.assertTrue(resp.getCompacts().stream().anyMatch(
-      ci -> TxnStore.CLEANING_RESPONSE.equals(ci.getState()) && "p=b".equals(ci.getPartitionname())));
-
-    runCleaner(hiveConf);
-
-    stat = fs.listStatus(new Path(getWarehouseDir(), Table.ACIDTBLPART.toString().toLowerCase()),
-      path -> path.getName().equals("p=b"));
-    if (0 != stat.length) {
-      Assert.fail("Expecting partition data to be removed from FS");
-    }
-  }
-
-  @Test
-  public void testRenameMakeCopyNestedPartition() throws Exception {
-    runStatementOnDriver("insert into " + Table.ACIDTBLNESTEDPART + " partition (p1='a', p2='b', p3='c') values (1,1),(2,2)");
-    runStatementOnDriver("insert into " + Table.ACIDTBLNESTEDPART + " partition (p1='a', p2='b', p3='d') values (3,3),(4,4)");
-
-    HiveConf.setBoolVar(hiveConf, HiveConf.ConfVars.HIVE_ACID_RENAME_PARTITION_MAKE_COPY, true);
-    runStatementOnDriver("alter table " + Table.ACIDTBLNESTEDPART + " partition (p1='a', p2='b', p3='d')" +
-      " rename to partition (p1='a', p2='c', p3='d')");
-
-    TxnStore txnHandler = TxnUtils.getTxnStore(hiveConf);
-    ShowCompactResponse resp = txnHandler.showCompact(new ShowCompactRequest());
-    Assert.assertEquals("Unexpected number of compactions in history", 1, resp.getCompactsSize());
-
-    FileSystem fs = FileSystem.get(hiveConf);
-    FileStatus[] stat;
-    
-    String partName = "p1=a/p2=b/p3=d";
-    Assert.assertTrue(resp.getCompacts().stream().anyMatch(
-      ci -> TxnStore.CLEANING_RESPONSE.equals(ci.getState()) && partName.equals(ci.getPartitionname())));
-
-    stat = fs.listStatus(new Path(getWarehouseDir(), Table.ACIDTBLNESTEDPART.toString().toLowerCase() + "/" + partName),
-      AcidUtils.baseFileFilter);
-    if (1 != stat.length) {
-      Assert.fail("Expecting 1 base and found " + stat.length + " files " + Arrays.toString(stat));
-    }
-    String name = stat[0].getPath().getName();
-    Assert.assertEquals("base_0000003", name);
-    
-    stat = fs.listStatus(new Path(getWarehouseDir(), Table.ACIDTBLNESTEDPART.toString().toLowerCase() + "/p1=a/p2=c/p3=d"),
-      AcidUtils.baseFileFilter);
-    if (0 != stat.length) {
-      Assert.fail("Expecting no base and found " + stat.length + " files " + Arrays.toString(stat));
-    }
-
-    List<String> r = runStatementOnDriver("select * from " + Table.ACIDTBLNESTEDPART);
-    Assert.assertEquals(4, r.size());
-
-    runCleaner(hiveConf);
-    
-    stat = fs.listStatus(new Path(getWarehouseDir(), Table.ACIDTBLNESTEDPART.toString().toLowerCase() + "/p1=a/p2=b"),
-      path -> path.getName().equals("p3=d"));
-    if (0 != stat.length) {
-      Assert.fail("Expecting partition data to be removed from FS");
-    }
-  }
-
-  @Test
-  public void testIsRawFormatFile() throws Exception {
-    dropTable(new String[]{"file_formats"});
-    
-    runStatementOnDriver("CREATE TABLE `file_formats`(`id` int, `name` string) " +
-      " ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe' " +
-      "WITH SERDEPROPERTIES ( " +
-      " 'field.delim'='|', " +
-      " 'line.delim'='\n'," +
-      " 'serialization.format'='|')  " +
-      "STORED AS " +
-      " INPUTFORMAT " +
-      "   'org.apache.hadoop.mapred.TextInputFormat' " +
-      " OUTPUTFORMAT " +
-      "   'org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat' " +
-      "TBLPROPERTIES ( " +
-      " 'transactional'='true'," +
-      " 'transactional_properties'='insert_only')");
-    
-    runStatementOnDriver("insert into file_formats (id, name) values (1, 'Avro'),(2, 'Parquet'),(3, 'ORC')");
-    
-    List<String> res = runStatementOnDriver("select * from file_formats");
-    Assert.assertEquals(3, res.size());
+    rs = runStatementOnDriver("select distinct INPUT__FILE__NAME from T");
+    Assert.assertTrue(rs != null && rs.size() == 1 && rs.get(0).contains(AcidUtils.BASE_PREFIX));
+
+    filePath = new Path(rs.get(0));
+    version = AcidUtils.OrcAcidVersion.getAcidVersionFromDataFile(filePath, fs);
+    //check that files produced by compaction still have the version marker
+    Assert.assertEquals("Unexpected version marker in " + filePath,
+        AcidUtils.OrcAcidVersion.ORC_ACID_VERSION, version);
+
+    //check that compacted base dir has a version file with expected value
+    filePath = filePath.getParent();
+    Assert.assertTrue(filePath.getName().startsWith(AcidUtils.BASE_PREFIX));
+    versionFromMetaFile = AcidUtils.OrcAcidVersion.getAcidVersionFromMetaFile(
+        filePath, fs);
+    Assert.assertEquals("Unexpected version marker in " + filePath,
+        AcidUtils.OrcAcidVersion.ORC_ACID_VERSION, versionFromMetaFile);
   }
 }

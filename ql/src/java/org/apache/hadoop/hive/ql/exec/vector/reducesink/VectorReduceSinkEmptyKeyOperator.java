@@ -18,6 +18,8 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.reducesink;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.ql.CompilationOpContext;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizationContext;
@@ -26,8 +28,6 @@ import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorExpression;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.plan.OperatorDesc;
 import org.apache.hadoop.hive.ql.plan.VectorDesc;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 
@@ -40,7 +40,7 @@ public class VectorReduceSinkEmptyKeyOperator extends VectorReduceSinkCommonOper
 
   private static final long serialVersionUID = 1L;
   private static final String CLASS_NAME = VectorReduceSinkEmptyKeyOperator.class.getName();
-  private static final Logger LOG = LoggerFactory.getLogger(CLASS_NAME);
+  private static final Log LOG = LogFactory.getLog(CLASS_NAME);
 
   // The above members are initialized by the constructor and must not be
   // transient.

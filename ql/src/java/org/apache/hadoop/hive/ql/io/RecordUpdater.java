@@ -20,7 +20,6 @@ package org.apache.hadoop.hive.ql.io;
 
 import java.io.IOException;
 
-import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.serde2.SerDeStats;
 
 /**
@@ -80,9 +79,4 @@ public interface RecordUpdater {
    * @return - buffered row count
    */
   long getBufferedRowCount();
-
-  /**
-   * Returns the path of the file this updater wrote to
-   */
-  public Path getUpdatedFilePath();
 }

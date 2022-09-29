@@ -1,5 +1,3 @@
---! qt:dataset:src
-
 set hive.vectorized.execution.enabled=false;
 set hive.exec.orc.dictionary.key.size.threshold=-1;
 

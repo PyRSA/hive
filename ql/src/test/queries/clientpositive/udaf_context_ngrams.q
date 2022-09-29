@@ -1,5 +1,3 @@
---! qt:disabled:disabled in HIVE-20741
-
 CREATE TABLE kafka_n0 (contents STRING);
 LOAD DATA LOCAL INPATH '../../data/files/text-en.txt' INTO TABLE kafka_n0;
 set mapred.reduce.tasks=1;

@@ -59,17 +59,17 @@ public class VectorMapJoinOptimizedCreateHashTable {
       case HASH_MAP:
         hashTable = new VectorMapJoinOptimizedLongHashMap(
                   minMaxEnabled, isOuterJoin, hashTableKeyType,
-                  mapJoinTableContainer, hashMapRowGetter, desc.getKeyTblDesc());
+                  mapJoinTableContainer, hashMapRowGetter);
         break;
       case HASH_MULTISET:
         hashTable = new VectorMapJoinOptimizedLongHashMultiSet(
                   minMaxEnabled, isOuterJoin, hashTableKeyType,
-                  mapJoinTableContainer, hashMapRowGetter, desc.getKeyTblDesc());
+                  mapJoinTableContainer, hashMapRowGetter);
         break;
       case HASH_SET:
         hashTable = new VectorMapJoinOptimizedLongHashSet(
                   minMaxEnabled, isOuterJoin, hashTableKeyType,
-                  mapJoinTableContainer, hashMapRowGetter, desc.getKeyTblDesc());
+                  mapJoinTableContainer, hashMapRowGetter);
         break;
       }
       break;
@@ -79,17 +79,17 @@ public class VectorMapJoinOptimizedCreateHashTable {
       case HASH_MAP:
         hashTable = new VectorMapJoinOptimizedStringHashMap(
                   isOuterJoin,
-                  mapJoinTableContainer, hashMapRowGetter, desc.getKeyTblDesc());
+                  mapJoinTableContainer, hashMapRowGetter);
         break;
       case HASH_MULTISET:
         hashTable = new VectorMapJoinOptimizedStringHashMultiSet(
                   isOuterJoin,
-                  mapJoinTableContainer, hashMapRowGetter, desc.getKeyTblDesc());
+                  mapJoinTableContainer, hashMapRowGetter);
         break;
       case HASH_SET:
         hashTable = new VectorMapJoinOptimizedStringHashSet(
                   isOuterJoin,
-                  mapJoinTableContainer, hashMapRowGetter, desc.getKeyTblDesc());
+                  mapJoinTableContainer, hashMapRowGetter);
         break;
       }
       break;
@@ -116,4 +116,16 @@ public class VectorMapJoinOptimizedCreateHashTable {
     }
     return hashTable;
   }
+
+  /*
+  @Override
+  public com.esotericsoftware.kryo.io.Output getHybridBigTableSpillOutput(int partitionId) {
+
+    HybridHashTableContainer ht = (HybridHashTableContainer) mapJoinTableContainer;
+
+    HashPartition hp = ht.getHashPartitions()[partitionId];
+
+    return hp.getMatchfileOutput();
+  }
+  */
 }

@@ -1,9 +1,5 @@
---! qt:disabled:HIVE-23984
---! qt:dataset:alltypesorc
-SET hive.vectorized.execution.enabled=true ;
-SET hive.ctas.external.tables=true;
-SET hive.external.table.purge.default = true;
-CREATE EXTERNAL TABLE druid_partitioned_table_0
+SET hive.vectorized.execution.enabled=false;
+CREATE TABLE druid_partitioned_table_0
         STORED BY 'org.apache.hadoop.hive.druid.DruidStorageHandler'
         TBLPROPERTIES (
         "druid.segment.granularity" = "HOUR",
@@ -24,7 +20,7 @@ CREATE EXTERNAL TABLE druid_partitioned_table_0
           cboolean2
           FROM alltypesorc where ctimestamp1 IS NOT NULL;
 
-EXPLAIN CREATE EXTERNAL TABLE druid_partitioned_table
+EXPLAIN CREATE TABLE druid_partitioned_table
         STORED BY 'org.apache.hadoop.hive.druid.DruidStorageHandler'
         TBLPROPERTIES (
         "druid.segment.granularity" = "HOUR",
@@ -47,7 +43,7 @@ EXPLAIN CREATE EXTERNAL TABLE druid_partitioned_table
 
 
 
-CREATE EXTERNAL TABLE druid_partitioned_table
+CREATE TABLE druid_partitioned_table
 STORED BY 'org.apache.hadoop.hive.druid.DruidStorageHandler'
 TBLPROPERTIES (
 "druid.segment.granularity" = "HOUR",
@@ -158,7 +154,7 @@ SELECT sum(cint), sum(cbigint) FROM druid_partitioned_table ;
 
 set hive.druid.indexer.partition.size.max=10;
 
-CREATE EXTERNAL TABLE druid_max_size_partition
+CREATE TABLE druid_max_size_partition
         STORED BY 'org.apache.hadoop.hive.druid.DruidStorageHandler'
         TBLPROPERTIES (
         "druid.segment.granularity" = "HOUR",

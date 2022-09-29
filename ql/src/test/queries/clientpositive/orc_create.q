@@ -1,8 +1,5 @@
---! qt:dataset:src
-
 set hive.vectorized.execution.enabled=false;
 set hive.mapred.mode=nonstrict;
-
 -- SORT_QUERY_RESULTS
 
 DROP TABLE orc_create;
@@ -95,6 +92,7 @@ CREATE TABLE orc_create_people (
 PARTITIONED BY (state string)
 STORED AS orc;
 
+set hive.exec.dynamic.partition.mode=nonstrict;
 
 INSERT OVERWRITE TABLE orc_create_people PARTITION (state)
   SELECT * FROM orc_create_people_staging;

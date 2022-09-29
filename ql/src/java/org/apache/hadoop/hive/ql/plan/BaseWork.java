@@ -28,8 +28,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.Stack;
 
-import org.apache.hadoop.hive.ql.exec.FileSinkOperator;
-import org.apache.hadoop.hive.ql.exec.OperatorUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.common.type.DataTypePhysicalVariation;
@@ -512,13 +510,7 @@ public abstract class BaseWork extends AbstractOperatorDesc {
     reservedMemoryMB = memoryMB;
   }
 
-  public void configureJobConf(JobConf job) {
-    OperatorUtils.findOperators(getAllRootOperators(), FileSinkOperator.class).forEach(fs -> {
-      LOG.debug("Configuring JobConf for table {}.{}", fs.getConf().getTableInfo().getDbName(),
-          fs.getConf().getTableInfo().getTableName());
-      PlanUtils.configureJobConf(fs.getConf().getTableInfo(), job);
-    });
-  }
+  public abstract void configureJobConf(JobConf job);
 
   public void setTag(int tag) {
     this.tag = tag;

@@ -1,3 +1,4 @@
+SET hive.exec.dynamic.partition.mode=nonstrict;
 
 DROP TABLE IF EXISTS test1_n9;
 DROP TABLE IF EXISTS test2_n6;

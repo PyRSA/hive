@@ -40,6 +40,7 @@ public class TestMapredLocalTask {
 
     verify(mockMetrics, times(1)).incrementCounter(MetricsConstant.HIVE_MR_TASKS);
     verify(mockMetrics, never()).incrementCounter(MetricsConstant.HIVE_TEZ_TASKS);
+    verify(mockMetrics, never()).incrementCounter(MetricsConstant.HIVE_SPARK_TASKS);
   }
 
 }

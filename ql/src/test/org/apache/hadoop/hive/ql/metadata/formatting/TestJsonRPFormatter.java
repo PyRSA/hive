@@ -34,19 +34,17 @@ import org.apache.hadoop.hive.metastore.api.WMPoolTrigger;
 import org.apache.hadoop.hive.metastore.api.WMResourcePlan;
 import org.apache.hadoop.hive.metastore.api.WMResourcePlanStatus;
 import org.apache.hadoop.hive.metastore.api.WMTrigger;
-import org.apache.hadoop.hive.ql.ddl.workloadmanagement.resourceplan.show.formatter.JsonShowResourcePlanFormatter;
+import org.codehaus.jackson.JsonNode;
+import org.codehaus.jackson.map.ObjectMapper;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Test class for json resource plan formatter.
  */
 public class TestJsonRPFormatter {
-  private final JsonShowResourcePlanFormatter formatter = new JsonShowResourcePlanFormatter();
+  private final JsonMetaDataFormatter formatter = new JsonMetaDataFormatter();
 
   private ByteArrayOutputStream bos;
   private DataOutputStream out;

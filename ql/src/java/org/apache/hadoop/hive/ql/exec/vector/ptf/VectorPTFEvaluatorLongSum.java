@@ -18,9 +18,11 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.ptf;
 
-import org.apache.hadoop.hive.ql.exec.vector.ColumnVector.Type;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
+import org.apache.hadoop.hive.ql.exec.vector.ColumnVector.Type;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorExpression;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.plan.ptf.WindowFrameDef;
@@ -30,7 +32,14 @@ import com.google.common.base.Preconditions;
 /**
  * This class evaluates long sum() for a PTF group.
  */
-public class VectorPTFEvaluatorLongSum extends VectorPTFEvaluatorAbstractSum<Long> {
+public class VectorPTFEvaluatorLongSum extends VectorPTFEvaluatorBase {
+
+  private static final long serialVersionUID = 1L;
+  private static final String CLASS_NAME = VectorPTFEvaluatorLongSum.class.getName();
+  private static final Log LOG = LogFactory.getLog(CLASS_NAME);
+
+  protected boolean isGroupResultNull;
+  protected long sum;
 
   public VectorPTFEvaluatorLongSum(WindowFrameDef windowFrameDef, VectorExpression inputVecExpr,
       int outputColumnNum) {
@@ -38,8 +47,7 @@ public class VectorPTFEvaluatorLongSum extends VectorPTFEvaluatorAbstractSum<Lon
     resetEvaluator();
   }
 
-  @Override
-  public void evaluateGroupBatch(VectorizedRowBatch batch)
+  public void evaluateGroupBatch(VectorizedRowBatch batch, boolean isLastGroupBatch)
       throws HiveException {
 
     evaluateInputExpr(batch);
@@ -107,28 +115,23 @@ public class VectorPTFEvaluatorLongSum extends VectorPTFEvaluatorAbstractSum<Lon
   }
 
   @Override
+  public boolean isGroupResultNull() {
+    return isGroupResultNull;
+  }
+
+  @Override
   public Type getResultColumnVectorType() {
     return Type.LONG;
   }
 
   @Override
-  protected Long plus(Long number1, Long number2) {
-    return VectorPTFEvaluatorHelper.plus(number1, number2);
-  }
-
-  @Override
-  protected Long minus(Long number1, Long number2) {
-    return VectorPTFEvaluatorHelper.minus(number1, number2);
-  }
-
-  @Override
-  protected Long computeValue(Long number) {
-    return VectorPTFEvaluatorHelper.computeValue(number);
+  public long getLongGroupResult() {
+    return sum;
   }
 
   @Override
   public void resetEvaluator() {
     isGroupResultNull = true;
-    sum = 0L;
+    sum = 0;
   }
 }

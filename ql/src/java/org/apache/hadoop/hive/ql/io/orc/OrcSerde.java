@@ -21,45 +21,40 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 import java.util.Properties;
-import java.util.regex.Pattern;
 
+import org.apache.orc.OrcConf;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.hive.metastore.api.FieldSchema;
-import org.apache.hadoop.hive.ql.ErrorMsg;
+import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
+import org.apache.hadoop.hive.ql.exec.vector.VectorizedSerde;
 import org.apache.hadoop.hive.serde.serdeConstants;
 import org.apache.hadoop.hive.serde2.AbstractSerDe;
-import org.apache.hadoop.hive.serde2.SchemaInference;
 import org.apache.hadoop.hive.serde2.SerDeException;
 import org.apache.hadoop.hive.serde2.SerDeSpec;
+import org.apache.hadoop.hive.serde2.SerDeStats;
+import org.apache.hadoop.hive.serde2.SerDeUtils;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.typeinfo.StructTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
-import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
+import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoUtils;
 import org.apache.hadoop.io.Writable;
-import org.apache.orc.OrcFile;
-import org.apache.orc.Reader;
-import org.apache.orc.TypeDescription;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
- * A serde class for ORC. It transparently passes the object to/from the ORC
- * file reader/writer. This SerDe does not support statistics, since serialized
- * size doesn't make sense in the context of ORC files.
+ * A serde class for ORC.
+ * It transparently passes the object to/from the ORC file reader/writer.
  */
 @SerDeSpec(schemaProps = {serdeConstants.LIST_COLUMNS, serdeConstants.LIST_COLUMN_TYPES, OrcSerde.COMPRESSION})
-public class OrcSerde extends AbstractSerDe implements SchemaInference {
+public class OrcSerde extends VectorizedSerde {
+
   private static final Logger LOG = LoggerFactory.getLogger(OrcSerde.class);
 
   private final OrcSerdeRow row = new OrcSerdeRow();
   private ObjectInspector inspector = null;
 
-  static final String COMPRESSION = "orc.compress";
-  static final Pattern UNQUOTED_NAMES = Pattern.compile("^[a-zA-Z0-9_]+$");
+  private VectorizedOrcSerde vos = null;
+  public static final String COMPRESSION = "orc.compress";
 
   final class OrcSerdeRow implements Writable {
     Object realRow;
@@ -85,27 +80,41 @@ public class OrcSerde extends AbstractSerDe implements SchemaInference {
   }
 
   @Override
-  public void initialize(Configuration configuration, Properties tableProperties, Properties partitionProperties)
-      throws SerDeException {
-    super.initialize(configuration, tableProperties, partitionProperties);
+  public void initialize(Configuration conf, Properties table) {
+    // Read the configuration parameters
+    String columnNameProperty = table.getProperty(serdeConstants.LIST_COLUMNS);
+    // NOTE: if "columns.types" is missing, all columns will be of String type
+    String columnTypeProperty = table.getProperty(serdeConstants.LIST_COLUMN_TYPES);
+    final String columnNameDelimiter = table.containsKey(serdeConstants.COLUMN_NAME_DELIMITER) ? table
+        .getProperty(serdeConstants.COLUMN_NAME_DELIMITER) : String.valueOf(SerDeUtils.COMMA);
+    String compressType = OrcConf.COMPRESS.getString(table, conf);
 
+    // Parse the configuration parameters
+    ArrayList<String> columnNames = new ArrayList<String>();
+    if (columnNameProperty != null && columnNameProperty.length() > 0) {
+      for (String name : columnNameProperty.split(columnNameDelimiter)) {
+        columnNames.add(name);
+      }
+    }
+    if (columnTypeProperty == null) {
+      // Default type: all string
+      StringBuilder sb = new StringBuilder();
+      for (int i = 0; i < columnNames.size(); i++) {
+        if (i > 0) {
+          sb.append(":");
+        }
+        sb.append("string");
+      }
+      columnTypeProperty = sb.toString();
+    }
+
+    ArrayList<TypeInfo> fieldTypes =
+        TypeInfoUtils.getTypeInfosFromTypeString(columnTypeProperty);
     StructTypeInfo rootType = new StructTypeInfo();
     // The source column names for ORC serde that will be used in the schema.
-    rootType.setAllStructFieldNames(getColumnNames());
-    rootType.setAllStructFieldTypeInfos(getColumnTypes());
+    rootType.setAllStructFieldNames(columnNames);
+    rootType.setAllStructFieldTypeInfos(fieldTypes);
     inspector = OrcStruct.createObjectInspector(rootType);
-  }
-
-  /**
-   * NOTE: if "columns.types" is missing, all columns will be of String type.
-   */
-  @Override
-  protected List<TypeInfo> parseColumnTypes() {
-    final List<TypeInfo> fieldTypes = super.parseColumnTypes();
-    if (fieldTypes.isEmpty()) {
-      return Collections.nCopies(getColumnNames().size(), TypeInfoFactory.stringTypeInfo);
-    }
-    return fieldTypes;
   }
 
   @Override
@@ -130,85 +139,29 @@ public class OrcSerde extends AbstractSerDe implements SchemaInference {
     return inspector;
   }
 
+  /**
+   * Always returns null, since serialized size doesn't make sense in the
+   * context of ORC files.
+   *
+   * @return null
+   */
   @Override
-  public List<FieldSchema> readSchema(Configuration conf, String file) throws SerDeException {
-    List<String> fieldNames;
-    List<TypeDescription> fieldTypes;
-    try (Reader reader = OrcFile.createReader(new Path(file), OrcFile.readerOptions(conf))) {
-      fieldNames = reader.getSchema().getFieldNames();
-      fieldTypes = reader.getSchema().getChildren();
-    } catch (Exception e) {
-      throw new SerDeException(ErrorMsg.ORC_FOOTER_ERROR.getErrorCodedMsg(), e);
-    }
-
-    List<FieldSchema> schema = new ArrayList<>();
-    for (int i = 0; i < fieldNames.size(); i++) {
-      FieldSchema fieldSchema = convertOrcTypeToFieldSchema(fieldNames.get(i), fieldTypes.get(i));
-      schema.add(fieldSchema);
-      LOG.debug("Inferred field schema {}", fieldSchema);
-    }
-    return schema;
+  public SerDeStats getSerDeStats() {
+    return null;
   }
 
-  private FieldSchema convertOrcTypeToFieldSchema(String fieldName, TypeDescription fieldType) {
-    String typeName = convertOrcTypeToFieldType(fieldType);
-    return new FieldSchema(fieldName, typeName, "Inferred from Orc file.");
+  @Override
+  public Writable serializeVector(VectorizedRowBatch vrg, ObjectInspector objInspector)
+      throws SerDeException {
+    if (vos == null) {
+      vos = new VectorizedOrcSerde(getObjectInspector());
+    }
+    return vos.serialize(vrg, getObjectInspector());
   }
 
-  private String convertOrcTypeToFieldType(TypeDescription fieldType) {
-    if (fieldType.getCategory().isPrimitive()) {
-      return convertPrimitiveType(fieldType);
-    }
-    return convertComplexType(fieldType);
-  }
-
-  private String convertPrimitiveType(TypeDescription fieldType) {
-    if (fieldType.getCategory().getName().equals("timestamp with local time zone")) {
-      throw new IllegalArgumentException("Unhandled ORC type " + fieldType.getCategory().getName());
-    }
-    return fieldType.toString();
-  }
-
-  private String convertComplexType(TypeDescription fieldType) {
-    StringBuilder buffer = new StringBuilder();
-    buffer.append(fieldType.getCategory().getName());
-    switch (fieldType.getCategory()) {
-    case LIST:
-    case MAP:
-    case UNION:
-      buffer.append('<');
-      for (int i = 0; i < fieldType.getChildren().size(); i++) {
-        if (i != 0) {
-          buffer.append(',');
-        }
-        buffer.append(convertOrcTypeToFieldType(fieldType.getChildren().get(i)));
-      }
-      buffer.append('>');
-      break;
-    case STRUCT:
-      buffer.append('<');
-      for (int i = 0; i < fieldType.getChildren().size(); ++i) {
-        if (i != 0) {
-          buffer.append(',');
-        }
-        getStructFieldName(buffer, fieldType.getFieldNames().get(i));
-        buffer.append(':');
-        buffer.append(convertOrcTypeToFieldType(fieldType.getChildren().get(i)));
-      }
-      buffer.append('>');
-      break;
-    default:
-      throw new IllegalArgumentException("ORC doesn't handle " +
-          fieldType.getCategory());
-    }
-    return buffer.toString();
-  }
-
-  static void getStructFieldName(StringBuilder buffer, String name) {
-    if (UNQUOTED_NAMES.matcher(name).matches()) {
-      buffer.append(name);
-    } else {
-      buffer.append('`').append(name.replace("`", "``")).append('`');
-    }
+  @Override
+  public void deserializeVector(Object rowBlob, int rowsInBatch, VectorizedRowBatch reuseBatch)
+      throws SerDeException {
+    // nothing to do here
   }
 }

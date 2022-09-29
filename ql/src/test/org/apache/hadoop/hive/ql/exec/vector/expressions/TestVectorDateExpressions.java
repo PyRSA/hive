@@ -18,19 +18,15 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.expressions;
 
-import org.apache.hadoop.hive.common.type.Timestamp;
-import org.apache.hadoop.hive.common.type.TimestampTZUtil;
-import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.udf.UDFDayOfMonth;
 import org.apache.hadoop.hive.ql.udf.UDFMonth;
 import org.apache.hadoop.hive.ql.udf.UDFYear;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDF;
-import org.apache.hadoop.hive.serde2.io.TimestampLocalTZWritable;
 import org.apache.hadoop.hive.serde2.io.TimestampWritableV2;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
 import org.junit.Assert;
-import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang.ArrayUtils;
 import org.apache.hadoop.hive.ql.exec.vector.BytesColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.TestVectorizedRowBatch;
@@ -48,7 +44,6 @@ import org.junit.Test;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
@@ -68,14 +63,6 @@ public class TestVectorDateExpressions {
     return new TimestampWritableV2(
         org.apache.hadoop.hive.common.type.Timestamp.ofEpochMilli(
             DateWritableV2.daysToMillis((int) daysSinceEpoch)));
-  }
-
-  private TimestampLocalTZWritable toTimestampLocalTZWritable(long daysSinceEpoch) {
-    return new TimestampLocalTZWritable(
-        TimestampTZUtil.convert(
-            Timestamp.ofEpochMilli(
-                DateWritableV2.daysToMillis((int) daysSinceEpoch)),
-            ZoneId.systemDefault()));
   }
 
   private int[] getAllBoundaries() {
@@ -315,7 +302,7 @@ public class TestVectorDateExpressions {
     verifyUDFMonth(batch);
   }
 
-  private LongWritable getLongWritable(TimestampLocalTZWritable i) {
+  private LongWritable getLongWritable(TimestampWritableV2 i) {
     LongWritable result = new LongWritable();
     if (i == null) {
       return null;
@@ -326,15 +313,19 @@ public class TestVectorDateExpressions {
   }
 
   private void compareToUDFUnixTimeStampDate(long t, long y) {
-    TimestampLocalTZWritable tsw = toTimestampLocalTZWritable(t);
+    TimestampWritableV2 tsw = toTimestampWritable(t);
     LongWritable res = getLongWritable(tsw);
+    if(res.get() != y) {
+      System.out.printf("%d vs %d for %d, %d\n", res.get(), y, t,
+              tsw.getTimestamp().toEpochMilli()/1000);
+    }
+
     Assert.assertEquals(res.get(), y);
   }
 
   private void verifyUDFUnixTimeStamp(VectorizedRowBatch batch) throws HiveException {
     VectorExpression udf;
     udf = new VectorUDFUnixTimeStampDate(0, 1);
-    udf.transientInit(new HiveConf());
     udf.setInputTypeInfos(new TypeInfo[] {TypeInfoFactory.dateTypeInfo});
     udf.evaluate(batch);
     final int in = 0;
@@ -398,7 +389,7 @@ public class TestVectorDateExpressions {
     VectorExpression udf;
     udf = new VectorUDFWeekOfYearDate(0, 1);
     udf.setInputTypeInfos(new TypeInfo[] {TypeInfoFactory.dateTypeInfo});
-    udf.transientInit(new HiveConf());
+    udf.transientInit();
     udf.evaluate(batch);
     final int in = 0;
     final int out = 1;

@@ -32,6 +32,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.CompilationOpContext;
+import org.apache.hadoop.hive.ql.exec.mapjoin.MapJoinMemoryExhaustionHandler;
 import org.apache.hadoop.hive.ql.exec.persistence.HashMapWrapper;
 import org.apache.hadoop.hive.ql.exec.persistence.MapJoinEagerRowContainer;
 import org.apache.hadoop.hive.ql.exec.persistence.MapJoinKeyObject;
@@ -47,6 +48,7 @@ import org.apache.hadoop.hive.ql.plan.api.OperatorType;
 import org.apache.hadoop.hive.ql.session.SessionState.LogHelper;
 import org.apache.hadoop.hive.serde2.AbstractSerDe;
 import org.apache.hadoop.hive.serde2.SerDeException;
+import org.apache.hadoop.hive.serde2.SerDeUtils;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorUtils;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorUtils.ObjectInspectorCopyOption;
@@ -101,7 +103,7 @@ public class HashTableSinkOperator extends TerminalOperator<HashTableSinkDesc> i
   private long rowNumber = 0;
   protected transient LogHelper console;
   private long hashTableScale;
-  private MemoryExhaustionChecker memoryExhaustionChecker;
+  private MapJoinMemoryExhaustionHandler memoryExhaustionHandler;
 
   /** Kryo ctor. */
   protected HashTableSinkOperator() {
@@ -124,7 +126,7 @@ public class HashTableSinkOperator extends TerminalOperator<HashTableSinkDesc> i
     super.initializeOp(hconf);
     boolean isSilent = HiveConf.getBoolVar(hconf, HiveConf.ConfVars.HIVESESSIONSILENT);
     console = new LogHelper(LOG, isSilent);
-    memoryExhaustionChecker = MemoryExhaustionCheckerFactory.getChecker(console, hconf, conf);
+    memoryExhaustionHandler = new MapJoinMemoryExhaustionHandler(console, conf.getHashtableMemoryUsage());
     emptyRowContainer.addRow(emptyObjectArray);
 
     // for small tables only; so get the big table position first
@@ -178,18 +180,18 @@ public class HashTableSinkOperator extends TerminalOperator<HashTableSinkDesc> i
     }
     try {
       TableDesc keyTableDesc = conf.getKeyTblDesc();
-      AbstractSerDe keySerDe = (AbstractSerDe) ReflectionUtils.newInstance(keyTableDesc.getSerDeClass(),
+      AbstractSerDe keySerde = (AbstractSerDe) ReflectionUtils.newInstance(keyTableDesc.getDeserializerClass(),
           null);
-      keySerDe.initialize(null, keyTableDesc.getProperties(), null);
-      MapJoinObjectSerDeContext keyContext = new MapJoinObjectSerDeContext(keySerDe, false);
+      SerDeUtils.initializeSerDe(keySerde, null, keyTableDesc.getProperties(), null);
+      MapJoinObjectSerDeContext keyContext = new MapJoinObjectSerDeContext(keySerde, false);
       for (Byte pos : order) {
         if (pos == posBigTableAlias) {
           continue;
         }
         mapJoinTables[pos] = new HashMapWrapper(hconf, -1);
         TableDesc valueTableDesc = conf.getValueTblFilteredDescs().get(pos);
-        AbstractSerDe valueSerDe = (AbstractSerDe) ReflectionUtils.newInstance(valueTableDesc.getSerDeClass(), null);
-        valueSerDe.initialize(null, valueTableDesc.getProperties(), null);
+        AbstractSerDe valueSerDe = (AbstractSerDe) ReflectionUtils.newInstance(valueTableDesc.getDeserializerClass(), null);
+        SerDeUtils.initializeSerDe(valueSerDe, null, valueTableDesc.getProperties(), null);
         mapJoinTableSerdes[pos] = new MapJoinTableContainerSerDe(keyContext, new MapJoinObjectSerDeContext(
             valueSerDe, hasFilter(pos)));
       }
@@ -253,7 +255,9 @@ public class HashTableSinkOperator extends TerminalOperator<HashTableSinkDesc> i
         rowContainer = emptyRowContainer;
       }
       rowNumber++;
-      memoryExhaustionChecker.checkMemoryOverhead(rowNumber, hashTableScale, tableContainer.size());
+      if (rowNumber > hashTableScale && rowNumber % hashTableScale == 0) {
+        memoryExhaustionHandler.checkMemoryStatus(tableContainer.size(), rowNumber);
+      }
       tableContainer.put(key, rowContainer);
     } else if (rowContainer == emptyRowContainer) {
       rowContainer = rowContainer.copy();

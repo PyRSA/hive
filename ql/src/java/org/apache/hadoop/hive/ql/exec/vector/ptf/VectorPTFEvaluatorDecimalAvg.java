@@ -18,14 +18,15 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.ptf;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hive.common.type.HiveDecimal;
-import org.apache.hadoop.hive.ql.exec.vector.ColumnVector.Type;
 import org.apache.hadoop.hive.ql.exec.vector.DecimalColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
+import org.apache.hadoop.hive.ql.exec.vector.ColumnVector.Type;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorExpression;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.plan.ptf.WindowFrameDef;
-import org.apache.hadoop.hive.ql.udf.ptf.Range;
 import org.apache.hadoop.hive.serde2.io.HiveDecimalWritable;
 
 import com.google.common.base.Preconditions;
@@ -35,11 +36,17 @@ import com.google.common.base.Preconditions;
  *
  * Sum up non-null column values; group result is sum / non-null count.
  */
-public class VectorPTFEvaluatorDecimalAvg
-    extends VectorPTFEvaluatorAbstractAvg<HiveDecimalWritable> {
+public class VectorPTFEvaluatorDecimalAvg extends VectorPTFEvaluatorBase {
 
-  protected HiveDecimalWritable temp;
-  protected HiveDecimalWritable avg;
+  private static final long serialVersionUID = 1L;
+  private static final String CLASS_NAME = VectorPTFEvaluatorDecimalAvg.class.getName();
+  private static final Log LOG = LogFactory.getLog(CLASS_NAME);
+
+  protected boolean isGroupResultNull;
+  protected HiveDecimalWritable sum;
+  private int nonNullGroupCount;
+  private HiveDecimalWritable temp;
+  private HiveDecimalWritable avg;
 
   public VectorPTFEvaluatorDecimalAvg(WindowFrameDef windowFrameDef, VectorExpression inputVecExpr,
       int outputColumnNum) {
@@ -50,8 +57,7 @@ public class VectorPTFEvaluatorDecimalAvg
     resetEvaluator();
   }
 
-  @Override
-  public void evaluateGroupBatch(VectorizedRowBatch batch)
+  public void evaluateGroupBatch(VectorizedRowBatch batch, boolean isLastGroupBatch)
       throws HiveException {
 
     evaluateInputExpr(batch);
@@ -124,15 +130,19 @@ public class VectorPTFEvaluatorDecimalAvg
         }
       }
     }
+
+    if (isLastGroupBatch) {
+      if (!isGroupResultNull) {
+        avg.set(sum);
+        temp.setFromLong(nonNullGroupCount);
+        avg.mutateDivide(temp);
+      }
+    }
   }
 
   @Override
-  public void doLastBatchWork() {
-    if (!isGroupResultNull) {
-      avg.set(sum);
-      temp.setFromLong(nonNullGroupCount);
-      avg.mutateDivide(temp);
-    }
+  public boolean isGroupResultNull() {
+    return isGroupResultNull;
   }
 
   @Override
@@ -141,29 +151,8 @@ public class VectorPTFEvaluatorDecimalAvg
   }
 
   @Override
-  public Object getGroupResult() {
-    doLastBatchWork(); // make sure we have a fresh avg
+  public HiveDecimalWritable getDecimalGroupResult() {
     return avg;
-  }
-
-  @Override
-  protected HiveDecimalWritable computeValue(HiveDecimalWritable number) {
-    return VectorPTFEvaluatorHelper.computeValue(number);
-  }
-
-  @Override
-  public HiveDecimalWritable plus(HiveDecimalWritable t1, HiveDecimalWritable t2) {
-    return VectorPTFEvaluatorHelper.plus(t1, t2);
-  }
-
-  @Override
-  public HiveDecimalWritable minus(HiveDecimalWritable t1, HiveDecimalWritable t2) {
-    return VectorPTFEvaluatorHelper.minus(t1, t2);
-  }
-
-  @Override
-  protected HiveDecimalWritable divide(HiveDecimalWritable number, long divisor) {
-    return VectorPTFEvaluatorHelper.divide(number, divisor);
   }
 
   @Override

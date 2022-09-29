@@ -47,10 +47,6 @@ public class VectorColumnOutputMapping extends VectorColumnMapping {
 
   @Override
   public void finalize() {
-    if (vectorColumnMapping == null) {
-      return;
-    }
-
     Mapping mapping = vectorColumnMapping.getMapping();
 
     // Ordered columns are the output columns.

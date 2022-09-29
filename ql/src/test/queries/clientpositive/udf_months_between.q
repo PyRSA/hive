@@ -1,4 +1,3 @@
---! qt:dataset:part
 describe function months_between;
 desc function extended months_between;
 

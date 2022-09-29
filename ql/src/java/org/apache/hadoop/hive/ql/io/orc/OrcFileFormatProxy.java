@@ -21,7 +21,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.List;
 
-import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.metastore.FileFormatProxy;
@@ -41,23 +40,15 @@ public class OrcFileFormatProxy implements FileFormatProxy {
 
   @Override
   public SplitInfos applySargToMetadata(
-      SearchArgument sarg, ByteBuffer fileMetadata, Configuration conf) throws IOException {
+      SearchArgument sarg, ByteBuffer fileMetadata) throws IOException {
     // TODO: ideally we should store shortened representation of only the necessary fields
     //       in HBase; it will probably require custom SARG application code.
     OrcTail orcTail = ReaderImpl.extractFileTail(fileMetadata);
     OrcProto.Footer footer = orcTail.getFooter();
     int stripeCount = footer.getStripesCount();
-    // Always convert To PROLEPTIC_GREGORIAN
-    List<StripeStatistics> stripeStats;
-    try (org.apache.orc.Reader dummyReader = new org.apache.orc.impl.ReaderImpl(null,
-        org.apache.orc.OrcFile.readerOptions(org.apache.orc.OrcFile.readerOptions(conf).getConfiguration())
-            .useUTCTimestamp(true).convertToProlepticGregorian(true).orcTail(orcTail))) {
-      stripeStats = dummyReader.getVariantStripeStatistics(null);
-    }
     boolean[] result = OrcInputFormat.pickStripesViaTranslatedSarg(
         sarg, orcTail.getWriterVersion(),
-        footer.getTypesList(), stripeStats,
-        stripeCount);
+        footer.getTypesList(), orcTail.getStripeStatistics(), stripeCount);
     // For ORC case, send the boundaries of the stripes so we don't have to send the footer.
     SplitInfos.Builder sb = SplitInfos.newBuilder();
     List<StripeInformation> stripes = orcTail.getStripes();
@@ -86,8 +77,6 @@ public class OrcFileFormatProxy implements FileFormatProxy {
   public ByteBuffer getMetadataToCache(
       FileSystem fs, Path path, ByteBuffer[] addedVals) throws IOException {
     // For now, there's nothing special to return in addedVals. Just return the footer.
-    try (Reader reader = OrcFile.createReader(fs, path)) {
-      return reader.getSerializedFileFooter();
-    }
+    return OrcFile.createReader(fs, path).getSerializedFileFooter();
   }
 }

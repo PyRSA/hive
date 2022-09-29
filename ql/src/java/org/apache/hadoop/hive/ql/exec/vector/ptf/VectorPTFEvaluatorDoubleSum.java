@@ -18,9 +18,11 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.ptf;
 
-import org.apache.hadoop.hive.ql.exec.vector.ColumnVector.Type;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hive.ql.exec.vector.DoubleColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
+import org.apache.hadoop.hive.ql.exec.vector.ColumnVector.Type;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorExpression;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.plan.ptf.WindowFrameDef;
@@ -30,7 +32,14 @@ import com.google.common.base.Preconditions;
 /**
  * This class evaluates double sum() for a PTF group.
  */
-public class VectorPTFEvaluatorDoubleSum extends VectorPTFEvaluatorAbstractSum<Double> {
+public class VectorPTFEvaluatorDoubleSum extends VectorPTFEvaluatorBase {
+
+  private static final long serialVersionUID = 1L;
+  private static final String CLASS_NAME = VectorPTFEvaluatorDoubleSum.class.getName();
+  private static final Log LOG = LogFactory.getLog(CLASS_NAME);
+
+  protected boolean isGroupResultNull;
+  protected double sum;
 
   public VectorPTFEvaluatorDoubleSum(WindowFrameDef windowFrameDef, VectorExpression inputVecExpr,
       int outputColumnNum) {
@@ -38,8 +47,7 @@ public class VectorPTFEvaluatorDoubleSum extends VectorPTFEvaluatorAbstractSum<D
     resetEvaluator();
   }
 
-  @Override
-  public void evaluateGroupBatch(VectorizedRowBatch batch)
+  public void evaluateGroupBatch(VectorizedRowBatch batch, boolean isLastGroupBatch)
       throws HiveException {
 
     evaluateInputExpr(batch);
@@ -107,23 +115,18 @@ public class VectorPTFEvaluatorDoubleSum extends VectorPTFEvaluatorAbstractSum<D
   }
 
   @Override
+  public boolean isGroupResultNull() {
+    return isGroupResultNull;
+  }
+
+  @Override
   public Type getResultColumnVectorType() {
     return Type.DOUBLE;
   }
 
   @Override
-  protected Double computeValue(Double number) {
-    return VectorPTFEvaluatorHelper.computeValue(number);
-  }
-
-  @Override
-  protected Double plus(Double number1, Double number2) {
-    return VectorPTFEvaluatorHelper.plus(number1, number2);
-  }
-
-  @Override
-  protected Double minus(Double number1, Double number2) {
-    return VectorPTFEvaluatorHelper.minus(number1, number2);
+  public double getDoubleGroupResult() {
+    return sum;
   }
 
   @Override

@@ -28,9 +28,11 @@ import java.util.Properties;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.CompilationOpContext;
 import org.apache.hadoop.hive.ql.exec.AbstractMapOperator;
 import org.apache.hadoop.hive.ql.exec.Operator;
+import org.apache.hadoop.hive.ql.exec.TableScanOperator;
 import org.apache.hadoop.hive.ql.exec.Utilities;
 import org.apache.hadoop.hive.ql.exec.mr.ExecMapperContext;
 import org.apache.hadoop.hive.ql.io.AcidUtils;
@@ -44,6 +46,7 @@ import org.apache.hadoop.hive.ql.plan.TableDesc;
 import org.apache.hadoop.hive.ql.plan.VectorPartitionDesc;
 import org.apache.hadoop.hive.ql.plan.VectorPartitionDesc.VectorMapOperatorReadType;
 import org.apache.hadoop.hive.ql.plan.api.OperatorType;
+import org.apache.hadoop.hive.serde2.ColumnProjectionUtils;
 import org.apache.hadoop.hive.serde2.Deserializer;
 import org.apache.hadoop.hive.serde2.SerDeException;
 import org.apache.hadoop.hive.serde2.SerDeUtils;
@@ -89,7 +92,7 @@ public class VectorMapOperator extends AbstractMapOperator {
   /*
    * Overall information on this vectorized Map operation.
    */
-  private transient HashMap<Path, VectorPartitionContext> fileToPartitionContextMap;
+  private transient HashMap<String, VectorPartitionContext> fileToPartitionContextMap;
 
   private transient Operator<? extends OperatorDesc> oneRootOperator;
 
@@ -552,13 +555,13 @@ public class VectorMapOperator extends AbstractMapOperator {
      * The Vectorizer class enforces that there is only one TableScanOperator, so
      * we don't need the more complicated multiple root operator mapping that MapOperator has.
      */
-    fileToPartitionContextMap = new HashMap<>();
+    fileToPartitionContextMap = new HashMap<String, VectorPartitionContext>();
 
     // Temporary map so we only create one partition context entry.
     HashMap<PartitionDesc, VectorPartitionContext> partitionContextMap =
         new HashMap<PartitionDesc, VectorPartitionContext>();
 
-    for (Map.Entry<Path, List<String>> entry : conf.getPathToAliases().entrySet()) {
+    for (Map.Entry<Path, ArrayList<String>> entry : conf.getPathToAliases().entrySet()) {
       Path path = entry.getKey();
       PartitionDesc partDesc = conf.getPathToPartitionInfo().get(path);
 
@@ -570,7 +573,7 @@ public class VectorMapOperator extends AbstractMapOperator {
         vectorPartitionContext = partitionContextMap.get(partDesc);
       }
 
-      fileToPartitionContextMap.put(path, vectorPartitionContext);
+      fileToPartitionContextMap.put(path.toString(), vectorPartitionContext);
     }
 
     // Create list of one.
@@ -590,7 +593,7 @@ public class VectorMapOperator extends AbstractMapOperator {
 
   public void initializeContexts() throws HiveException {
     Path fpath = getExecContext().getCurrentInputPath();
-    Path nominalPath = getNominalPath(fpath);
+    String nominalPath = getNominalPath(fpath);
     setupPartitionContextVars(nominalPath);
   }
 
@@ -599,7 +602,7 @@ public class VectorMapOperator extends AbstractMapOperator {
   public void cleanUpInputFileChangedOp() throws HiveException {
     super.cleanUpInputFileChangedOp();
     Path fpath = getExecContext().getCurrentInputPath();
-    Path nominalPath = getNominalPath(fpath);
+    String nominalPath = getNominalPath(fpath);
 
     setupPartitionContextVars(nominalPath);
 
@@ -638,7 +641,7 @@ public class VectorMapOperator extends AbstractMapOperator {
   /*
    * Setup the context for reading from the next partition file.
    */
-  private void setupPartitionContextVars(Path nominalPath) throws HiveException {
+  private void setupPartitionContextVars(String nominalPath) throws HiveException {
 
     currentVectorPartContext = fileToPartitionContextMap.get(nominalPath);
     if (currentVectorPartContext == null) {
@@ -814,42 +817,6 @@ public class VectorMapOperator extends AbstractMapOperator {
     return true;
   }
 
-  /**
-   * Reset all the columns excluding
-   * - partition columns because they are read only once per file during first batch read
-   * - any columns that defaulted to NULL because they are not present in this partition
-   *
-   * See {@link #setupPartitionContextVars(Path)}
-   */
-  private void resetVectorizedRowBatchForDeserialize() {
-    /**
-     * Reset existing input columns
-     */
-    for (int c = 0; c < currentDataColumnCount; c++) {
-      resetColumnVector(deserializerBatch.cols[c]);
-    }
-
-    /**
-     * Reset output and scratch columns
-     */
-    for (int c = dataColumnCount + partitionColumnCount; c < deserializerBatch.cols.length; c++) {
-      if (c == rowIdentifierColumnNum) {
-        continue;
-      }
-      resetColumnVector(deserializerBatch.cols[c]);
-    }
-    deserializerBatch.selectedInUse = false;
-    deserializerBatch.size = 0;
-    deserializerBatch.endOfFile = false;
-  }
-
-  private void resetColumnVector(ColumnVector columnVector) {
-    if (columnVector != null) {
-      columnVector.reset();
-      columnVector.init();
-    }
-  }
-
   @Override
   public void process(Writable value) throws HiveException {
 
@@ -921,7 +888,20 @@ public class VectorMapOperator extends AbstractMapOperator {
             batchCounter++;
             oneRootOperator.process(deserializerBatch, 0);
 
-            resetVectorizedRowBatchForDeserialize();
+            /**
+             * Only reset the current data columns.  Not any data columns defaulted to NULL
+             * because they are not present in the partition, and not partition columns.
+             */
+            for (int c = 0; c < currentDataColumnCount; c++) {
+              ColumnVector colVector = deserializerBatch.cols[c];
+              if (colVector != null) {
+                colVector.reset();
+                colVector.init();
+              }
+            }
+            deserializerBatch.selectedInUse = false;
+            deserializerBatch.size = 0;
+            deserializerBatch.endOfFile = false;
 
             if (oneRootOperator.getDone()) {
               setDone(true);

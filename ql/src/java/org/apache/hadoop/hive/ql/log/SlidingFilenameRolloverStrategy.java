@@ -73,8 +73,9 @@ public class SlidingFilenameRolloverStrategy
     return getLogFileName(pattern);
   }
 
-  @Override public void clearCurrentFileName() {
-    // no rename is needed
+  @Override
+  public void clearCurrentFileName() {
+
   }
 
   /**

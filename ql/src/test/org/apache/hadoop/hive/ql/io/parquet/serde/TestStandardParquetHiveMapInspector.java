@@ -16,26 +16,20 @@ package org.apache.hadoop.hive.ql.io.parquet.serde;
 import java.util.HashMap;
 import java.util.Map;
 
-
+import junit.framework.TestCase;
 
 import org.apache.hadoop.hive.serde2.io.ShortWritable;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
 import org.apache.hadoop.io.ArrayWritable;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Writable;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertEquals;
-import org.junit.Before;
 import org.junit.Test;
 
-/**
- * TestStandardParquetHiveMapInspector.
- */
-public class TestStandardParquetHiveMapInspector {
+public class TestStandardParquetHiveMapInspector extends TestCase {
 
   private StandardParquetHiveMapInspector inspector;
 
-  @Before
+  @Override
   public void setUp() {
     inspector = new StandardParquetHiveMapInspector(PrimitiveObjectInspectorFactory.javaIntObjectInspector,
             PrimitiveObjectInspectorFactory.javaIntObjectInspector);

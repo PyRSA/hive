@@ -264,7 +264,7 @@ public class TopNHash {
   /**
    * Get vectorized batch result for particular index.
    * @param batchIndex index of the key in the batch.
-   * @return the result, same as from {@link TopNHash#tryStoreKey(HiveKey,boolean)}
+   * @return the result, same as from {@link #tryStoreKey(HiveKey)}
    */
   public int getVectorizedBatchResult(int batchIndex) {
     int result = batchIndexToResult[batchIndex];
@@ -309,8 +309,9 @@ public class TopNHash {
   /**
    * Stores the value for the key in the heap.
    * @param index The index, either from tryStoreKey or from tryStoreVectorizedKey result.
-   * @param hashCode hashCode of key, used by ptfTopNHash.
+   * @param hasCode hashCode of key, used by ptfTopNHash.
    * @param value The value to store.
+   * @param keyHash The key hash to store.
    * @param vectorized Whether the result is coming from a vectorized batch.
    */
   public void storeValue(int index, int hashCode, BytesWritable value, boolean vectorized) {
@@ -356,8 +357,8 @@ public class TopNHash {
     hashes[index] = key.hashCode();
     if (null != indexes.store(index)) {
       // it's only for GBY which should forward all values associated with the key in the range
-      // of limit. new value should be attached with the key but in current implementation,
-      // only one values is allowed. with map-aggregation which is true by default,
+      // of limit. new value should be attatched with the key but in current implementation,
+      // only one values is allowed. with map-aggreagtion which is true by default,
       // this is not common case, so just forward new key/value and forget that (todo)
       return FORWARD;
     }
@@ -408,7 +409,7 @@ public class TopNHash {
 
   /**
    * for order by, same keys are counted (For 1-2-2-3-4, limit 3 is 1-2-2)
-   * MinMaxPriorityQueue is used because it allows duplication and fast access to biggest one
+   * MinMaxPriorityQueue is used because it alows duplication and fast access to biggest one
    */
   private class HashForRow implements IndexStore {
     private final MinMaxPriorityQueue<Integer> indexes = MinMaxPriorityQueue.orderedBy(C).create();

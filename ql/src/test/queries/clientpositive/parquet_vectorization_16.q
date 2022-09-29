@@ -1,4 +1,3 @@
---! qt:dataset:alltypesparquet
 set hive.mapred.mode=nonstrict;
 set hive.explain.user=false;
 SET hive.vectorized.execution.enabled=true;
@@ -6,7 +5,7 @@ set hive.fetch.task.conversion=none;
 
 -- SORT_QUERY_RESULTS
 
-EXPLAIN VECTORIZATION EXPRESSION
+EXPLAIN VECTORIZATION DETAIL
 SELECT   cstring1,
          cdouble,
          ctimestamp1,

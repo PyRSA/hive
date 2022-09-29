@@ -38,10 +38,6 @@ public class HiveKey extends BytesWritable {
     hashCodeValid = false;
   }
 
-  public HiveKey(byte[] bytes) {
-    super(bytes);
-  }
-
   public HiveKey(byte[] bytes, int hashcode) {
     super(bytes);
     hashCode = hashcode;

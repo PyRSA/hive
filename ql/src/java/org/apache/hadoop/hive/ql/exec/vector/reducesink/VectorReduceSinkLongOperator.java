@@ -18,6 +18,8 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.reducesink;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.ql.CompilationOpContext;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizationContext;
@@ -35,6 +37,8 @@ import org.apache.hadoop.hive.serde2.typeinfo.PrimitiveTypeInfo;
 public class VectorReduceSinkLongOperator extends VectorReduceSinkUniformHashOperator {
 
   private static final long serialVersionUID = 1L;
+  private static final String CLASS_NAME = VectorReduceSinkLongOperator.class.getName();
+  private static final Log LOG = LogFactory.getLog(CLASS_NAME);
 
   // The column number and type information for this one column long reduce key.
   private transient int singleKeyColumn;

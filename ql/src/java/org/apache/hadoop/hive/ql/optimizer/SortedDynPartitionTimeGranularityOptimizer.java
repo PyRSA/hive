@@ -17,7 +17,7 @@
  */
 package org.apache.hadoop.hive.ql.optimizer;
 
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.hive.conf.Constants;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
@@ -34,12 +34,12 @@ import org.apache.hadoop.hive.ql.exec.Utilities.ReduceField;
 import org.apache.hadoop.hive.ql.io.AcidUtils;
 import org.apache.hadoop.hive.ql.lib.DefaultGraphWalker;
 import org.apache.hadoop.hive.ql.lib.DefaultRuleDispatcher;
-import org.apache.hadoop.hive.ql.lib.SemanticDispatcher;
-import org.apache.hadoop.hive.ql.lib.SemanticGraphWalker;
+import org.apache.hadoop.hive.ql.lib.Dispatcher;
+import org.apache.hadoop.hive.ql.lib.GraphWalker;
 import org.apache.hadoop.hive.ql.lib.Node;
-import org.apache.hadoop.hive.ql.lib.SemanticNodeProcessor;
+import org.apache.hadoop.hive.ql.lib.NodeProcessor;
 import org.apache.hadoop.hive.ql.lib.NodeProcessorCtx;
-import org.apache.hadoop.hive.ql.lib.SemanticRule;
+import org.apache.hadoop.hive.ql.lib.Rule;
 import org.apache.hadoop.hive.ql.lib.RuleRegExp;
 import org.apache.hadoop.hive.ql.metadata.Table;
 import org.apache.hadoop.hive.ql.parse.ParseContext;
@@ -98,14 +98,14 @@ public class SortedDynPartitionTimeGranularityOptimizer extends Transform {
   public ParseContext transform(ParseContext pCtx) throws SemanticException {
     // create a walker which walks the tree in a DFS manner while maintaining the
     // operator stack. The dispatcher generates the plan from the operator tree
-    Map<SemanticRule, SemanticNodeProcessor> opRules = new LinkedHashMap<SemanticRule, SemanticNodeProcessor>();
+    Map<Rule, NodeProcessor> opRules = new LinkedHashMap<Rule, NodeProcessor>();
 
     String FS = FileSinkOperator.getOperatorName() + "%";
 
     opRules.put(new RuleRegExp("Sorted Dynamic Partition Time Granularity", FS), getSortDynPartProc(pCtx));
 
-    SemanticDispatcher disp = new DefaultRuleDispatcher(null, opRules, null);
-    SemanticGraphWalker ogw = new DefaultGraphWalker(disp);
+    Dispatcher disp = new DefaultRuleDispatcher(null, opRules, null);
+    GraphWalker ogw = new DefaultGraphWalker(disp);
 
     ArrayList<Node> topNodes = new ArrayList<Node>();
     topNodes.addAll(pCtx.getTopOps().values());
@@ -114,11 +114,11 @@ public class SortedDynPartitionTimeGranularityOptimizer extends Transform {
     return pCtx;
   }
 
-  private SemanticNodeProcessor getSortDynPartProc(ParseContext pCtx) {
+  private NodeProcessor getSortDynPartProc(ParseContext pCtx) {
     return new SortedDynamicPartitionProc(pCtx);
   }
 
-  class SortedDynamicPartitionProc implements SemanticNodeProcessor {
+  class SortedDynamicPartitionProc implements NodeProcessor {
 
     private final Logger LOG = LoggerFactory.getLogger(SortedDynPartitionTimeGranularityOptimizer.class);
     protected ParseContext parseCtx;
@@ -211,7 +211,6 @@ public class SortedDynPartitionTimeGranularityOptimizer extends Transform {
       }
       ReduceSinkOperator rsOp = getReduceSinkOp(keyPositions, sortOrder,
           sortNullOrder, allRSCols, granularitySelOp, fsOp.getConf().getWriteType());
-      rsOp.getConf().setBucketingVersion(fsOp.getConf().getBucketingVersion());
 
       // Create backtrack SelectOp
       final List<ExprNodeDesc> descs = new ArrayList<>(allRSCols.size());
@@ -268,7 +267,6 @@ public class SortedDynPartitionTimeGranularityOptimizer extends Transform {
           Lists.newArrayList(fsParent.getSchema().getSignature());
       final ArrayList<ExprNodeDesc> descs = Lists.newArrayList();
       final List<String> colNames = Lists.newArrayList();
-      PrimitiveCategory timestampType = null;
       int timestampPos = -1;
       for (int i = 0; i < parentCols.size(); i++) {
         ColumnInfo ci = parentCols.get(i);
@@ -276,13 +274,11 @@ public class SortedDynPartitionTimeGranularityOptimizer extends Transform {
         descs.add(columnDesc);
         colNames.add(columnDesc.getExprString());
         if (columnDesc.getTypeInfo().getCategory() == ObjectInspector.Category.PRIMITIVE
-                && (((PrimitiveTypeInfo) columnDesc.getTypeInfo()).getPrimitiveCategory() == PrimitiveCategory.TIMESTAMP ||
-            ((PrimitiveTypeInfo) columnDesc.getTypeInfo()).getPrimitiveCategory() == PrimitiveCategory.TIMESTAMPLOCALTZ)) {
+                && ((PrimitiveTypeInfo) columnDesc.getTypeInfo()).getPrimitiveCategory() == PrimitiveCategory.TIMESTAMPLOCALTZ) {
           if (timestampPos != -1) {
-            throw new SemanticException("Multiple columns with timestamp/timestamp with local time-zone type on query result; "
-                    + "could not resolve which one is the right column");
+            throw new SemanticException("Multiple columns with timestamp with local time-zone type on query result; "
+                    + "could not resolve which one is the timestamp with local time-zone column");
           }
-          timestampType = ((PrimitiveTypeInfo) columnDesc.getTypeInfo()).getPrimitiveCategory();
           timestampPos = i;
         }
       }
@@ -331,8 +327,8 @@ public class SortedDynPartitionTimeGranularityOptimizer extends Transform {
       }
 
 
-      // Timestamp column type in Druid is either timestamp or timestamp with local time-zone, i.e.,
-      // a specific instant in time. Thus, for the latest, we have this value and we need to extract the
+      // Timestamp column type in Druid is timestamp with local time-zone, as it represents
+      // a specific instant in time. Thus, we have this value and we need to extract the
       // granularity to split the data when we are storing it in Druid. However, Druid stores
       // the data in UTC. Thus, we need to apply the following logic on the data to extract
       // the granularity correctly:
@@ -345,20 +341,18 @@ public class SortedDynPartitionTimeGranularityOptimizer extends Transform {
 
       // #1 - Read the column value
       ExprNodeDesc expr = new ExprNodeColumnDesc(parentCols.get(timestampPos));
-      if (timestampType == PrimitiveCategory.TIMESTAMPLOCALTZ) {
-        // #2 - UTC epoch for instant
-        expr = new ExprNodeGenericFuncDesc(
-            TypeInfoFactory.longTypeInfo, new GenericUDFEpochMilli(), Lists.newArrayList(expr));
-        // #3 - Cast to timestamp
-        expr = new ExprNodeGenericFuncDesc(
-            TypeInfoFactory.timestampTypeInfo, new GenericUDFTimestamp(), Lists.newArrayList(expr));
-      }
+      // #2 - UTC epoch for instant
+      ExprNodeGenericFuncDesc f1 = new ExprNodeGenericFuncDesc(
+          TypeInfoFactory.longTypeInfo, new GenericUDFEpochMilli(), Lists.newArrayList(expr));
+      // #3 - Cast to timestamp
+      ExprNodeGenericFuncDesc f2 = new ExprNodeGenericFuncDesc(
+          TypeInfoFactory.timestampTypeInfo, new GenericUDFTimestamp(), Lists.newArrayList(f1));
       // #4 - We apply the granularity function
-      expr = new ExprNodeGenericFuncDesc(
+      ExprNodeGenericFuncDesc f3 = new ExprNodeGenericFuncDesc(
           TypeInfoFactory.timestampTypeInfo,
           new GenericUDFBridge(udfName, false, udfClass.getName()),
-          Lists.newArrayList(expr));
-      descs.add(expr);
+          Lists.newArrayList(f2));
+      descs.add(f3);
       colNames.add(Constants.DRUID_TIMESTAMP_GRANULARITY_COL_NAME);
       // Add granularity to the row schema
       final ColumnInfo ci = new ColumnInfo(Constants.DRUID_TIMESTAMP_GRANULARITY_COL_NAME, TypeInfoFactory.timestampTypeInfo,
@@ -423,18 +417,22 @@ public class SortedDynPartitionTimeGranularityOptimizer extends Transform {
       Map<String, String> nameMapping = new HashMap<>();
       final ArrayList<String> keyColNames = Lists.newArrayList();
       final ArrayList<String> valColNames = Lists.newArrayList();
-      for (ExprNodeDesc exprNodeDesc : keyCols) {
+      keyCols.stream().forEach(exprNodeDesc -> {
         keyColNames.add(exprNodeDesc.getExprString());
-        String key = Utilities.ReduceField.KEY + "." + exprNodeDesc.getExprString();
-        colExprMap.put(key, exprNodeDesc);
-        nameMapping.put(exprNodeDesc.getExprString(), key);
-      }
-      for (ExprNodeDesc exprNodeDesc : valCols) {
+        colExprMap
+            .put(Utilities.ReduceField.KEY + "." + exprNodeDesc.getExprString(), exprNodeDesc);
+        nameMapping.put(exprNodeDesc.getExprString(),
+            Utilities.ReduceField.KEY + "." + exprNodeDesc.getName()
+        );
+      });
+      valCols.stream().forEach(exprNodeDesc -> {
         valColNames.add(exprNodeDesc.getExprString());
-        String key = Utilities.ReduceField.VALUE + "." + exprNodeDesc.getExprString();
-        colExprMap.put(key, exprNodeDesc);
-        nameMapping.put(exprNodeDesc.getExprString(), key);
-      }
+        colExprMap
+            .put(Utilities.ReduceField.VALUE + "." + exprNodeDesc.getExprString(), exprNodeDesc);
+        nameMapping.put(exprNodeDesc.getExprString(),
+            Utilities.ReduceField.VALUE + "." + exprNodeDesc.getName()
+        );
+      });
 
 
       // order and null order

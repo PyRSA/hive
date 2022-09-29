@@ -1,4 +1,3 @@
---! qt:dataset:srcpart
 set hive.strict.checks.bucketing=false;
 
 set hive.mapred.mode=nonstrict;
@@ -6,6 +5,7 @@ SET hive.metastore.partition.name.whitelist.pattern=[^9]*;
 set hive.exec.failure.hooks=org.apache.hadoop.hive.ql.hooks.VerifyTableDirectoryIsEmptyHook;
 
 set hive.exec.dynamic.partition=true;
+set hive.exec.dynamic.partition.mode=nonstrict;
 
 create table source_table like srcpart;
 

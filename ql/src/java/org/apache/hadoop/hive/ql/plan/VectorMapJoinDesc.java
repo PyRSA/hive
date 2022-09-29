@@ -57,27 +57,24 @@ public class VectorMapJoinDesc extends AbstractVectorDesc  {
     BYTE,
     SHORT,
     INT,
-    DATE,
     LONG,
     STRING,
     MULTI_KEY;
 
     public PrimitiveTypeInfo getPrimitiveTypeInfo() {
       switch (this) {
-      case NONE:
-        return TypeInfoFactory.voidTypeInfo;
       case BOOLEAN:
         return TypeInfoFactory.booleanTypeInfo;
       case BYTE:
         return TypeInfoFactory.byteTypeInfo;
-      case SHORT:
-        return TypeInfoFactory.shortTypeInfo;
-      case DATE:
-        return TypeInfoFactory.dateTypeInfo;
       case INT:
         return TypeInfoFactory.intTypeInfo;
       case LONG:
         return TypeInfoFactory.longTypeInfo;
+      case NONE:
+        return TypeInfoFactory.voidTypeInfo;
+      case SHORT:
+        return TypeInfoFactory.shortTypeInfo;
       case STRING:
         return TypeInfoFactory.stringTypeInfo;
       case MULTI_KEY:
@@ -88,12 +85,11 @@ public class VectorMapJoinDesc extends AbstractVectorDesc  {
   }
 
   public static enum VectorMapJoinVariation {
-    INNER,
+    NONE,
     INNER_BIG_ONLY,
+    INNER,
     LEFT_SEMI,
-    OUTER,
-    FULL_OUTER,
-    LEFT_ANTI
+    OUTER
   }
 
   private HashTableImplementationType hashTableImplementationType;
@@ -111,7 +107,7 @@ public class VectorMapJoinDesc extends AbstractVectorDesc  {
     hashTableImplementationType = HashTableImplementationType.NONE;
     hashTableKind = HashTableKind.NONE;
     hashTableKeyType = HashTableKeyType.NONE;
-    vectorMapJoinVariation = null;
+    vectorMapJoinVariation = VectorMapJoinVariation.NONE;
     minMaxEnabled = false;
 
     allBigTableKeyExpressions = null;
@@ -208,11 +204,8 @@ public class VectorMapJoinDesc extends AbstractVectorDesc  {
   private boolean isHybridHashJoin;
   private boolean supportsKeyTypes;
   private List<String> notSupportedKeyTypes;
-  private boolean supportsValueTypes;
-  private List<String> notSupportedValueTypes;
   private boolean smallTableExprVectorizes;
   private boolean outerJoinHasNoKeys;
-  boolean isFullOuter;
 
   public void setUseOptimizedTable(boolean useOptimizedTable) {
     this.useOptimizedTable = useOptimizedTable;
@@ -256,18 +249,6 @@ public class VectorMapJoinDesc extends AbstractVectorDesc  {
   public List<String> getNotSupportedKeyTypes() {
     return notSupportedKeyTypes;
   }
-  public void setSupportsValueTypes(boolean supportsValueTypes) {
-    this.supportsValueTypes = supportsValueTypes;
-  }
-  public boolean getSupportsValueTypes() {
-    return supportsValueTypes;
-  }
-  public void setNotSupportedValueTypes(List<String> notSupportedValueTypes) {
-    this.notSupportedValueTypes = notSupportedValueTypes;
-  }
-  public List<String> getNotSupportedValueTypes() {
-    return notSupportedValueTypes;
-  }
   public void setSmallTableExprVectorizes(boolean smallTableExprVectorizes) {
     this.smallTableExprVectorizes = smallTableExprVectorizes;
   }
@@ -293,10 +274,5 @@ public class VectorMapJoinDesc extends AbstractVectorDesc  {
   public boolean getIsHybridHashJoin() {
     return isHybridHashJoin;
   }
-  public void setIsFullOuter(boolean isFullOuter) {
-    this.isFullOuter = isFullOuter;
-  }
-  public boolean getIsFullOuter() {
-    return isFullOuter;
-  }
+
 }

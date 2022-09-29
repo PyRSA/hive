@@ -89,7 +89,7 @@ STAGE PLANS:
             Execution mode: vectorized, llap
             Reduce Vectorization:
                 enabled: true
-                enableConditionsMet: hive.vectorized.execution.reduce.enabled IS true, hive.execution.engine tez IN [tez] IS true
+                enableConditionsMet: hive.vectorized.execution.reduce.enabled IS true, hive.execution.engine tez IN [tez, spark] IS true
                 allNative: false
                 usesVectorUDFAdaptor: false
                 vectorized: true
@@ -179,7 +179,7 @@ STAGE PLANS:
             Execution mode: vectorized, llap
             Reduce Vectorization:
                 enabled: true
-                enableConditionsMet: hive.vectorized.execution.reduce.enabled IS true, hive.execution.engine tez IN [tez] IS true
+                enableConditionsMet: hive.vectorized.execution.reduce.enabled IS true, hive.execution.engine tez IN [tez, spark] IS true
                 allNative: false
                 usesVectorUDFAdaptor: false
                 vectorized: true
@@ -256,16 +256,16 @@ STAGE PLANS:
             Map Operator Tree:
                   TableScan Vectorization:
                       native: true
-                    Limit Vectorization:
-                        className: VectorLimitOperator
+                    Select Vectorization:
+                        className: VectorSelectOperator
                         native: true
-                      Select Vectorization:
-                          className: VectorSelectOperator
+                      Limit Vectorization:
+                          className: VectorLimitOperator
                           native: true
                         Reduce Sink Vectorization:
                             className: VectorReduceSinkEmptyKeyOperator
                             native: true
-                            nativeConditionsMet: hive.vectorized.execution.reducesink.new.enabled IS true, hive.execution.engine tez IN [tez] IS true, No PTF TopN IS true, No DISTINCT columns IS true, BinarySortableSerDe for keys IS true, LazyBinarySerDe for values IS true
+                            nativeConditionsMet: hive.vectorized.execution.reducesink.new.enabled IS true, hive.execution.engine tez IN [tez, spark] IS true, No PTF TopN IS true, No DISTINCT columns IS true, BinarySortableSerDe for keys IS true, LazyBinarySerDe for values IS true
             Execution mode: vectorized, llap
             LLAP IO: all inputs
             Map Vectorization:
@@ -281,21 +281,24 @@ STAGE PLANS:
             Execution mode: vectorized, llap
             Reduce Vectorization:
                 enabled: true
-                enableConditionsMet: hive.vectorized.execution.reduce.enabled IS true, hive.execution.engine tez IN [tez] IS true
+                enableConditionsMet: hive.vectorized.execution.reduce.enabled IS true, hive.execution.engine tez IN [tez, spark] IS true
                 allNative: false
                 usesVectorUDFAdaptor: false
                 vectorized: true
             Reduce Operator Tree:
-                Limit Vectorization:
-                    className: VectorLimitOperator
+                Select Vectorization:
+                    className: VectorSelectOperator
                     native: true
-                  Select Vectorization:
-                      className: VectorSelectOperator
+                  Limit Vectorization:
+                      className: VectorLimitOperator
                       native: true
-                      selectExpressions: CastLongToChar(col 0:int, maxLength 12) -> 1:char(12)
-                    File Sink Vectorization:
-                        className: VectorFileSinkOperator
-                        native: false
+                    Select Vectorization:
+                        className: VectorSelectOperator
+                        native: true
+                        selectExpressions: CastLongToChar(col 0:int, maxLength 12) -> 1:char(12)
+                      File Sink Vectorization:
+                          className: VectorFileSinkOperator
+                          native: false
 
   Stage: Stage-2
 

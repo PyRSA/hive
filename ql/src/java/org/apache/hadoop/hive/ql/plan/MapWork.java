@@ -19,7 +19,6 @@
 package org.apache.hadoop.hive.ql.plan;
 
 import org.apache.hadoop.hive.common.StringInternUtils;
-import org.apache.hadoop.hive.ql.exec.TableScanOperator.ProbeDecodeContext;
 import org.apache.hadoop.hive.ql.exec.Utilities;
 
 import java.util.ArrayList;
@@ -39,6 +38,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
+import org.apache.hadoop.hive.ql.exec.FileSinkOperator;
 import org.apache.hadoop.hive.ql.exec.IConfigureJobConf;
 import org.apache.hadoop.hive.ql.exec.Operator;
 import org.apache.hadoop.hive.ql.exec.OperatorUtils;
@@ -52,7 +52,6 @@ import org.apache.hadoop.hive.ql.optimizer.physical.VectorizerReason;
 import org.apache.hadoop.hive.ql.parse.SplitSample;
 import org.apache.hadoop.hive.ql.plan.Explain.Level;
 import org.apache.hadoop.hive.ql.plan.Explain.Vectorization;
-import org.apache.hadoop.mapred.InputFormat;
 import org.apache.hadoop.mapred.JobConf;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -95,16 +94,15 @@ public class MapWork extends BaseWork {
 
   // use LinkedHashMap to make sure the iteration order is
   // deterministic, to ease testing
-  private Map<Path, List<String>> pathToAliases = new LinkedHashMap<>();
+  private LinkedHashMap<Path, ArrayList<String>> pathToAliases = new LinkedHashMap<>();
 
-  private Map<Path, PartitionDesc> pathToPartitionInfo = new LinkedHashMap<>();
+  private LinkedHashMap<Path, PartitionDesc> pathToPartitionInfo = new LinkedHashMap<>();
 
-  private Map<String, Operator<? extends OperatorDesc>> aliasToWork =
-      new LinkedHashMap<String, Operator<? extends OperatorDesc>>();
+  private LinkedHashMap<String, Operator<? extends OperatorDesc>> aliasToWork = new LinkedHashMap<String, Operator<? extends OperatorDesc>>();
 
-  private Map<String, PartitionDesc> aliasToPartnInfo = new LinkedHashMap<String, PartitionDesc>();
+  private LinkedHashMap<String, PartitionDesc> aliasToPartnInfo = new LinkedHashMap<String, PartitionDesc>();
 
-  private Map<String, SplitSample> nameToSplitSample = new LinkedHashMap<String, SplitSample>();
+  private HashMap<String, SplitSample> nameToSplitSample = new LinkedHashMap<String, SplitSample>();
 
   // If this map task has a FileSinkOperator, and bucketing/sorting metadata can be
   // inferred about the data being written by that operator, these are mappings from the directory
@@ -155,8 +153,6 @@ public class MapWork extends BaseWork {
       new LinkedHashMap<String, List<String>>();
   private Map<String, List<ExprNodeDesc>> eventSourcePartKeyExprMap =
       new LinkedHashMap<String, List<ExprNodeDesc>>();
-  private Map<String, List<ExprNodeDesc>> eventSourcePredicateExprMap =
-      new LinkedHashMap<String, List<ExprNodeDesc>>();
 
   private boolean doSplitsGrouping = true;
 
@@ -178,8 +174,6 @@ public class MapWork extends BaseWork {
 
   private boolean isMergeFromResolver;
 
-  private ProbeDecodeContext probeDecodeContext = null;
-
   public MapWork() {}
 
   public MapWork(String name) {
@@ -187,28 +181,26 @@ public class MapWork extends BaseWork {
   }
 
   @Explain(displayName = "Path -> Alias", explainLevels = { Level.EXTENDED })
-  public Map<Path, List<String>> getPathToAliases() {
+  public LinkedHashMap<Path, ArrayList<String>> getPathToAliases() {
     //
     return pathToAliases;
   }
 
-  public void setPathToAliases(Map<Path, List<String>> pathToAliases) {
+  public void setPathToAliases(final LinkedHashMap<Path, ArrayList<String>> pathToAliases) {
     for (Path p : pathToAliases.keySet()) {
       StringInternUtils.internUriStringsInPath(p);
     }
     this.pathToAliases = pathToAliases;
   }
 
-  public void addPathToAlias(Path path, List<String> aliases){
-    StringInternUtils.internUriStringsInPath(path);
+  public void addPathToAlias(Path path, ArrayList<String> aliases){
     pathToAliases.put(path, aliases);
   }
 
   public void addPathToAlias(Path path, String newAlias){
-    List<String> aliases = pathToAliases.get(path);
+    ArrayList<String> aliases = pathToAliases.get(path);
     if (aliases == null) {
-      aliases = new ArrayList<>(1);
-      StringInternUtils.internUriStringsInPath(path);
+      aliases = new ArrayList<>();
       pathToAliases.put(path, aliases);
     }
     aliases.add(newAlias.intern());
@@ -220,10 +212,10 @@ public class MapWork extends BaseWork {
   }
 
   /**
-   * This is used to display and verify output of "Path -&gt; Alias" in test framework.
+   * This is used to display and verify output of "Path -> Alias" in test framework.
    *
-   * QTestUtil masks "Path -&gt; Alias" and makes verification impossible.
-   * By keeping "Path -&gt; Alias" intact and adding a new display name which is not
+   * QTestUtil masks "Path -> Alias" and makes verification impossible.
+   * By keeping "Path -> Alias" intact and adding a new display name which is not
    * masked by QTestUtil by removing prefix.
    *
    * Notes: we would still be masking for intermediate directories.
@@ -231,28 +223,26 @@ public class MapWork extends BaseWork {
    * @return
    */
   @Explain(displayName = "Truncated Path -> Alias", explainLevels = { Level.EXTENDED })
-  public Map<String, List<String>> getTruncatedPathToAliases() {
-    Map<String, List<String>> trunPathToAliases = new LinkedHashMap<String, List<String>>();
-    Iterator<Entry<Path, List<String>>> itr = this.pathToAliases.entrySet().iterator();
+  public Map<String, ArrayList<String>> getTruncatedPathToAliases() {
+    Map<String, ArrayList<String>> trunPathToAliases = new LinkedHashMap<String,
+        ArrayList<String>>();
+    Iterator<Entry<Path, ArrayList<String>>> itr = this.pathToAliases.entrySet().iterator();
     while (itr.hasNext()) {
-      Entry<Path, List<String>> entry = itr.next();
+      final Entry<Path, ArrayList<String>> entry = itr.next();
       Path origiKey = entry.getKey();
       String newKey = PlanUtils.removePrefixFromWarehouseConfig(origiKey.toString());
-      List<String> value = entry.getValue();
+      ArrayList<String> value = entry.getValue();
       trunPathToAliases.put(newKey, value);
     }
     return trunPathToAliases;
   }
 
   @Explain(displayName = "Path -> Partition", explainLevels = { Level.EXTENDED })
-  public Map<Path, PartitionDesc> getPathToPartitionInfo() {
+  public LinkedHashMap<Path, PartitionDesc> getPathToPartitionInfo() {
     return pathToPartitionInfo;
   }
 
-  public void setPathToPartitionInfo(final Map<Path, PartitionDesc> pathToPartitionInfo) {
-    for (Path p : pathToPartitionInfo.keySet()) {
-      StringInternUtils.internUriStringsInPath(p);
-    }
+  public void setPathToPartitionInfo(final LinkedHashMap<Path, PartitionDesc> pathToPartitionInfo) {
     this.pathToPartitionInfo = pathToPartitionInfo;
   }
 
@@ -301,9 +291,8 @@ public class MapWork extends BaseWork {
     boolean hasPathToPartInfo = (pathToPartitionInfo != null && !pathToPartitionInfo.isEmpty());
     if (hasPathToPartInfo) {
       for (PartitionDesc part : pathToPartitionInfo.values()) {
-        Class<? extends InputFormat> inputFormatClass = part.getInputFileFormatClass();
-        boolean isUsingLlapIo = canWrapAny && (HiveInputFormat.canWrapForLlap(inputFormatClass, doCheckIfs)
-                || HiveInputFormat.checkInputFormatForLlapEncode(conf, inputFormatClass.getCanonicalName()));
+        boolean isUsingLlapIo = canWrapAny && HiveInputFormat.canWrapForLlap(
+            part.getInputFileFormatClass(), doCheckIfs);
         if (isUsingLlapIo) {
           if (part.getTableDesc() != null &&
               AcidUtils.isTablePropertyTransactional(part.getTableDesc().getProperties())) {
@@ -311,8 +300,7 @@ public class MapWork extends BaseWork {
           } else {
             hasLlap = true;
           }
-        } else if (isLlapOn && HiveInputFormat.canInjectCaches(inputFormatClass,
-            Utilities.getIsVectorized(conf, this))) {
+        } else if (isLlapOn && HiveInputFormat.canInjectCaches(part.getInputFileFormatClass())) {
           hasCacheOnly = true;
         } else {
           hasNonLlap = true;
@@ -371,7 +359,7 @@ public class MapWork extends BaseWork {
   /**
    * @return the aliasToPartnInfo
    */
-  public Map<String, PartitionDesc> getAliasToPartnInfo() {
+  public LinkedHashMap<String, PartitionDesc> getAliasToPartnInfo() {
     return aliasToPartnInfo;
   }
 
@@ -384,16 +372,17 @@ public class MapWork extends BaseWork {
     this.aliasToPartnInfo = aliasToPartnInfo;
   }
 
-  public Map<String, Operator<? extends OperatorDesc>> getAliasToWork() {
+  public LinkedHashMap<String, Operator<? extends OperatorDesc>> getAliasToWork() {
     return aliasToWork;
   }
 
-  public void setAliasToWork(Map<String, Operator<? extends OperatorDesc>> aliasToWork) {
+  public void setAliasToWork(
+      final LinkedHashMap<String, Operator<? extends OperatorDesc>> aliasToWork) {
     this.aliasToWork = aliasToWork;
   }
 
   @Explain(displayName = "Split Sample", explainLevels = { Level.EXTENDED })
-  public Map<String, SplitSample> getNameToSplitSample() {
+  public HashMap<String, SplitSample> getNameToSplitSample() {
     return nameToSplitSample;
   }
 
@@ -406,7 +395,7 @@ public class MapWork extends BaseWork {
     return llapIoDesc.cached;
   }
 
- public void setNameToSplitSample(Map<String, SplitSample> nameToSplitSample) {
+ public void setNameToSplitSample(HashMap<String, SplitSample> nameToSplitSample) {
     this.nameToSplitSample = nameToSplitSample;
   }
 
@@ -423,7 +412,7 @@ public class MapWork extends BaseWork {
   public void addMapWork(Path path, String alias, Operator<?> work,
       PartitionDesc pd) {
     StringInternUtils.internUriStringsInPath(path);
-    List<String> curAliases = pathToAliases.get(path);
+    ArrayList<String> curAliases = pathToAliases.get(path);
     if (curAliases == null) {
       assert (pathToPartitionInfo.get(path) == null);
       curAliases = new ArrayList<>();
@@ -456,7 +445,7 @@ public class MapWork extends BaseWork {
   }
 
   public void resolveDynamicPartitionStoredAsSubDirsMerge(HiveConf conf, Path path,
-      TableDesc tblDesc, List<String> aliases, PartitionDesc partDesc) {
+      TableDesc tblDesc, ArrayList<String> aliases, PartitionDesc partDesc) {
     StringInternUtils.internUriStringsInPath(path);
     pathToAliases.put(path, aliases);
     pathToPartitionInfo.put(path, partDesc);
@@ -528,7 +517,7 @@ public class MapWork extends BaseWork {
   public void mergeAliasedInput(String alias, Path pathDir, PartitionDesc partitionInfo) {
     StringInternUtils.internUriStringsInPath(pathDir);
     alias = alias.intern();
-    List<String> aliases = pathToAliases.get(pathDir);
+    ArrayList<String> aliases = pathToAliases.get(pathDir);
     if (aliases == null) {
       aliases = new ArrayList<>(Arrays.asList(alias));
       pathToAliases.put(pathDir, aliases);
@@ -607,8 +596,11 @@ public class MapWork extends BaseWork {
   }
 
   public ArrayList<Path> getPaths() {
-    return new ArrayList<Path>(pathToAliases.keySet());
+    ArrayList<Path> ret=new ArrayList<>();
+    ret.addAll(pathToAliases.keySet());
+    return ret;
   }
+
 
   public ArrayList<PartitionDesc> getPartitionDescs() {
     return new ArrayList<PartitionDesc>(aliasToPartnInfo.values());
@@ -661,11 +653,13 @@ public class MapWork extends BaseWork {
 
   @Override
   public void configureJobConf(JobConf job) {
-    super.configureJobConf(job);
     for (PartitionDesc partition : aliasToPartnInfo.values()) {
       PlanUtils.configureJobConf(partition.getTableDesc(), job);
     }
     Collection<Operator<?>> mappers = aliasToWork.values();
+    for (FileSinkOperator fs : OperatorUtils.findOperators(mappers, FileSinkOperator.class)) {
+      PlanUtils.configureJobConf(fs.getConf().getTableInfo(), job);
+    }
     for (IConfigureJobConf icjc : OperatorUtils.findOperators(mappers, IConfigureJobConf.class)) {
       icjc.configureJobConf(job);
     }
@@ -699,24 +693,12 @@ public class MapWork extends BaseWork {
     return eventSourceColumnTypeMap;
   }
 
-  public void setEventSourceColumnTypeMap(Map<String, List<String>> eventSourceColumnTypeMap) {
-    this.eventSourceColumnTypeMap = eventSourceColumnTypeMap;
- }
-
   public Map<String, List<ExprNodeDesc>> getEventSourcePartKeyExprMap() {
     return eventSourcePartKeyExprMap;
   }
 
   public void setEventSourcePartKeyExprMap(Map<String, List<ExprNodeDesc>> map) {
     this.eventSourcePartKeyExprMap = map;
-  }
-
-  public Map<String, List<ExprNodeDesc>> getEventSourcePredicateExprMap() {
-    return eventSourcePredicateExprMap;
-  }
-
-  public void setEventSourcePredicateExprMap(Map<String, List<ExprNodeDesc>> eventSourcePredicateExprMap) {
-    this.eventSourcePredicateExprMap = eventSourcePredicateExprMap;
   }
 
   public void setDoSplitsGrouping(boolean doSplitsGrouping) {
@@ -757,7 +739,7 @@ public class MapWork extends BaseWork {
 
   public void setIncludedBuckets(BitSet includedBuckets) {
     // see comment next to the field
-    this.includedBuckets = includedBuckets == null ? null : includedBuckets.toByteArray();
+    this.includedBuckets = includedBuckets.toByteArray();
   }
 
   public void setVectorizedRowBatch(VectorizedRowBatch vectorizedRowBatch) {
@@ -841,30 +823,20 @@ public class MapWork extends BaseWork {
     return vectorPartitionDescList;
   }
 
-  public void setVectorizationEnabledConditionsMet(Collection<String> vectorizationEnabledConditionsMet) {
-    this.vectorizationEnabledConditionsMet = vectorizationEnabledConditionsMet == null ? null : VectorizationCondition.addBooleans(
-            vectorizationEnabledConditionsMet, true);
+  public void setVectorizationEnabledConditionsMet(ArrayList<String> vectorizationEnabledConditionsMet) {
+    this.vectorizationEnabledConditionsMet = VectorizationCondition.addBooleans(vectorizationEnabledConditionsMet, true);
   }
 
   public List<String> getVectorizationEnabledConditionsMet() {
     return vectorizationEnabledConditionsMet;
   }
 
-  public void setVectorizationEnabledConditionsNotMet(Collection<String> vectorizationEnabledConditionsNotMet) {
-    this.vectorizationEnabledConditionsNotMet = vectorizationEnabledConditionsNotMet == null ? null : VectorizationCondition.addBooleans(
-            vectorizationEnabledConditionsNotMet, false);
+  public void setVectorizationEnabledConditionsNotMet(List<String> vectorizationEnabledConditionsNotMet) {
+    this.vectorizationEnabledConditionsNotMet = VectorizationCondition.addBooleans(vectorizationEnabledConditionsNotMet, false);
   }
 
   public List<String> getVectorizationEnabledConditionsNotMet() {
     return vectorizationEnabledConditionsNotMet;
-  }
-
-  public ProbeDecodeContext getProbeDecodeContext() {
-    return probeDecodeContext;
-  }
-
-  public void setProbeDecodeContext(ProbeDecodeContext probeDecodeContext) {
-    this.probeDecodeContext = probeDecodeContext;
   }
 
   public class MapExplainVectorization extends BaseExplainVectorization {

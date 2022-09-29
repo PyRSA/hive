@@ -18,9 +18,11 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.ptf;
 
-import org.apache.hadoop.hive.ql.exec.vector.ColumnVector.Type;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hive.ql.exec.vector.DoubleColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
+import org.apache.hadoop.hive.ql.exec.vector.ColumnVector.Type;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorExpression;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.plan.ptf.WindowFrameDef;
@@ -29,23 +31,27 @@ import com.google.common.base.Preconditions;
 
 /**
  * This class evaluates double first_value() for a PTF group.
+ *
  * We capture the last value from the last batch.  It can be NULL.
  * It becomes the group value.
  */
 public class VectorPTFEvaluatorDoubleLastValue extends VectorPTFEvaluatorBase {
 
+  private static final long serialVersionUID = 1L;
+  private static final String CLASS_NAME = VectorPTFEvaluatorDoubleLastValue.class.getName();
+  private static final Log LOG = LogFactory.getLog(CLASS_NAME);
+
   protected boolean isGroupResultNull;
   protected double lastValue;
 
   public VectorPTFEvaluatorDoubleLastValue(WindowFrameDef windowFrameDef,
-    VectorExpression inputVecExpr, int outputColumnNum) {
+      VectorExpression inputVecExpr, int outputColumnNum) {
     super(windowFrameDef, inputVecExpr, outputColumnNum);
     resetEvaluator();
   }
 
-  @Override
-  public void evaluateGroupBatch(VectorizedRowBatch batch)
-    throws HiveException {
+  public void evaluateGroupBatch(VectorizedRowBatch batch, boolean isLastGroupBatch)
+      throws HiveException {
 
     evaluateInputExpr(batch);
 
@@ -54,6 +60,9 @@ public class VectorPTFEvaluatorDoubleLastValue extends VectorPTFEvaluatorBase {
     // We do not filter when PTF is in reducer.
     Preconditions.checkState(!batch.selectedInUse);
 
+    if (!isLastGroupBatch) {
+      return;
+    }
     final int size = batch.size;
     if (size == 0) {
       return;
@@ -82,12 +91,6 @@ public class VectorPTFEvaluatorDoubleLastValue extends VectorPTFEvaluatorBase {
   }
 
   @Override
-  public boolean streamsResult() {
-    // We must evaluate whole group before producing a result.
-    return false;
-  }
-
-  @Override
   public boolean isGroupResultNull() {
     return isGroupResultNull;
   }
@@ -98,7 +101,7 @@ public class VectorPTFEvaluatorDoubleLastValue extends VectorPTFEvaluatorBase {
   }
 
   @Override
-  public Object getGroupResult() {
+  public double getDoubleGroupResult() {
     return lastValue;
   }
 
@@ -106,9 +109,5 @@ public class VectorPTFEvaluatorDoubleLastValue extends VectorPTFEvaluatorBase {
   public void resetEvaluator() {
     isGroupResultNull = true;
     lastValue = 0.0;
-  }
-
-  public boolean isCacheableForRange() {
-    return false;
   }
 }

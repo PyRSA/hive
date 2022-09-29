@@ -24,7 +24,6 @@ import java.util.List;
 
 import org.apache.hadoop.hive.common.Pool;
 import org.apache.hadoop.hive.common.Pool.PoolObjectHelper;
-import org.apache.hadoop.hive.common.io.CacheTag;
 import org.apache.hadoop.hive.common.io.DataCache;
 import org.apache.hadoop.hive.common.io.encoded.EncodedColumnBatch;
 import org.apache.hadoop.hive.common.io.encoded.EncodedColumnBatch.ColumnStreamData;
@@ -46,8 +45,8 @@ public interface Reader extends org.apache.hadoop.hive.ql.io.orc.Reader {
    * @param pf Pool factory to create object pools.
    * @return The reader.
    */
-  EncodedReader encodedReader(Object fileKey, DataCache dataCache, LlapDataReader dataReader,
-      PoolFactory pf, IoTrace trace, boolean useCodecPool, CacheTag tag, boolean isReadCacheOnly) throws IOException;
+  EncodedReader encodedReader(Object fileKey, DataCache dataCache, DataReader dataReader,
+      PoolFactory pf, IoTrace trace, boolean useCodecPool, String tag) throws IOException;
 
   /** The factory that can create (or return) the pools used by encoded reader. */
   public interface PoolFactory {

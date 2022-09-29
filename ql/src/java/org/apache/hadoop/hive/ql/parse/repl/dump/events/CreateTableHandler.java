@@ -17,8 +17,8 @@
  */
 package org.apache.hadoop.hive.ql.parse.repl.dump.events;
 
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.api.NotificationEvent;
 import org.apache.hadoop.hive.metastore.messaging.CreateTableMessage;
 import org.apache.hadoop.hive.ql.metadata.Table;
@@ -26,44 +26,35 @@ import org.apache.hadoop.hive.ql.parse.EximUtil;
 import org.apache.hadoop.hive.ql.parse.repl.DumpType;
 import org.apache.hadoop.hive.ql.parse.repl.dump.Utils;
 
-class CreateTableHandler extends AbstractEventHandler<CreateTableMessage> {
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+
+class CreateTableHandler extends AbstractEventHandler {
 
   CreateTableHandler(NotificationEvent event) {
     super(event);
   }
 
   @Override
-  CreateTableMessage eventMessage(String stringRepresentation) {
-    return deserializer.getCreateTableMessage(stringRepresentation);
-  }
-
-  @Override
   public void handle(Context withinContext) throws Exception {
-    LOG.info("Processing#{} CREATE_TABLE message : {}", fromEventId(), eventMessageAsJSON);
-    org.apache.hadoop.hive.metastore.api.Table tobj = eventMessage.getTableObj();
+    CreateTableMessage ctm = deserializer.getCreateTableMessage(event.getMessage());
+    LOG.info("Processing#{} CREATE_TABLE message : {}", fromEventId(), event.getMessage());
+    org.apache.hadoop.hive.metastore.api.Table tobj = ctm.getTableObj();
 
     if (tobj == null) {
-      LOG.debug("Event#{} was a CREATE_TABLE_EVENT with no table listed", fromEventId());
+      LOG.debug("Event#{} was a CREATE_TABLE_EVENT with no table listed");
       return;
     }
 
     Table qlMdTable = new Table(tobj);
 
-    if (!Utils.shouldReplicate(withinContext.replicationSpec, qlMdTable, true,
-            withinContext.getTablesForBootstrap(), withinContext.oldReplScope, withinContext.hiveConf)) {
+    if (!Utils.shouldReplicate(withinContext.replicationSpec, qlMdTable, withinContext.hiveConf)) {
       return;
     }
 
     if (qlMdTable.isView()) {
       withinContext.replicationSpec.setIsMetadataOnly(true);
-    }
-
-    // If we are not dumping data about a table, we shouldn't be dumping basic statistics
-    // as well, since that won't be accurate. So reset them to what they would look like for an
-    // empty table.
-    if (Utils.shouldDumpMetaDataOnly(withinContext.hiveConf)
-            || Utils.shouldDumpMetaDataOnlyForExternalTables(qlMdTable, withinContext.hiveConf)) {
-      qlMdTable.setStatsStateLikeNewTable();
     }
 
     Path metaDataPath = new Path(withinContext.eventRoot, EximUtil.METADATA_NAME);
@@ -75,21 +66,23 @@ class CreateTableHandler extends AbstractEventHandler<CreateTableMessage> {
         withinContext.replicationSpec,
         withinContext.hiveConf);
 
-    boolean copyAtLoad = withinContext.hiveConf.getBoolVar(HiveConf.ConfVars.REPL_RUN_DATA_COPY_TASKS_ON_TARGET);
-    Iterable<String> files = eventMessage.getFiles();
+    Path dataPath = new Path(withinContext.eventRoot, "data");
+    Iterable<String> files = ctm.getFiles();
     if (files != null) {
-      if (copyAtLoad) {
-        // encoded filename/checksum of files, write into _files
-        Path dataPath = new Path(withinContext.eventRoot, EximUtil.DATA_PATH_NAME);
-        writeEncodedDumpFiles(withinContext, files, dataPath);
-      } else {
+      // encoded filename/checksum of files, write into _files
+      try (BufferedWriter fileListWriter = writer(withinContext, dataPath)) {
         for (String file : files) {
-          writeFileEntry(qlMdTable, null, file, withinContext);
+          fileListWriter.write(file + "\n");
         }
       }
     }
-
     withinContext.createDmd(this).write();
+  }
+
+  private BufferedWriter writer(Context withinContext, Path dataPath) throws IOException {
+    FileSystem fs = dataPath.getFileSystem(withinContext.hiveConf);
+    Path filesPath = new Path(dataPath, EximUtil.FILES_NAME);
+    return new BufferedWriter(new OutputStreamWriter(fs.create(filesPath)));
   }
 
   @Override

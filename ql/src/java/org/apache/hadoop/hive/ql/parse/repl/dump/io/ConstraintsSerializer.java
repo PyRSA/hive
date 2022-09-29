@@ -22,13 +22,11 @@ import java.io.IOException;
 import java.util.List;
 
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.metastore.api.SQLCheckConstraint;
-import org.apache.hadoop.hive.metastore.api.SQLDefaultConstraint;
 import org.apache.hadoop.hive.metastore.api.SQLForeignKey;
 import org.apache.hadoop.hive.metastore.api.SQLNotNullConstraint;
 import org.apache.hadoop.hive.metastore.api.SQLPrimaryKey;
 import org.apache.hadoop.hive.metastore.api.SQLUniqueConstraint;
-import org.apache.hadoop.hive.metastore.messaging.MessageBuilder;
+import org.apache.hadoop.hive.metastore.messaging.MessageFactory;
 import org.apache.hadoop.hive.ql.parse.ReplicationSpec;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
 
@@ -38,49 +36,36 @@ public class ConstraintsSerializer implements JsonWriter.Serializer {
   private List<SQLForeignKey> fks;
   private List<SQLUniqueConstraint> uks;
   private List<SQLNotNullConstraint> nns;
-  private List<SQLDefaultConstraint> dks;
-  private List<SQLCheckConstraint> cks;
 
   public ConstraintsSerializer(List<SQLPrimaryKey> pks, List<SQLForeignKey> fks,
-      List<SQLUniqueConstraint> uks, List<SQLNotNullConstraint> nns, List<SQLDefaultConstraint> dks,
-      List<SQLCheckConstraint> cks, HiveConf hiveConf) {
+      List<SQLUniqueConstraint> uks, List<SQLNotNullConstraint> nns, HiveConf hiveConf) {
     this.hiveConf = hiveConf;
     this.pks = pks;
     this.fks = fks;
     this.uks = uks;
     this.nns = nns;
-    this.dks = dks;
-    this.cks = cks;
   }
 
   @Override
   public void writeTo(JsonWriter writer, ReplicationSpec additionalPropertiesProvider)
       throws SemanticException, IOException {
-    String pksString, fksString, uksString, nnsString, dksString, cksString;
-    pksString = fksString = uksString = nnsString = dksString = cksString = "";
+    String pksString, fksString, uksString, nnsString;
+    pksString = fksString = uksString = nnsString = "";
     if (pks != null) {
-      pksString = MessageBuilder.getInstance().buildAddPrimaryKeyMessage(pks).toString();
+      pksString = MessageFactory.getInstance().buildAddPrimaryKeyMessage(pks).toString();
     }
     if (fks != null) {
-      fksString = MessageBuilder.getInstance().buildAddForeignKeyMessage(fks).toString();
+      fksString = MessageFactory.getInstance().buildAddForeignKeyMessage(fks).toString();
     }
     if (uks != null) {
-      uksString = MessageBuilder.getInstance().buildAddUniqueConstraintMessage(uks).toString();
+      uksString = MessageFactory.getInstance().buildAddUniqueConstraintMessage(uks).toString();
     }
     if (nns != null) {
-      nnsString = MessageBuilder.getInstance().buildAddNotNullConstraintMessage(nns).toString();
-    }
-    if (dks != null) {
-      dksString = MessageBuilder.getInstance().buildAddDefaultConstraintMessage(dks).toString();
-    }
-    if (cks != null) {
-      cksString = MessageBuilder.getInstance().buildAddCheckConstraintMessage(cks).toString();
+      nnsString = MessageFactory.getInstance().buildAddNotNullConstraintMessage(nns).toString();
     }
     writer.jsonGenerator.writeStringField("pks", pksString);
     writer.jsonGenerator.writeStringField("uks", uksString);
     writer.jsonGenerator.writeStringField("nns", nnsString);
     writer.jsonGenerator.writeStringField("fks", fksString);
-    writer.jsonGenerator.writeStringField("dks", dksString);
-    writer.jsonGenerator.writeStringField("cks", cksString);
   }
 }

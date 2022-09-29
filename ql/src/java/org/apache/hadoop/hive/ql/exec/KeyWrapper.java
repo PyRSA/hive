@@ -27,5 +27,4 @@ public abstract class KeyWrapper {
   public abstract KeyWrapper copyKey();
   public abstract void copyKey(KeyWrapper oldWrapper);
   public abstract Object[] getKeyArray();
-  public abstract boolean isCopy();
 }

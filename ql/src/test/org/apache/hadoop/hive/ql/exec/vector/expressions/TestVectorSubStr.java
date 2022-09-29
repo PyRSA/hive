@@ -38,7 +38,6 @@ import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatchCtx;
 import org.apache.hadoop.hive.ql.exec.vector.VectorRandomRowSource.GenerationSpec;
 import org.apache.hadoop.hive.ql.exec.vector.VectorRandomRowSource.StringGenerationOption;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorExpression;
-import org.apache.hadoop.hive.ql.exec.vector.udf.VectorUDFAdaptor;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
 import org.apache.hadoop.hive.ql.plan.ExprNodeColumnDesc;
@@ -59,7 +58,7 @@ import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoUtils;
 import org.apache.hadoop.io.IntWritable;
 
-import org.junit.Assert;
+import junit.framework.Assert;
 
 import org.junit.Test;
 
@@ -102,7 +101,7 @@ public class TestVectorSubStr {
         new ArrayList<DataTypePhysicalVariation>();
 
     List<String> columns = new ArrayList<String>();
-    int columnNum = 1;
+    int columnNum = 0;
     ExprNodeDesc col1Expr;
     StringGenerationOption stringGenerationOption =
         new StringGenerationOption(true, true);
@@ -118,8 +117,7 @@ public class TestVectorSubStr {
     VectorRandomRowSource rowSource = new VectorRandomRowSource();
 
     rowSource.initGenerationSpecSchema(
-        random, generationSpecList, /* maxComplexDepth */ 0,
-        /* allowNull */ true, /* isUnicodeOk */ true,
+        random, generationSpecList, /* maxComplexDepth */ 0, /* allowNull */ true,
         explicitDataTypePhysicalVariationList);
 
     List<ExprNodeDesc> children = new ArrayList<ExprNodeDesc>();
@@ -322,29 +320,17 @@ public class TestVectorSubStr {
             hiveConf);
     VectorExpression vectorExpression = vectorizationContext.getVectorExpression(exprDesc);
 
-    if (subStrTestMode == SubStrTestMode.VECTOR_EXPRESSION &&
-        vectorExpression instanceof VectorUDFAdaptor) {
-      System.out.println(
-          "*NO NATIVE VECTOR EXPRESSION* typeInfo " + typeInfo.toString() +
-          " subStrTestMode " + subStrTestMode +
-          " vectorExpression " + vectorExpression.toString());
-    }
-
     VectorizedRowBatch batch = batchContext.createVectorizedRowBatch();
 
     VectorExtractRow resultVectorExtractRow = new VectorExtractRow();
     resultVectorExtractRow.init(new TypeInfo[] { targetTypeInfo }, new int[] { columns.size() });
     Object[] scrqtchRow = new Object[1];
 
-    // System.out.println("*VECTOR EXPRESSION* " + vectorExpression.getClass().getSimpleName());
-
-    /*
     System.out.println(
         "*DEBUG* typeInfo " + typeInfo.toString() +
         " targetTypeInfo " + targetTypeInfo.toString() +
         " subStrTestMode " + subStrTestMode +
         " vectorExpression " + vectorExpression.getClass().getSimpleName());
-    */
 
     batchSource.resetBatchIteration();
     int rowIndex = 0;

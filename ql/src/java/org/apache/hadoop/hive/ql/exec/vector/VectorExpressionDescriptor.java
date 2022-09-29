@@ -89,8 +89,6 @@ public class VectorExpressionDescriptor {
     INT_INTERVAL_YEAR_MONTH     (INT_FAMILY.value | INTERVAL_YEAR_MONTH.value),
     INT_DATE_INTERVAL_YEAR_MONTH  (INT_FAMILY.value | DATE.value | INTERVAL_YEAR_MONTH.value),
     STRING_DATETIME_FAMILY  (STRING_FAMILY.value | DATETIME_FAMILY.value),
-    STRING_FAMILY_BINARY    (STRING_FAMILY.value | BINARY.value),
-    STRING_BINARY           (STRING.value | BINARY.value),
     ALL_FAMILY              (0xFFFFFFL);
 
     private final long value;
@@ -171,8 +169,7 @@ public class VectorExpressionDescriptor {
     NONE(0),
     COLUMN(1),
     SCALAR(2),
-    DYNAMICVALUE(3),
-    NULLSCALAR(4);
+    DYNAMICVALUE(3);
 
     private final int value;
 
@@ -208,7 +205,6 @@ public class VectorExpressionDescriptor {
     private Mode mode = Mode.PROJECTION;
     ArgumentType [] argTypes = new ArgumentType[MAX_NUM_ARGUMENTS];
     InputExpressionType [] exprTypes = new InputExpressionType[MAX_NUM_ARGUMENTS];
-    private boolean unscaled;
     private int argCount = 0;
 
     public Builder() {
@@ -264,13 +260,8 @@ public class VectorExpressionDescriptor {
       return this;
     }
 
-    public Builder setUnscaled(boolean unscaled) {
-      this.unscaled = unscaled;
-      return this;
-    }
-
     public Descriptor build() {
-      return new Descriptor(mode, argCount, argTypes, exprTypes, unscaled);
+      return new Descriptor(mode, argCount, argTypes, exprTypes);
     }
   }
 
@@ -282,9 +273,6 @@ public class VectorExpressionDescriptor {
 
     public boolean matches(Descriptor other) {
       if (!mode.equals(other.mode) || (argCount != other.argCount) ) {
-        return false;
-      }
-      if (unscaled != other.unscaled) {
         return false;
       }
       for (int i = 0; i < argCount; i++) {
@@ -302,15 +290,12 @@ public class VectorExpressionDescriptor {
     private final ArgumentType [] argTypes;
     private final InputExpressionType [] exprTypes;
     private final int argCount;
-    private final boolean unscaled;
 
-    private Descriptor(Mode mode, int argCount, ArgumentType[] argTypes, InputExpressionType[] exprTypes,
-        boolean unscaled) {
+    private Descriptor(Mode mode, int argCount, ArgumentType[] argTypes, InputExpressionType[] exprTypes) {
       this.mode = mode;
       this.argTypes = argTypes.clone();
       this.exprTypes = exprTypes.clone();
       this.argCount = argCount;
-      this.unscaled = unscaled;
     }
 
     @Override

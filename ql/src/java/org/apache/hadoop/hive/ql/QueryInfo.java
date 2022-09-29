@@ -32,8 +32,6 @@ public class QueryInfo {
   private String state;
   private QueryDisplay queryDisplay;
 
-  private String operationLogLocation;
-
   public QueryInfo(String state, String userName, String executionEngine, String operationId) {
     this.state = state;
     this.userName = userName;
@@ -100,13 +98,5 @@ public class QueryInfo {
 
   public synchronized Long getRuntime() {
     return runtime;
-  }
-
-  public String getOperationLogLocation() {
-    return operationLogLocation;
-  }
-
-  public void setOperationLogLocation(String operationLogLocation) {
-    this.operationLogLocation = operationLogLocation;
   }
 }

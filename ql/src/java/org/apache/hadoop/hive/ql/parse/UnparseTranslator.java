@@ -137,10 +137,10 @@ public class UnparseTranslator {
   /**
    * Register a translation for an tabName.
    *
-   * @param tableName
+   * @param node
    *          source node (which must be an tabName) to be replaced
    */
-  public void addTableNameTranslation(ASTNode tableName, String currentDatabaseName) {
+  void addTableNameTranslation(ASTNode tableName, String currentDatabaseName) {
     if (!enabled) {
       return;
     }
@@ -149,14 +149,11 @@ public class UnparseTranslator {
       return;
     }
     assert (tableName.getToken().getType() == HiveParser.TOK_TABNAME);
-    assert (tableName.getChildCount() <= 3);
+    assert (tableName.getChildCount() <= 2);
 
-    if (tableName.getChildCount() == 2 || tableName.getChildCount() == 3) {
+    if (tableName.getChildCount() == 2) {
       addIdentifierTranslation((ASTNode)tableName.getChild(0));
       addIdentifierTranslation((ASTNode)tableName.getChild(1));
-      if (tableName.getChildCount() == 3) {
-        addIdentifierTranslation((ASTNode)tableName.getChild(2));
-      }
     }
     else {
       // transform the table reference to an absolute reference (i.e., "db.table")
@@ -175,10 +172,10 @@ public class UnparseTranslator {
   /**
    * Register a translation for an identifier.
    *
-   * @param identifier
+   * @param node
    *          source node (which must be an identifier) to be replaced
    */
-  public void addIdentifierTranslation(ASTNode identifier) {
+  void addIdentifierTranslation(ASTNode identifier) {
     if (!enabled) {
       return;
     }
@@ -188,19 +185,6 @@ public class UnparseTranslator {
     replacementText = HiveUtils.unparseIdentifier(replacementText, conf);
     addTranslation(identifier, replacementText);
   }
-
-  public void addDefaultValueTranslation(ASTNode exprNode, String defaultValue) {
-    if (!(exprNode.getType() == HiveParser.TOK_TABLE_OR_COL
-            && exprNode.getChild(0).getType() == HiveParser.TOK_DEFAULT_VALUE)) {
-      return;
-    }
-
-    if (defaultValue == null) {
-      defaultValue = "NULL";
-    }
-    addTranslation(exprNode, defaultValue);
-  }
-
 
   /**
    * Register a "copy" translation in which a node will be translated into
@@ -214,7 +198,7 @@ public class UnparseTranslator {
    * @param sourceNode the node providing the replacement text
    *
    */
-  public void addCopyTranslation(ASTNode targetNode, ASTNode sourceNode) {
+  void addCopyTranslation(ASTNode targetNode, ASTNode sourceNode) {
     if (!enabled) {
       return;
     }
@@ -236,15 +220,10 @@ public class UnparseTranslator {
    *          rewrite-capable stream
    */
   void applyTranslations(TokenRewriteStream tokenRewriteStream) {
-    applyTranslations(tokenRewriteStream, TokenRewriteStream.DEFAULT_PROGRAM_NAME);
-  }
-
-  void applyTranslations(TokenRewriteStream tokenRewriteStream, String programName) {
     for (Map.Entry<Integer, Translation> entry : translations.entrySet()) {
-      if (entry.getKey() > 0) { // negative means the key didn't exist in the original
+      if (entry.getKey() > 0) { // negative means the key didn't exist in the original 
                                 // stream (i.e.: we changed the tree)
         tokenRewriteStream.replace(
-           programName,
            entry.getKey(),
            entry.getValue().tokenStopIndex,
            entry.getValue().replacementText);
@@ -252,11 +231,9 @@ public class UnparseTranslator {
     }
     for (CopyTranslation copyTranslation : copyTranslations) {
       String replacementText = tokenRewriteStream.toString(
-        programName,
         copyTranslation.sourceNode.getTokenStartIndex(),
         copyTranslation.sourceNode.getTokenStopIndex());
       String currentText = tokenRewriteStream.toString(
-        programName,
         copyTranslation.targetNode.getTokenStartIndex(),
         copyTranslation.targetNode.getTokenStopIndex());
       if (currentText.equals(replacementText)) {
@@ -268,7 +245,6 @@ public class UnparseTranslator {
       // checking.
       addTranslation(copyTranslation.targetNode, replacementText);
       tokenRewriteStream.replace(
-        programName,
         copyTranslation.targetNode.getTokenStartIndex(),
         copyTranslation.targetNode.getTokenStopIndex(),
         replacementText);

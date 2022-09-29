@@ -17,21 +17,16 @@
  */
 package org.apache.hadoop.hive.ql.log;
 
-import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 import org.apache.hadoop.hive.common.LogUtils;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.Driver;
 import org.apache.hadoop.hive.ql.exec.Task;
-import org.apache.hadoop.hive.ql.exec.tez.TezTask;
 import org.apache.hadoop.hive.ql.session.OperationLog;
-import org.apache.hadoop.hive.ql.stats.BasicStatsTask;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.LoggerContext;
-import org.apache.logging.log4j.core.appender.routing.IdlePurgePolicy;
-import org.apache.logging.log4j.core.appender.routing.PurgePolicy;
 import org.apache.logging.log4j.core.appender.routing.Route;
 import org.apache.logging.log4j.core.appender.routing.Routes;
 import org.apache.logging.log4j.core.appender.routing.RoutingAppender;
@@ -85,8 +80,8 @@ public class LogDivertAppender {
      */
     private static final Pattern executionIncludeNamePattern = Pattern.compile(Joiner.on("|").
         join(new String[]{"org.apache.hadoop.mapreduce.JobSubmitter",
-          "org.apache.hadoop.mapreduce.Job", "SessionState", "ReplState", Task.class.getName(),
-          TezTask.class.getName(), Driver.class.getName(), BasicStatsTask.class.getName()}));
+            "org.apache.hadoop.mapreduce.Job", "SessionState", "ReplState", Task.class.getName(),
+            Driver.class.getName(), "org.apache.hadoop.hive.ql.exec.spark.status.SparkJobMonitor"}));
 
     /* Patterns that are included in performance logging level.
      * In performance mode, show execution and performance logger messages.
@@ -175,13 +170,10 @@ public class LogDivertAppender {
    * @param conf  the configuration for HiveServer2 instance
    */
   public static void registerRoutingAppender(org.apache.hadoop.conf.Configuration conf) {
-    if (!HiveConf.getBoolVar(conf, HiveConf.ConfVars.HIVE_SERVER2_LOGGING_OPERATION_ENABLED, false)) {
-      // spare some resources, do not register logger if it is not enabled .
-      return;
-    }
     String loggingLevel = HiveConf.getVar(conf, HiveConf.ConfVars.HIVE_SERVER2_LOGGING_OPERATION_LEVEL);
     OperationLog.LoggingLevel loggingMode = OperationLog.getLoggingLevel(loggingLevel);
     String layout = loggingMode == OperationLog.LoggingLevel.VERBOSE ? verboseLayout : nonVerboseLayout;
+    String logLocation = HiveConf.getVar(conf, HiveConf.ConfVars.HIVE_SERVER2_LOGGING_OPERATION_LOG_LOCATION);
 
     // Create NullAppender
     PluginEntry nullEntry = new PluginEntry();
@@ -216,7 +208,7 @@ public class LogDivertAppender {
     PluginType<HushableRandomAccessFileAppender> childType = new PluginType<>(childEntry, HushableRandomAccessFileAppender.class, "appender");
     Node childNode = new Node(node, "HushableMutableRandomAccess", childType);
     childNode.getAttributes().put("name", "query-file-appender");
-    childNode.getAttributes().put("fileName", "${ctx:operationLogLocation}/${ctx:sessionId}/${ctx:queryId}");
+    childNode.getAttributes().put("fileName", logLocation + "/${ctx:sessionId}/${ctx:queryId}");
     node.getChildren().add(childNode);
 
     PluginEntry filterEntry = new PluginEntry();
@@ -243,19 +235,12 @@ public class LogDivertAppender {
     LoggerContext context = (LoggerContext) LogManager.getContext(false);
     Configuration configuration = context.getConfiguration();
 
-    String timeToLive = String.valueOf(HiveConf
-        .getTimeVar(conf, HiveConf.ConfVars.HIVE_SERVER2_OPERATION_LOG_PURGEPOLICY_TIMETOLIVE, TimeUnit.SECONDS));
-    PurgePolicy purgePolicy = IdlePurgePolicy.createPurgePolicy(timeToLive, null, "SECONDS", configuration);
-    // Hack: due to the (non-standard) way that log4j configuration is extended to introduce the routing appender
-    // the life-cycle methods are not called as expected leading to initialization problems (such as the scheduler)
-    configuration.getScheduler().incrementScheduledItems();
-
     RoutingAppender routingAppender = RoutingAppender.createAppender(QUERY_ROUTING_APPENDER,
         "true",
         routes,
         configuration,
         null,
-        purgePolicy,
+        null,
         null);
 
     LoggerConfig loggerConfig = configuration.getRootLogger();

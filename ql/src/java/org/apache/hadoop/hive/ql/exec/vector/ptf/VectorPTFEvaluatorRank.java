@@ -18,9 +18,12 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.ptf;
 
-import org.apache.hadoop.hive.ql.exec.vector.ColumnVector.Type;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
+import org.apache.hadoop.hive.ql.exec.vector.ColumnVector.Type;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorExpression;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.plan.ptf.WindowFrameDef;
 
@@ -32,55 +35,48 @@ import org.apache.hadoop.hive.ql.plan.ptf.WindowFrameDef;
  */
 public class VectorPTFEvaluatorRank extends VectorPTFEvaluatorBase {
 
-  private long rank;
+  private static final long serialVersionUID = 1L;
+  private static final String CLASS_NAME = VectorPTFEvaluatorRank.class.getName();
+  private static final Log LOG = LogFactory.getLog(CLASS_NAME);
+
+  private int rank;
   private int groupCount;
 
-  public VectorPTFEvaluatorRank(WindowFrameDef windowFrameDef, int outputColumnNum) {
-    super(windowFrameDef, outputColumnNum);
+  public VectorPTFEvaluatorRank(WindowFrameDef windowFrameDef, VectorExpression inputVecExpr,
+      int outputColumnNum) {
+    super(windowFrameDef, inputVecExpr, outputColumnNum);
     resetEvaluator();
   }
 
-  @Override
-  public void evaluateGroupBatch(VectorizedRowBatch batch)
+  public void evaluateGroupBatch(VectorizedRowBatch batch, boolean isLastGroupBatch)
       throws HiveException {
 
-    // We don't evaluate input columns...
+    evaluateInputExpr(batch);
 
     /*
      * Do careful maintenance of the outputColVector.noNulls flag.
      */
+
     LongColumnVector longColVector = (LongColumnVector) batch.cols[outputColumnNum];
     longColVector.isRepeating = true;
     longColVector.isNull[0] = false;
     longColVector.vector[0] = rank;
     groupCount += batch.size;
+
+    if (isLastGroupBatch) {
+      rank += groupCount;
+      groupCount = 0;
+    }
   }
 
-  @Override
-  public void doLastBatchWork() {
-    rank += groupCount;
-    groupCount = 0;
-  }
-
-  @Override
   public boolean streamsResult() {
     // No group value.
     return true;
   }
 
   @Override
-  public boolean isGroupResultNull() {
-    return false;
-  }
-
-  @Override
   public Type getResultColumnVectorType() {
     return Type.LONG;
-  }
-
-  @Override
-  public Object getGroupResult() {
-    return rank;
   }
 
   @Override

@@ -22,9 +22,7 @@ import static org.apache.hadoop.hive.ql.plan.ReduceSinkDesc.ReducerTraits.AUTOPA
 import static org.apache.hadoop.hive.ql.plan.ReduceSinkDesc.ReducerTraits.UNIFORM;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
-import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.exec.AbstractFileMergeOperator;
@@ -32,7 +30,6 @@ import org.apache.hadoop.hive.ql.exec.AppMasterEventOperator;
 import org.apache.hadoop.hive.ql.exec.FetchTask;
 import org.apache.hadoop.hive.ql.exec.FileSinkOperator;
 import org.apache.hadoop.hive.ql.exec.FilterOperator;
-import org.apache.hadoop.hive.ql.exec.GroupByOperator;
 import org.apache.hadoop.hive.ql.exec.HashTableDummyOperator;
 import org.apache.hadoop.hive.ql.exec.MapJoinOperator;
 import org.apache.hadoop.hive.ql.exec.Operator;
@@ -54,7 +51,6 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.BiMap;
 import com.google.common.collect.HashBiMap;
-import com.google.common.collect.Sets;
 
 /**
  * GenTezUtils is a collection of shared helper methods to produce TezWork.
@@ -87,7 +83,6 @@ public class GenTezUtils {
         context.conf.getFloatVar(HiveConf.ConfVars.TEZ_MAX_PARTITION_FACTOR);
     float minPartitionFactor = context.conf.getFloatVar(HiveConf.ConfVars.TEZ_MIN_PARTITION_FACTOR);
     long bytesPerReducer = context.conf.getLongVar(HiveConf.ConfVars.BYTESPERREDUCER);
-    int defaultTinyBufferSize = context.conf.getIntVar(HiveConf.ConfVars.TEZ_SIMPLE_CUSTOM_EDGE_TINY_BUFFER_SIZE_MB);
 
     ReduceWork reduceWork = new ReduceWork(Utilities.REDUCENAME + context.nextSequenceNumber());
     LOG.debug("Adding reduce work (" + reduceWork.getName() + ") for " + root);
@@ -147,7 +142,6 @@ public class GenTezUtils {
       edgeProp = new TezEdgeProperty(edgeType);
       edgeProp.setSlowStart(reduceWork.isSlowStart());
     }
-    edgeProp.setBufferSize(obtainBufferSize(root, reduceSink, defaultTinyBufferSize));
     reduceWork.setEdgePropRef(edgeProp);
 
     tezWork.connect(
@@ -198,11 +192,6 @@ public class GenTezUtils {
       mapWork.setIncludedBuckets(ts.getConf().getIncludedBuckets());
     }
 
-    if (ts.getProbeDecodeContext() != null) {
-      // TODO: some operators like VectorPTFEvaluator do not allow the use of Selected take this into account here?
-      mapWork.setProbeDecodeContext(ts.getProbeDecodeContext());
-    }
-
     // add new item to the tez work
     tezWork.add(mapWork);
 
@@ -218,71 +207,6 @@ public class GenTezUtils {
         context.inputs, partitions, root, alias, context.conf, false);
   }
 
-  /**
-   * Temporarily truncates the operator tree to avoid full cloning of the tree.
-   *
-   * It does the following simplifications:
-   * <ul>
-   *  <li> hides UNION operator parents which are unrelated to the current set of roots
-   *  <li> hides childs from RS and FS operators
-   * <ul>
-   */
-  static class TruncatedOperatorTree implements AutoCloseable {
-
-    List<Runnable> undoSteps = new ArrayList<>();
-
-    public TruncatedOperatorTree(List<Operator<?>> roots) {
-      Set<Operator<?>> known = Sets.newIdentityHashSet();
-      // do a forward discovery from all roots
-      runDFS(known, roots);
-      for (Operator<?> o : known) {
-        if (o instanceof UnionOperator) {
-          List<Operator<?>> orig = o.getParentOperators();
-          undoSteps.add(() -> {
-            o.setParentOperators(orig);
-          });
-          List<Operator<? extends OperatorDesc>> newParents =
-              o.getParentOperators().stream().filter(p -> known.contains(p)).collect(Collectors.toList());
-
-          o.setParentOperators(newParents);
-        }
-        if (isTerminal(o)) {
-          List<Operator<?>> orig = o.getChildOperators();
-          undoSteps.add(() -> {
-            o.setChildOperators(orig);
-          });
-          o.setChildOperators(null);
-        }
-      }
-    }
-
-    private void runDFS(Set<Operator<?>> known, List<Operator<?>> roots, Class<?>... terminals) {
-
-      Queue<Operator<?>> pending = new LinkedList<>();
-      pending.addAll(roots);
-
-      while (!pending.isEmpty()) {
-        Operator<?> o = pending.poll();
-        known.add(o);
-        if (!isTerminal(o)) {
-          pending.addAll(o.getChildOperators());
-        }
-      }
-    }
-
-    private boolean isTerminal(Operator<?> o) {
-      return o instanceof FileSinkOperator || o instanceof ReduceSinkOperator;
-    }
-
-    @Override
-    public void close() {
-      for (Runnable runnable : undoSteps) {
-        runnable.run();
-      }
-    }
-
-  }
-
   // removes any union operator and clones the plan
   public static void removeUnionOperators(GenTezProcContext context, BaseWork work, int indexForTezUnion)
     throws SemanticException {
@@ -295,10 +219,7 @@ public class GenTezUtils {
     roots.addAll(context.eventOperatorSet);
 
     // need to clone the plan.
-    List<Operator<?>> newRoots;
-    try (TruncatedOperatorTree truncator = new TruncatedOperatorTree(roots)) {
-      newRoots = SerializationUtilities.cloneOperatorTree(roots);
-    }
+    List<Operator<?>> newRoots = SerializationUtilities.cloneOperatorTree(roots, indexForTezUnion);
 
     // we're cloning the operator plan but we're retaining the original work. That means
     // that root operators have to be replaced with the cloned ops. The replacement map
@@ -355,15 +276,6 @@ public class GenTezUtils {
               rsToSemiJoinBranchInfo.put(rs, newSJInfo);
             }
           }
-          // This TableScanOperator could also be part of other events in eventOperatorSet.
-          for(AppMasterEventOperator event: context.eventOperatorSet) {
-            if(event.getConf() instanceof DynamicPruningEventDesc) {
-              TableScanOperator ts = ((DynamicPruningEventDesc) event.getConf()).getTableScan();
-              if(ts.equals(orig)){
-                ((DynamicPruningEventDesc) event.getConf()).setTableScan((TableScanOperator) newRoot);
-              }
-            }
-          }
         }
         context.rootToWorkMap.remove(orig);
         context.rootToWorkMap.put(newRoot, work);
@@ -378,25 +290,15 @@ public class GenTezUtils {
 
     Set<Operator<?>> seen = new HashSet<Operator<?>>();
 
-    Set<FileStatus> fileStatusesToFetch = null;
-    if(context.parseContext.getFetchTask() != null) {
-      // File sink operator keeps a reference to a list of files. This reference needs to be passed on
-      // to other file sink operators which could have been added by removal of Union Operator
-      fileStatusesToFetch = context.parseContext.getFetchTask().getWork().getFilesToFetch();
-    }
-
     while(!operators.isEmpty()) {
       Operator<?> current = operators.pop();
+      seen.add(current);
 
-      if (seen.add(current) && current instanceof FileSinkOperator) {
+      if (current instanceof FileSinkOperator) {
         FileSinkOperator fileSink = (FileSinkOperator)current;
 
         // remember it for additional processing later
-        if (context.fileSinkSet.contains(fileSink)) {
-          continue;
-        } else {
-          context.fileSinkSet.add(fileSink);
-        }
+        context.fileSinkSet.add(fileSink);
 
         FileSinkDesc desc = fileSink.getConf();
         Path path = desc.getDirName();
@@ -414,7 +316,6 @@ public class GenTezUtils {
             + desc.getDirName() + "; parent " + path);
         desc.setLinkedFileSink(true);
         desc.setLinkedFileSinkDesc(linked);
-        desc.setFilesToFetch(fileStatusesToFetch);
       }
 
       if (current instanceof AppMasterEventOperator) {
@@ -554,12 +455,6 @@ public class GenTezUtils {
     List<ExprNodeDesc> keys = work.getEventSourcePartKeyExprMap().get(sourceName);
     keys.add(eventDesc.getPartKey());
 
-    // store the partition pruning predicate in map-work, have at least a list of nulls if none applicable
-    if (!work.getEventSourcePredicateExprMap().containsKey(sourceName)) {
-      work.getEventSourcePredicateExprMap().put(sourceName, new LinkedList<ExprNodeDesc>());
-    }
-    List<ExprNodeDesc> predicates = work.getEventSourcePredicateExprMap().get(sourceName);
-    predicates.add(eventDesc.getPredicate());
   }
 
   /**
@@ -595,7 +490,7 @@ public class GenTezUtils {
    * Remove an operator branch. When we see a fork, we know it's time to do the removal.
    * @param event the leaf node of which branch to be removed
    */
-  public static Operator<?> removeBranch(Operator<?> event) {
+  public static void removeBranch(Operator<?> event) {
     Operator<?> child = event;
     Operator<?> curr = event;
 
@@ -605,17 +500,10 @@ public class GenTezUtils {
     }
 
     curr.removeChild(child);
-
-    return child;
   }
 
-  public static EdgeType determineEdgeType(BaseWork preceedingWork, BaseWork followingWork,
-      ReduceSinkOperator reduceSinkOperator) {
-    // The 1-1 edge should also work for sorted cases, however depending on the details of the shuffle
-    // this might end up writing multiple compressed files or end up using an in-memory partitioned kv writer
-    // the condition about ordering = false can be removed at some point with a tweak to the unordered writer
-    // to never split a single output across multiple files (and never attempt a final merge)
-    if (reduceSinkOperator.getConf().isForwarding() && !reduceSinkOperator.getConf().isOrdering()) {
+  public static EdgeType determineEdgeType(BaseWork preceedingWork, BaseWork followingWork, ReduceSinkOperator reduceSinkOperator) {
+    if(reduceSinkOperator.getConf().isForwarding()) {
       return EdgeType.ONE_TO_ONE_EDGE;
     }
     if (followingWork instanceof ReduceWork) {
@@ -631,7 +519,7 @@ public class GenTezUtils {
         }
       }
     }
-    if (!reduceSinkOperator.getConf().isOrdering()) {
+    if(!reduceSinkOperator.getConf().isOrdering()) {
       //if no sort keys are specified, use an edge that does not sort
       return EdgeType.CUSTOM_SIMPLE_EDGE;
     }
@@ -831,7 +719,7 @@ public class GenTezUtils {
     HashMap<ExprNodeDesc, ExprNodeDesc> childParentMapping = new HashMap<ExprNodeDesc, ExprNodeDesc>();
   }
 
-  private static class DynamicValuePredicateProc implements SemanticNodeProcessor {
+  private static class DynamicValuePredicateProc implements NodeProcessor {
 
     @Override
     public Object process(Node nd, Stack<Node> stack, NodeProcessorCtx procCtx,
@@ -857,10 +745,10 @@ public class GenTezUtils {
     // create a walker which walks the tree in a DFS manner while maintaining
     // the operator stack. The dispatcher
     // generates the plan from the operator tree
-    Map<SemanticRule, SemanticNodeProcessor> exprRules = new LinkedHashMap<SemanticRule, SemanticNodeProcessor>();
+    Map<Rule, NodeProcessor> exprRules = new LinkedHashMap<Rule, NodeProcessor>();
     exprRules.put(new RuleRegExp("R1", ExprNodeDynamicValueDesc.class.getName() + "%"), new DynamicValuePredicateProc());
-    SemanticDispatcher disp = new DefaultRuleDispatcher(null, exprRules, ctx);
-    SemanticGraphWalker egw = new DefaultGraphWalker(disp);
+    Dispatcher disp = new DefaultRuleDispatcher(null, exprRules, ctx);
+    GraphWalker egw = new DefaultGraphWalker(disp);
     List<Node> startNodes = new ArrayList<Node>();
     startNodes.add(pred);
 
@@ -880,15 +768,6 @@ public class GenTezUtils {
       this.grandParent = grandParent;
       this.generator = generator;
     }
-
-    public ExprNodeDesc getKeyCol() {
-      ExprNodeDesc keyCol = desc.getTarget();
-      if (keyCol != null) {
-        return keyCol;
-      }
-
-      return generator.getConf().getKeyCols().get(desc.getKeyIndex());
-    }
   }
 
   public static class DynamicPartitionPrunerContext implements NodeProcessorCtx,
@@ -906,7 +785,7 @@ public class GenTezUtils {
     }
   }
 
-  public static class DynamicPartitionPrunerProc implements SemanticNodeProcessor {
+  public static class DynamicPartitionPrunerProc implements NodeProcessor {
 
     /**
      * process simply remembers all the dynamic partition pruning expressions
@@ -935,14 +814,14 @@ public class GenTezUtils {
     // create a walker which walks the tree in a DFS manner while maintaining
     // the operator stack. The dispatcher
     // generates the plan from the operator tree
-    Map<SemanticRule, SemanticNodeProcessor> exprRules = new LinkedHashMap<SemanticRule, SemanticNodeProcessor>();
+    Map<Rule, NodeProcessor> exprRules = new LinkedHashMap<Rule, NodeProcessor>();
     exprRules.put(new RuleRegExp("R1", ExprNodeDynamicListDesc.class.getName() + "%"),
         new DynamicPartitionPrunerProc());
 
     // The dispatcher fires the processor corresponding to the closest matching
     // rule and passes the context along
-    SemanticDispatcher disp = new DefaultRuleDispatcher(null, exprRules, ctx);
-    SemanticGraphWalker egw = new DefaultGraphWalker(disp);
+    Dispatcher disp = new DefaultRuleDispatcher(null, exprRules, ctx);
+    GraphWalker egw = new DefaultGraphWalker(disp);
 
     List<Node> startNodes = new ArrayList<Node>();
     startNodes.add(pred);
@@ -951,21 +830,4 @@ public class GenTezUtils {
     egw.startWalking(startNodes, outputMap);
     return outputMap;
   }
-
-  private static Integer obtainBufferSize(Operator<?> op, ReduceSinkOperator rsOp, int defaultTinyBufferSize) {
-    if (op instanceof GroupByOperator) {
-      GroupByOperator groupByOperator = (GroupByOperator) op;
-      if (groupByOperator.getConf().getKeys().isEmpty() &&
-          groupByOperator.getConf().getMode() == GroupByDesc.Mode.MERGEPARTIAL) {
-        // Check configuration and value is -1, infer value
-        int result = defaultTinyBufferSize == -1 ?
-            (int) Math.ceil(groupByOperator.getStatistics().getDataSize() / 1E6) :
-            defaultTinyBufferSize;
-        LOG.debug("Buffer size for output from operator {} can be set to {}Mb", rsOp, result);
-        return result;
-      }
-    }
-    return null;
-  }
-
 }

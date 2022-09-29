@@ -17,8 +17,6 @@
  */
 package org.apache.hadoop.hive.ql.parse.repl;
 
-import org.apache.hadoop.hive.ql.parse.repl.load.message.AddCheckConstraintHandler;
-import org.apache.hadoop.hive.ql.parse.repl.load.message.AddDefaultConstraintHandler;
 import org.apache.hadoop.hive.ql.parse.repl.load.message.AddNotNullConstraintHandler;
 import org.apache.hadoop.hive.ql.parse.repl.load.message.AddForeignKeyHandler;
 import org.apache.hadoop.hive.ql.parse.repl.load.message.AddPrimaryKeyHandler;
@@ -43,10 +41,6 @@ import org.apache.hadoop.hive.ql.parse.repl.load.message.OpenTxnHandler;
 import org.apache.hadoop.hive.ql.parse.repl.load.message.CommitTxnHandler;
 import org.apache.hadoop.hive.ql.parse.repl.load.message.AbortTxnHandler;
 import org.apache.hadoop.hive.ql.parse.repl.load.message.AllocWriteIdHandler;
-import org.apache.hadoop.hive.ql.parse.repl.load.message.UpdateTableColStatHandler;
-import org.apache.hadoop.hive.ql.parse.repl.load.message.DeleteTableColStatHandler;
-import org.apache.hadoop.hive.ql.parse.repl.load.message.UpdatePartColStatHandler;
-import org.apache.hadoop.hive.ql.parse.repl.load.message.DeletePartColStatHandler;
 
 public enum DumpType {
 
@@ -96,12 +90,6 @@ public enum DumpType {
     @Override
     public MessageHandler handler() {
       return new RenameTableHandler();
-    }
-  },
-  EVENT_RENAME_DROP_TABLE("EVENT_RENAME_DROP_TABLE") {
-    @Override
-    public MessageHandler handler() {
-      return new DropTableHandler();
     }
   },
   EVENT_TRUNCATE_TABLE("EVENT_TRUNCATE_TABLE") {
@@ -156,18 +144,6 @@ public enum DumpType {
     @Override
     public MessageHandler handler() {
       return new AddNotNullConstraintHandler();
-    }
-  },
-  EVENT_ADD_DEFAULTCONSTRAINT("EVENT_ADD_DEFAULTCONSTRAINT") {
-    @Override
-    public MessageHandler handler() {
-      return new AddDefaultConstraintHandler();
-    }
-  },
-  EVENT_ADD_CHECKCONSTRAINT("EVENT_ADD_CHECKCONSTRAINT") {
-    @Override
-    public MessageHandler handler() {
-      return new AddCheckConstraintHandler();
     }
   },
   EVENT_DROP_CONSTRAINT("EVENT_DROP_CONSTRAINT") {
@@ -234,30 +210,6 @@ public enum DumpType {
     @Override
     public MessageHandler handler() {
       return new AllocWriteIdHandler();
-    }
-  },
-  EVENT_UPDATE_TABLE_COL_STAT("EVENT_UPDATE_TABLE_COL_STAT") {
-    @Override
-    public MessageHandler handler() {
-      return new UpdateTableColStatHandler();
-    }
-  },
-  EVENT_DELETE_TABLE_COL_STAT("EVENT_DELETE_TABLE_COL_STAT") {
-    @Override
-    public MessageHandler handler() {
-      return new DeleteTableColStatHandler();
-    }
-  },
-  EVENT_UPDATE_PART_COL_STAT("EVENT_UPDATE_PART_COL_STAT") {
-    @Override
-    public MessageHandler handler() {
-      return new UpdatePartColStatHandler();
-    }
-  },
-  EVENT_DELETE_PART_COL_STAT("EVENT_DELETE_PART_COL_STAT") {
-    @Override
-    public MessageHandler handler() {
-      return new DeletePartColStatHandler();
     }
   };
 

@@ -55,8 +55,7 @@ public class JdbcRecordReader implements RecordReader<LongWritable, MapWritable>
       LOGGER.trace("JdbcRecordReader.next called");
       if (dbAccessor == null) {
         dbAccessor = DatabaseAccessorFactory.getAccessor(conf);
-        iterator = dbAccessor.getRecordIterator(conf, split.getPartitionColumn(), split.getLowerBound(), split
-                        .getUpperBound(), split.getLimit(), split.getOffset());
+        iterator = dbAccessor.getRecordIterator(conf, split.getLimit(), split.getOffset());
       }
 
       if (iterator.hasNext()) {
@@ -82,7 +81,8 @@ public class JdbcRecordReader implements RecordReader<LongWritable, MapWritable>
       }
     }
     catch (Exception e) {
-      throw new IOException(e);
+      LOGGER.error("An error occurred while reading the next record from DB.", e);
+      return false;
     }
   }
 
@@ -110,9 +110,6 @@ public class JdbcRecordReader implements RecordReader<LongWritable, MapWritable>
     if (iterator != null) {
       iterator.close();
     }
-    if (dbAccessor != null) {
-      dbAccessor = null;
-    }
   }
 
 
@@ -125,4 +122,15 @@ public class JdbcRecordReader implements RecordReader<LongWritable, MapWritable>
       return split.getLength() > 0 ? pos / (float) split.getLength() : 1.0f;
     }
   }
+
+
+  public void setDbAccessor(DatabaseAccessor dbAccessor) {
+    this.dbAccessor = dbAccessor;
+  }
+
+
+  public void setIterator(JdbcRecordIterator iterator) {
+    this.iterator = iterator;
+  }
+
 }

@@ -1,6 +1,4 @@
 --! qt:dataset:src
-set hive.support.concurrency=true;
-
 drop table tstsrc_n1;
 create table tstsrc_n1 like src;
 insert overwrite table tstsrc_n1 select key, value from src;

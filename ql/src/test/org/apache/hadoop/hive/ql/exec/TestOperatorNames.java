@@ -18,7 +18,7 @@
  
 package org.apache.hadoop.hive.ql.exec;
 
-
+import junit.framework.TestCase;
 
 import org.apache.hadoop.hive.ql.exec.vector.VectorAppMasterEventOperator;
 import org.apache.hadoop.hive.ql.exec.vector.VectorFilterOperator;
@@ -29,9 +29,9 @@ import org.apache.hadoop.hive.ql.exec.vector.VectorMapJoinOuterFilteredOperator;
 import org.apache.hadoop.hive.ql.exec.vector.VectorMapOperator;
 import org.apache.hadoop.hive.ql.exec.vector.VectorSMBMapJoinOperator;
 import org.apache.hadoop.hive.ql.exec.vector.VectorSelectOperator;
-import static org.junit.Assert.assertEquals;
-import org.junit.Before;
-import org.junit.After;
+import org.apache.hadoop.hive.ql.exec.vector.VectorSparkHashTableSinkOperator;
+import org.apache.hadoop.hive.ql.exec.vector.VectorSparkPartitionPruningSinkOperator;
+import org.apache.hadoop.hive.ql.parse.spark.SparkPartitionPruningSinkOperator;
 import org.junit.Test;
 
 /*
@@ -50,20 +50,20 @@ import org.junit.Test;
  * License for the specific language governing permissions and limitations under
  * the License.
  */
+public class TestOperatorNames extends TestCase {
 
-/**
- * OperatorNames Test.
- */
-public class TestOperatorNames {
-
-  @Before
-  public void setUp() throws Exception {
-
+  public TestOperatorNames(String name) {
+    super(name);
   }
 
-  @After
-  public void tearDown() throws Exception {
+  @Override
+  protected void setUp() throws Exception {
+    super.setUp();
+  }
 
+  @Override
+  protected void tearDown() throws Exception {
+    super.tearDown();
   }
 
   /*
@@ -100,6 +100,16 @@ public class TestOperatorNames {
 
     assertEquals(MapJoinOperator.getOperatorName(),
         new VectorMapJoinOuterFilteredOperator().getName());
+
+    assertEquals(SparkHashTableSinkOperator.getOperatorName(),
+        new SparkHashTableSinkOperator().getName());
+    assertEquals(SparkHashTableSinkOperator.getOperatorName(),
+        new VectorSparkHashTableSinkOperator().getName());
+
+    assertEquals(SparkPartitionPruningSinkOperator.getOperatorName(),
+        new SparkPartitionPruningSinkOperator().getName());
+    assertEquals(SparkPartitionPruningSinkOperator.getOperatorName(),
+        new VectorSparkPartitionPruningSinkOperator().getName());
 
   }
 

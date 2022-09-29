@@ -18,14 +18,13 @@
 package org.apache.hadoop.hive.ql.parse.repl.load.message;
 
 import org.apache.hadoop.hive.metastore.messaging.DropPartitionMessage;
-import org.apache.hadoop.hive.ql.ddl.DDLWork;
-import org.apache.hadoop.hive.ql.ddl.table.partition.drop.AlterTableDropPartitionDesc;
 import org.apache.hadoop.hive.ql.exec.Task;
 import org.apache.hadoop.hive.ql.exec.TaskFactory;
-import org.apache.hadoop.hive.ql.exec.repl.util.ReplUtils;
+import org.apache.hadoop.hive.ql.exec.repl.ReplUtils;
 import org.apache.hadoop.hive.ql.metadata.Table;
-import org.apache.hadoop.hive.ql.parse.HiveTableName;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
+import org.apache.hadoop.hive.ql.plan.DDLWork;
+import org.apache.hadoop.hive.ql.plan.DropTableDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeGenericFuncDesc;
 
 import java.io.Serializable;
@@ -35,20 +34,20 @@ import java.util.Map;
 
 public class DropPartitionHandler extends AbstractMessageHandler {
   @Override
-  public List<Task<?>> handle(Context context)
+  public List<Task<? extends Serializable>> handle(Context context)
       throws SemanticException {
     try {
       DropPartitionMessage msg = deserializer.getDropPartitionMessage(context.dmd.getPayload());
       String actualDbName = context.isDbNameEmpty() ? msg.getDB() : context.dbName;
-      String actualTblName = msg.getTable();
+      String actualTblName = context.isTableNameEmpty() ? msg.getTable() : context.tableName;
       Map<Integer, List<ExprNodeGenericFuncDesc>> partSpecs =
-          ReplUtils.genPartSpecs(new Table(msg.getTableObj()), msg.getPartitions());
+          ReplUtils.genPartSpecs(new Table(msg.getTableObj()),
+              msg.getPartitions());
       if (partSpecs.size() > 0) {
-        AlterTableDropPartitionDesc dropPtnDesc =
-            new AlterTableDropPartitionDesc(HiveTableName.ofNullable(actualTblName, actualDbName), partSpecs, true,
-                context.eventOnlyReplicationSpec());
-        Task<DDLWork> dropPtnTask = TaskFactory.get(new DDLWork(readEntitySet, writeEntitySet, dropPtnDesc,
-                    true, context.getDumpDirectory(), context.getMetricCollector()), context.hiveConf
+        DropTableDesc dropPtnDesc = new DropTableDesc(actualDbName + "." + actualTblName,
+            partSpecs, null, true, context.eventOnlyReplicationSpec());
+        Task<DDLWork> dropPtnTask = TaskFactory.get(
+            new DDLWork(readEntitySet, writeEntitySet, dropPtnDesc), context.hiveConf
         );
         context.log.debug("Added drop ptn task : {}:{},{}", dropPtnTask.getId(),
             dropPtnDesc.getTableName(), msg.getPartitions());

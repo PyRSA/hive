@@ -1,5 +1,6 @@
 -- SORT_QUERY_RESULTS
 
+set hive.vectorized.execution.enabled=false;
 set hive.support.concurrency=true;
 set hive.txn.manager=org.apache.hadoop.hive.ql.lockmgr.DbTxnManager;
 set hive.strict.checks.cartesian.product=false;
@@ -14,7 +15,8 @@ create table emps_n2 (
   commission int)
 stored as orc TBLPROPERTIES ('transactional'='true');
 insert into emps_n2 values (100, 10, 'Bill', 10000, 1000), (200, 20, 'Eric', 8000, 500),
-  (150, 10, 'Sebastian', 7000, null), (110, 10, 'Theodore', 10000, 250), (120, 10, 'Bill', 10000, 250);
+  (150, 10, 'Sebastian', 7000, null), (110, 10, 'Theodore', 10000, 250), (110, 10, 'Bill', 10000, 250);
+analyze table emps_n2 compute statistics for columns;
 
 create table depts_n1 (
   deptno int,
@@ -22,18 +24,21 @@ create table depts_n1 (
   locationid int)
 stored as orc TBLPROPERTIES ('transactional'='true');
 insert into depts_n1 values (10, 'Sales', 10), (30, 'Marketing', null), (20, 'HR', 20);
+analyze table depts_n1 compute statistics for columns;
 
 create table dependents_n1 (
   empid int,
   name varchar(256))
 stored as orc TBLPROPERTIES ('transactional'='true');
-insert into dependents_n1 values (10, 'Michael'), (20, 'Jane');
+insert into dependents_n1 values (10, 'Michael'), (10, 'Jane');
+analyze table dependents_n1 compute statistics for columns;
 
 create table locations_n1 (
   locationid int,
   name varchar(256))
 stored as orc TBLPROPERTIES ('transactional'='true');
-insert into locations_n1 values (10, 'San Francisco'), (20, 'San Diego');
+insert into locations_n1 values (10, 'San Francisco'), (10, 'San Diego');
+analyze table locations_n1 compute statistics for columns;
 
 alter table emps_n2 add constraint pk1 primary key (empid) disable novalidate rely;
 alter table depts_n1 add constraint pk2 primary key (deptno) disable novalidate rely;
@@ -50,6 +55,7 @@ alter table depts_n1 change column locationid locationid int constraint nn2 not 
 -- EXAMPLE 8
 create materialized view mv1_n1 as
 select name, deptno, salary from emps_n2 where deptno > 15 group by name, deptno, salary;
+analyze table mv1_n1 compute statistics for columns;
 
 explain
 select name from emps_n2 where deptno >= 20 group by name;
@@ -62,6 +68,7 @@ drop materialized view mv1_n1;
 create materialized view mv1_n1 as
 select name, deptno, salary, count(*) as c, sum(empid) as s
 from emps_n2 where deptno >= 15 group by name, deptno, salary;
+analyze table mv1_n1 compute statistics for columns;
 
 explain
 select name, sum(empid) as s
@@ -81,6 +88,7 @@ join locations_n1 on (locations_n1.name = dependents_n1.name)
 join emps_n2 on (emps_n2.deptno = depts_n1.deptno)
 where depts_n1.deptno > 10 and depts_n1.deptno < 20
 group by depts_n1.deptno, dependents_n1.empid;
+analyze table mv1_n1 compute statistics for columns;
 
 explain
 select dependents_n1.empid
@@ -106,6 +114,7 @@ create materialized view mv1_n1 as
 select empid, depts_n1.deptno, count(*) as c, sum(empid) as s
 from emps_n2 join depts_n1 using (deptno)
 group by empid, depts_n1.deptno;
+analyze table mv1_n1 compute statistics for columns;
 
 explain
 select deptno from emps_n2 group by deptno;
@@ -119,6 +128,7 @@ create materialized view mv1_n1 as
 select empid, depts_n1.deptno, count(*) as c, sum(empid) as s
 from emps_n2 join depts_n1 using (deptno)
 group by empid, depts_n1.deptno;
+analyze table mv1_n1 compute statistics for columns;
 
 explain
 select deptno, empid, sum(empid) as s, count(*) as c
@@ -135,6 +145,7 @@ select dependents_n1.empid, emps_n2.deptno, sum(salary) as s
 from emps_n2
 join dependents_n1 on (emps_n2.empid = dependents_n1.empid)
 group by dependents_n1.empid, emps_n2.deptno;
+analyze table mv1_n1 compute statistics for columns;
 
 explain
 select dependents_n1.empid, sum(salary) as s
@@ -157,6 +168,7 @@ select dependents_n1.empid, emps_n2.deptno, sum(salary) as s
 from emps_n2
 join dependents_n1 on (emps_n2.empid = dependents_n1.empid)
 group by dependents_n1.empid, emps_n2.deptno;
+analyze table mv1_n1 compute statistics for columns;
 
 explain
 select depts_n1.name, sum(salary) as s
@@ -179,6 +191,7 @@ select a.empid deptno from
 (select * from emps_n2 where empid = 1) a
 join depts_n1 on (a.deptno = depts_n1.deptno)
 join dependents_n1 on (a.empid = dependents_n1.empid);
+analyze table mv1_n1 compute statistics for columns;
 
 explain
 select a.empid from 
@@ -197,6 +210,7 @@ select a.empid, a.deptno from
 (select * from emps_n2 where empid = 1) a
 join depts_n1 on (a.deptno = depts_n1.deptno)
 join dependents_n1 on (a.empid = dependents_n1.empid);
+analyze table mv1_n1 compute statistics for columns;
 
 explain
 select a.empid from 
@@ -214,6 +228,7 @@ create materialized view mv1_n1 as
 select empid deptno from
 (select * from emps_n2 where empid = 1) a
 join depts_n1 on (a.deptno = depts_n1.deptno);
+analyze table mv1_n1 compute statistics for columns;
 
 explain
 select empid from emps_n2 where empid = 1;
@@ -228,6 +243,7 @@ select emps_n2.empid, emps_n2.deptno from emps_n2
 join depts_n1 on (emps_n2.deptno = depts_n1.deptno)
 join dependents_n1 on (emps_n2.empid = dependents_n1.empid)
 where emps_n2.empid = 1;
+analyze table mv1_n1 compute statistics for columns;
 
 explain
 select emps_n2.empid from emps_n2
@@ -247,6 +263,7 @@ join depts_n1 a on (emps_n2.deptno=a.deptno)
 join depts_n1 b on (emps_n2.deptno=b.deptno)
 join dependents_n1 on (emps_n2.empid = dependents_n1.empid)
 where emps_n2.empid = 1;
+analyze table mv1_n1 compute statistics for columns;
 
 explain
 select emps_n2.empid from emps_n2
@@ -266,6 +283,7 @@ join depts_n1 a on (emps_n2.deptno=a.deptno)
 join depts_n1 b on (emps_n2.deptno=b.deptno)
 join dependents_n1 on (emps_n2.empid = dependents_n1.empid)
 where emps_n2.name = 'Sebastian';
+analyze table mv1_n1 compute statistics for columns;
 
 explain
 select emps_n2.empid from emps_n2

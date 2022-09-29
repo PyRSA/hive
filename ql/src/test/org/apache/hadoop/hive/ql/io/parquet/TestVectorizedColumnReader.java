@@ -28,8 +28,6 @@ import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.parquet.hadoop.ParquetInputFormat;
 import org.apache.parquet.hadoop.ParquetInputSplit;
-import org.apache.parquet.hadoop.metadata.ParquetMetadata;
-
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
@@ -121,12 +119,12 @@ public class TestVectorizedColumnReader extends VectorizedColumnReaderTestBase {
 
   private class TestVectorizedParquetRecordReader extends VectorizedParquetRecordReader {
     public TestVectorizedParquetRecordReader(
-        org.apache.hadoop.mapred.InputSplit oldInputSplit, JobConf conf) throws IOException {
+        org.apache.hadoop.mapred.InputSplit oldInputSplit, JobConf conf) {
       super(oldInputSplit, conf);
     }
-
     @Override
-    protected ParquetInputSplit getSplit(JobConf conf) throws IOException {
+    protected ParquetInputSplit getSplit(
+        org.apache.hadoop.mapred.InputSplit oldInputSplit, JobConf conf) {
       return null;
     }
   }
@@ -147,6 +145,6 @@ public class TestVectorizedColumnReader extends VectorizedColumnReaderTestBase {
     FileSplit fsplit = getFileSplit(vectorJob);
     JobConf jobConf = new JobConf(conf);
     TestVectorizedParquetRecordReader testReader = new TestVectorizedParquetRecordReader(fsplit, jobConf);
-    Assert.assertNull("Test should return null split from getSplit() method", testReader.getSplit(null));
+    Assert.assertNull("Test should return null split from getSplit() method", testReader.getSplit(fsplit, jobConf));
   }
 }

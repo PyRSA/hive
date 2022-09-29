@@ -21,8 +21,6 @@ package org.apache.hadoop.hive.ql.exec;
 import java.io.Serializable;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.apache.hadoop.hive.common.LogUtils;
-import org.apache.hadoop.hive.ql.TaskQueue;
 import org.apache.hadoop.hive.ql.metadata.Hive;
 import org.apache.hadoop.hive.ql.session.SessionState;
 import org.slf4j.Logger;
@@ -33,7 +31,7 @@ import org.slf4j.LoggerFactory;
  **/
 
 public class TaskRunner extends Thread {
-  protected Task<?> tsk;
+  protected Task<? extends Serializable> tsk;
   protected TaskResult result;
   protected SessionState ss;
   private static AtomicLong taskCounter = new AtomicLong(0);
@@ -48,16 +46,13 @@ public class TaskRunner extends Thread {
 
   private static transient final Logger LOG = LoggerFactory.getLogger(TaskRunner.class);
 
-  private final TaskQueue taskQueue;
-
-  public TaskRunner(Task<?> tsk, TaskQueue taskQueue) {
+  public TaskRunner(Task<? extends Serializable> tsk) {
     this.tsk = tsk;
     this.result = new TaskResult();
-    this.ss = SessionState.get();
-    this.taskQueue = taskQueue;
+    ss = SessionState.get();
   }
 
-  public Task<?> getTask() {
+  public Task<? extends Serializable> getTask() {
     return tsk;
   }
 
@@ -75,11 +70,9 @@ public class TaskRunner extends Thread {
 
   @Override
   public void run() {
-    LogUtils.registerLoggingContext(tsk.getConf());
     runner = Thread.currentThread();
     try {
       SessionState.start(ss);
-      LogUtils.registerLoggingContext(tsk.conf);
       runSequential();
     } finally {
       try {
@@ -89,7 +82,6 @@ public class TaskRunner extends Thread {
       } catch (Exception e) {
         LOG.warn("Exception closing Metastore connection:" + e.getMessage());
       }
-      LogUtils.unregisterLoggingContext();
       runner = null;
       result.setRunning(false);
     }
@@ -109,11 +101,10 @@ public class TaskRunner extends Thread {
       }
       LOG.error("Error in executeTask", t);
     }
+    result.setExitVal(exitVal);
     if (tsk.getException() != null) {
       result.setTaskError(tsk.getException());
     }
-    result.setExitVal(exitVal);
-    taskQueue.releaseRunnable();
   }
 
   public static long getTaskRunnerID () {

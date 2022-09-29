@@ -18,8 +18,6 @@
 
 package org.apache.hadoop.hive.ql.hooks;
 
-import static org.apache.hadoop.hive.ql.hooks.Entity.Type.PARTITION;
-import static org.apache.hadoop.hive.ql.hooks.Entity.Type.TABLE;
 import static org.apache.hadoop.hive.ql.plan.HiveOperation.ALTERDATABASE;
 import static org.apache.hadoop.hive.ql.plan.HiveOperation.ALTERDATABASE_OWNER;
 import static org.apache.hadoop.hive.ql.plan.HiveOperation.ALTERPARTITION_BUCKETNUM;
@@ -73,6 +71,7 @@ import static org.apache.hadoop.hive.ql.plan.HiveOperation.DROPMACRO;
 import static org.apache.hadoop.hive.ql.plan.HiveOperation.DROPROLE;
 import static org.apache.hadoop.hive.ql.plan.HiveOperation.DROPTABLE;
 import static org.apache.hadoop.hive.ql.plan.HiveOperation.DROPVIEW;
+import static org.apache.hadoop.hive.ql.plan.HiveOperation.DROPVIEW_PROPERTIES;
 import static org.apache.hadoop.hive.ql.plan.HiveOperation.EXPORT;
 import static org.apache.hadoop.hive.ql.plan.HiveOperation.IMPORT;
 import static org.apache.hadoop.hive.ql.plan.HiveOperation.KILL_QUERY;
@@ -87,27 +86,26 @@ import static org.apache.hadoop.hive.ql.plan.HiveOperation.UNLOCKTABLE;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-import org.apache.commons.compress.utils.IOUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.llap.registry.impl.LlapRegistryService;
 import org.apache.hadoop.hive.ql.QueryPlan;
+import org.apache.hadoop.hive.ql.exec.ExplainTask;
+import org.apache.hadoop.hive.ql.exec.TaskFactory;
 import org.apache.hadoop.hive.ql.exec.Utilities;
 import org.apache.hadoop.hive.ql.exec.mr.ExecDriver;
 import org.apache.hadoop.hive.ql.exec.tez.TezTask;
@@ -116,12 +114,10 @@ import org.apache.hadoop.hive.ql.hooks.proto.HiveHookEvents.MapFieldEntry;
 import org.apache.hadoop.hive.ql.parse.ExplainConfiguration;
 import org.apache.hadoop.hive.ql.plan.ExplainWork;
 import org.apache.hadoop.hive.ql.plan.HiveOperation;
-import org.apache.hadoop.mapreduce.MRJobConfig;
 import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.util.Clock;
 import org.apache.hadoop.yarn.util.SystemClock;
 import org.apache.hive.common.util.ShutdownHookManager;
-import org.apache.tez.dag.api.TezConfiguration;
 import org.apache.tez.dag.history.logging.proto.DatePartitionedLogger;
 import org.apache.tez.dag.history.logging.proto.ProtoMessageWriter;
 import org.json.JSONObject;
@@ -149,7 +145,7 @@ public class HiveProtoLoggingHook implements ExecuteWithHookContext {
         ALTERPARTITION_SERDEPROPERTIES, ALTERTABLE_CLUSTER_SORT, ANALYZE_TABLE, CACHE_METADATA,
         ALTERTABLE_BUCKETNUM, ALTERPARTITION_BUCKETNUM, CREATEFUNCTION, DROPFUNCTION,
         RELOADFUNCTION, CREATEMACRO, DROPMACRO, CREATEVIEW, DROPVIEW, ALTERVIEW_PROPERTIES,
-        LOCKTABLE, UNLOCKTABLE, CREATEROLE, DROPROLE, ALTERTABLE_FILEFORMAT,
+        DROPVIEW_PROPERTIES, LOCKTABLE, UNLOCKTABLE, CREATEROLE, DROPROLE, ALTERTABLE_FILEFORMAT,
         ALTERPARTITION_FILEFORMAT, ALTERTABLE_LOCATION, ALTERPARTITION_LOCATION, CREATETABLE,
         TRUNCATETABLE, CREATETABLE_AS_SELECT, QUERY, ALTERDATABASE, ALTERDATABASE_OWNER,
         ALTERTABLE_MERGEFILES, ALTERPARTITION_MERGEFILES, ALTERTABLE_SKEWED,
@@ -160,6 +156,9 @@ public class HiveProtoLoggingHook implements ExecuteWithHookContext {
             .collect(Collectors.toSet());
   }
 
+  public static final String HIVE_EVENTS_BASE_PATH = "hive.hook.proto.base-directory";
+  public static final String HIVE_HOOK_PROTO_QUEUE_CAPACITY = "hive.hook.proto.queue.capacity";
+  public static final int HIVE_HOOK_PROTO_QUEUE_CAPACITY_DEFAULT = 64;
   private static final int WAIT_TIME = 5;
 
   public enum EventType {
@@ -168,38 +167,29 @@ public class HiveProtoLoggingHook implements ExecuteWithHookContext {
 
   public enum OtherInfoType {
     QUERY, STATUS, TEZ, MAPRED, INVOKER_INFO, SESSION_ID, THREAD_NAME, VERSION, CLIENT_IP_ADDRESS,
-    HIVE_ADDRESS, HIVE_INSTANCE_TYPE, CONF, PERF, LLAP_APP_ID, ERROR_MESSAGE
+    HIVE_ADDRESS, HIVE_INSTANCE_TYPE, CONF, PERF, LLAP_APP_ID
   }
 
   public enum ExecutionMode {
-    MR, TEZ, LLAP, NONE
+    MR, TEZ, LLAP, SPARK, NONE
   }
 
   static class EventLogger {
     private final Clock clock;
     private final String logFileName;
     private final DatePartitionedLogger<HiveHookEventProto> logger;
-    private final ScheduledThreadPoolExecutor logWriter;
-    private final int queueCapacity;
-    private int logFileCount = 0;
-    private ProtoMessageWriter<HiveHookEventProto> writer;
-    private LocalDate writerDate;
-    private boolean eventPerFile;
+    private final ExecutorService eventHandler;
+    private final ExecutorService logWriter;
 
     EventLogger(HiveConf conf, Clock clock) {
       this.clock = clock;
       // randomUUID is slow, since its cryptographically secure, only first query will take time.
       this.logFileName = "hive_" + UUID.randomUUID().toString();
-      this.queueCapacity = conf.getInt(ConfVars.HIVE_PROTO_EVENTS_QUEUE_CAPACITY.varname,
-        ConfVars.HIVE_PROTO_EVENTS_QUEUE_CAPACITY.defaultIntVal);
-      String baseDir = conf.getVar(ConfVars.HIVE_PROTO_EVENTS_BASE_PATH);
-      if (StringUtils.isBlank(baseDir)) {
-        baseDir = null;
-        LOG.error(ConfVars.HIVE_PROTO_EVENTS_BASE_PATH.varname + " is not set, logging disabled.");
+      String baseDir = conf.get(HIVE_EVENTS_BASE_PATH);
+      if (baseDir == null) {
+        LOG.error(HIVE_EVENTS_BASE_PATH + " is not set, logging disabled.");
       }
 
-      eventPerFile = conf.getBoolVar(ConfVars.HIVE_PROTO_FILE_PER_EVENT);
-      LOG.info("Event per file enabled: {}", eventPerFile);
       DatePartitionedLogger<HiveHookEventProto> tmpLogger = null;
       try {
         if (baseDir != null) {
@@ -211,39 +201,52 @@ public class HiveProtoLoggingHook implements ExecuteWithHookContext {
       }
       this.logger = tmpLogger;
       if (logger == null) {
+        eventHandler = null;
         logWriter = null;
         return;
       }
 
-      ThreadFactory threadFactory = new ThreadFactoryBuilder().setDaemon(true)
-          .setNameFormat("Hive Hook Proto Log Writer %d").build();
-      logWriter = new ScheduledThreadPoolExecutor(1, threadFactory);
+      int queueCapacity = conf.getInt(HIVE_HOOK_PROTO_QUEUE_CAPACITY,
+          HIVE_HOOK_PROTO_QUEUE_CAPACITY_DEFAULT);
 
-      long rolloverInterval = conf.getTimeVar(
-          HiveConf.ConfVars.HIVE_PROTO_EVENTS_ROLLOVER_CHECK_INTERVAL, TimeUnit.MICROSECONDS);
-      logWriter.scheduleWithFixedDelay(() -> handleTick(), rolloverInterval, rolloverInterval,
-          TimeUnit.MICROSECONDS);
+      ThreadFactory threadFactory = new ThreadFactoryBuilder().setDaemon(true)
+          .setNameFormat("Hive Hook Proto Event Handler %d").build();
+      eventHandler = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
+          new LinkedBlockingQueue<Runnable>(queueCapacity), threadFactory);
+
+      threadFactory = new ThreadFactoryBuilder().setDaemon(true)
+          .setNameFormat("Hive Hook Proto Log Writer %d").build();
+      logWriter = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
+          new LinkedBlockingQueue<Runnable>(queueCapacity), threadFactory);
     }
 
     void shutdown() {
-      if (logWriter != null) {
-        logWriter.shutdown();
+      // Wait for all the events to be written off, the order of service is important
+      for (ExecutorService service : new ExecutorService[] {eventHandler, logWriter}) {
+        if (service == null) {
+          continue;
+        }
+        service.shutdown();
         try {
-          logWriter.awaitTermination(WAIT_TIME, TimeUnit.SECONDS);
+          service.awaitTermination(WAIT_TIME, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
           LOG.warn("Got interrupted exception while waiting for events to be flushed", e);
         }
       }
-      IOUtils.closeQuietly(writer);
     }
 
     void handle(HookContext hookContext) {
       if (logger == null) {
         return;
       }
-      // Note: same hookContext object is used for all the events for a given query, if we try to
-      // do it async we have concurrency issues and when query cache is enabled, post event comes
-      // before we start the pre hook processing and causes inconsistent events publishing.
+      try {
+        eventHandler.execute(() -> generateEvent(hookContext));
+      } catch (RejectedExecutionException e) {
+        LOG.warn("Handler queue full ignoring event: " + hookContext.getHookType());
+      }
+    }
+
+    private void generateEvent(HookContext hookContext) {
       QueryPlan plan = hookContext.getQueryPlan();
       if (plan == null) {
         LOG.debug("Received null query plan.");
@@ -253,7 +256,7 @@ public class HiveProtoLoggingHook implements ExecuteWithHookContext {
         LOG.debug("Not logging events of operation type : {}", plan.getOperationName());
         return;
       }
-      HiveHookEventProtoPartialBuilder event;
+      HiveHookEventProto event;
       switch (hookContext.getHookType()) {
       case PRE_EXEC_HOOK:
         event = getPreHookEvent(hookContext);
@@ -270,74 +273,27 @@ public class HiveProtoLoggingHook implements ExecuteWithHookContext {
       }
       if (event != null) {
         try {
-          // ScheduledThreadPoolExecutor uses an unbounded queue which cannot be replaced with a bounded queue.
-          // Therefore checking queue capacity manually here.
-          if (logWriter.getQueue().size() < queueCapacity) {
-            logWriter.execute(() -> writeEvent(event));
-          } else {
-            LOG.warn("Writer queue full ignoring event {} for query {}",
-              hookContext.getHookType(), plan.getQueryId());
-          }
+          logWriter.execute(() -> writeEvent(event));
         } catch (RejectedExecutionException e) {
           LOG.warn("Writer queue full ignoring event {} for query {}",
-            hookContext.getHookType(), plan.getQueryId());
+              hookContext.getHookType(), plan.getQueryId());
         }
       }
-    }
-
-    private void handleTick() {
-      try {
-        maybeRolloverWriterForDay();
-      } catch (IOException e) {
-        LOG.error("Got IOException while trying to rollover: ", e);
-      }
-    }
-
-    private boolean maybeRolloverWriterForDay() throws IOException {
-      if (writer == null || !logger.getNow().toLocalDate().equals(writerDate)) {
-        if (writer != null) {
-          // Day change over case, reset the logFileCount.
-          logFileCount = 0;
-          IOUtils.closeQuietly(writer);
-          writer = null;
-        }
-        // increment log file count, if creating a new writer.
-        writer = logger.getWriter(logFileName + "_" + ++logFileCount);
-        writerDate = logger.getDateFromDir(writer.getPath().getParent().getName());
-        return true;
-      }
-      return false;
     }
 
     private static final int MAX_RETRIES = 2;
-    private void writeEvent(HiveHookEventProtoPartialBuilder builder) {
-      HiveHookEventProto event = builder.build();
+    private void writeEvent(HiveHookEventProto event) {
       for (int retryCount = 0; retryCount <= MAX_RETRIES; ++retryCount) {
-        try {
-          if (eventPerFile) {
-            if (writer != null) {
-              IOUtils.closeQuietly(writer);
-            }
-            writer = logger.getWriter(logFileName + "_" + ++logFileCount);
-            LOG.debug("Event per file enabled. New proto event file: {}", writer.getPath());
-            writer.writeProto(event);
-            IOUtils.closeQuietly(writer);
-            writer = null;
-          } else {
-            maybeRolloverWriterForDay();
-            writer.writeProto(event);
-            writer.hflush();
-          }
+        try (ProtoMessageWriter<HiveHookEventProto> writer = logger.getWriter(logFileName)) {
+          writer.writeProto(event);
+          // This does not work hence, opening and closing file for every event.
+          // writer.hflush();
           return;
         } catch (IOException e) {
-          // Something wrong with writer, lets close and reopen.
-          IOUtils.closeQuietly(writer);
-          writer = null;
           if (retryCount < MAX_RETRIES) {
             LOG.warn("Error writing proto message for query {}, eventType: {}, retryCount: {}," +
                 " error: {} ", event.getHiveQueryId(), event.getEventType(), retryCount,
-                e.getMessage(), e);
-            LOG.trace("Exception", e);
+                e.getMessage());
           } else {
             LOG.error("Error writing proto message for query {}, eventType: {}: ",
                 event.getHiveQueryId(), event.getEventType(), e);
@@ -352,7 +308,7 @@ public class HiveProtoLoggingHook implements ExecuteWithHookContext {
       }
     }
 
-    private HiveHookEventProtoPartialBuilder getPreHookEvent(HookContext hookContext) {
+    private HiveHookEventProto getPreHookEvent(HookContext hookContext) {
       QueryPlan plan = hookContext.getQueryPlan();
       LOG.info("Received pre-hook notification for: " + plan.getQueryId());
 
@@ -362,22 +318,27 @@ public class HiveProtoLoggingHook implements ExecuteWithHookContext {
       List<TezTask> tezTasks = Utilities.getTezTasks(plan.getRootTasks());
       ExecutionMode executionMode = getExecutionMode(plan, mrTasks, tezTasks);
 
-      Map<OtherInfoType, JSONObject> otherInfo = new HashMap<>();
       HiveHookEventProto.Builder builder = HiveHookEventProto.newBuilder();
       builder.setEventType(EventType.QUERY_SUBMITTED.name());
       builder.setTimestamp(plan.getQueryStartTime());
       builder.setHiveQueryId(plan.getQueryId());
       builder.setUser(getUser(hookContext));
       builder.setRequestUser(getRequestUser(hookContext));
-      String queueName = getQueueName(executionMode, conf);
-      if (queueName != null) {
-        builder.setQueue(queueName);
-      }
+      builder.setQueue(conf.get("mapreduce.job.queuename"));
       builder.setExecutionMode(executionMode.name());
       builder.addAllTablesRead(getTablesFromEntitySet(hookContext.getInputs()));
       builder.addAllTablesWritten(getTablesFromEntitySet(hookContext.getOutputs()));
       if (hookContext.getOperationId() != null) {
         builder.setOperationId(hookContext.getOperationId());
+      }
+
+      try {
+        JSONObject queryObj = new JSONObject();
+        queryObj.put("queryText", plan.getQueryStr());
+        queryObj.put("queryPlan", getExplainPlan(plan, conf, hookContext));
+        addMapEntry(builder, OtherInfoType.QUERY, queryObj.toString());
+      } catch (Exception e) {
+        LOG.error("Unexpected exception while serializing json.", e);
       }
 
       addMapEntry(builder, OtherInfoType.TEZ, Boolean.toString(tezTasks.size() > 0));
@@ -405,6 +366,7 @@ public class HiveProtoLoggingHook implements ExecuteWithHookContext {
       ApplicationId llapId = determineLlapId(conf, executionMode);
       if (llapId != null) {
         addMapEntry(builder, OtherInfoType.LLAP_APP_ID, llapId.toString());
+        builder.setQueue(conf.get(HiveConf.ConfVars.LLAP_DAEMON_QUEUE_NAME.varname));
       }
 
       conf.stripHiddenConfigurations(conf);
@@ -412,28 +374,14 @@ public class HiveProtoLoggingHook implements ExecuteWithHookContext {
       for (Map.Entry<String, String> setting : conf) {
         confObj.put(setting.getKey(), setting.getValue());
       }
-      otherInfo.put(OtherInfoType.CONF, confObj);
-
-      ExplainConfiguration explainConfig = new ExplainConfiguration();
-      explainConfig.setFormatted(true);
-      ExplainWork explainWork = new ExplainWork(null, // resFile
-              null, // pCtx
-              plan.getRootTasks(), // RootTasks
-              plan.getFetchTask(), // FetchTask
-              null, null, // analyzer
-              explainConfig, // explainConfig
-              plan.getCboInfo(), // cboInfo,
-              plan.getOptimizedQueryString(),
-              plan.getOptimizedCBOPlan());
-      return new HiveHookEventProtoPartialBuilder(
-              builder, explainWork, otherInfo, plan.getQueryStr(), conf.getVar(ConfVars.HIVESTAGEIDREARRANGE));
+      addMapEntry(builder, OtherInfoType.CONF, confObj.toString());
+      return builder.build();
     }
 
-    private HiveHookEventProtoPartialBuilder getPostHookEvent(HookContext hookContext, boolean success) {
+    private HiveHookEventProto getPostHookEvent(HookContext hookContext, boolean success) {
       QueryPlan plan = hookContext.getQueryPlan();
       LOG.info("Received post-hook notification for: " + plan.getQueryId());
 
-      Map<OtherInfoType, JSONObject> other = new HashMap<>();
       HiveHookEventProto.Builder builder = HiveHookEventProto.newBuilder();
       builder.setEventType(EventType.QUERY_COMPLETED.name());
       builder.setTimestamp(clock.getTime());
@@ -444,16 +392,16 @@ public class HiveProtoLoggingHook implements ExecuteWithHookContext {
         builder.setOperationId(hookContext.getOperationId());
       }
       addMapEntry(builder, OtherInfoType.STATUS, Boolean.toString(success));
-      addMapEntry(builder, OtherInfoType.ERROR_MESSAGE, hookContext.getErrorMessage());
       JSONObject perfObj = new JSONObject();
       for (String key : hookContext.getPerfLogger().getEndTimes().keySet()) {
         perfObj.put(key, hookContext.getPerfLogger().getDuration(key));
       }
-      other.put(OtherInfoType.PERF, perfObj);
-      return new HiveHookEventProtoPartialBuilder(builder, null, other, plan.getQueryStr(), null);
+      addMapEntry(builder, OtherInfoType.PERF, perfObj.toString());
+
+      return builder.build();
     }
 
-    public static void addMapEntry(HiveHookEventProto.Builder builder, OtherInfoType key, String value) {
+    private void addMapEntry(HiveHookEventProto.Builder builder, OtherInfoType key, String value) {
       if (value != null) {
         builder.addOtherInfo(
             MapFieldEntry.newBuilder().setKey(key.name()).setValue(value).build());
@@ -472,24 +420,10 @@ public class HiveProtoLoggingHook implements ExecuteWithHookContext {
       return requestuser;
     }
 
-    private String getQueueName(ExecutionMode mode, HiveConf conf) {
-      switch (mode) {
-      case LLAP:
-        return conf.get(HiveConf.ConfVars.LLAP_DAEMON_QUEUE_NAME.varname);
-      case MR:
-        return conf.get(MRJobConfig.QUEUE_NAME);
-      case TEZ:
-        return conf.get(TezConfiguration.TEZ_QUEUE_NAME);
-      case NONE:
-      default:
-        return null;
-      }
-    }
-
     private List<String> getTablesFromEntitySet(Set<? extends Entity> entities) {
       List<String> tableNames = new ArrayList<>();
       for (Entity entity : entities) {
-        if (entity.getType() == TABLE || entity.getType() == PARTITION) {
+        if (entity.getType() == Entity.Type.TABLE) {
           tableNames.add(entity.getTable().getDbName() + "." + entity.getTable().getTableName());
         }
       }
@@ -508,9 +442,29 @@ public class HiveProtoLoggingHook implements ExecuteWithHookContext {
         return ExecutionMode.TEZ;
       } else if (mrTasks.size() > 0) {
         return ExecutionMode.MR;
+      } else if (Utilities.getSparkTasks(plan.getRootTasks()).size() > 0) {
+        return ExecutionMode.SPARK;
       } else {
         return ExecutionMode.NONE;
       }
+    }
+
+    private JSONObject getExplainPlan(QueryPlan plan, HiveConf conf, HookContext hookContext)
+        throws Exception {
+      // Get explain plan for the query.
+      ExplainConfiguration config = new ExplainConfiguration();
+      config.setFormatted(true);
+      ExplainWork work = new ExplainWork(null, // resFile
+          null, // pCtx
+          plan.getRootTasks(), // RootTasks
+          plan.getFetchTask(), // FetchTask
+          null, // analyzer
+          config, // explainConfig
+          null // cboInfo
+      );
+      ExplainTask explain = (ExplainTask) TaskFactory.get(work, conf);
+      explain.initialize(hookContext.getQueryState(), plan, null, null);
+      return explain.getJSONPlan(null, work);
     }
 
     private ApplicationId determineLlapId(HiveConf conf, ExecutionMode mode) {

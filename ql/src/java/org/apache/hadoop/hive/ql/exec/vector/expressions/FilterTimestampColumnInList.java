@@ -22,7 +22,6 @@ import java.sql.Timestamp;
 import java.util.Arrays;
 import java.util.HashSet;
 
-import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.ql.exec.vector.TimestampColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorExpressionDescriptor.Descriptor;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
@@ -33,6 +32,7 @@ import org.apache.hadoop.hive.ql.metadata.HiveException;
  */
 public class FilterTimestampColumnInList extends VectorExpression implements ITimestampInExpr {
   private static final long serialVersionUID = 1L;
+  private final int inputColumn;
   private Timestamp[] inListValues;
 
   // Transient members initialized by transientInit method.
@@ -42,18 +42,21 @@ public class FilterTimestampColumnInList extends VectorExpression implements ITi
 
   public FilterTimestampColumnInList() {
     super();
+
+    // Dummy final assignments.
+    inputColumn = -1;
   }
 
   /**
    * After construction you must call setInListValues() to add the values to the IN set.
    */
   public FilterTimestampColumnInList(int colNum) {
-    super(colNum, -1);
+    this.inputColumn = colNum;
   }
 
   @Override
-  public void transientInit(Configuration conf) throws HiveException {
-    super.transientInit(conf);
+  public void transientInit() throws HiveException {
+    super.transientInit();
 
     inSet = new HashSet<Timestamp>(inListValues.length);
     for (Timestamp val : inListValues) {
@@ -68,7 +71,7 @@ public class FilterTimestampColumnInList extends VectorExpression implements ITi
       super.evaluateChildren(batch);
     }
 
-    TimestampColumnVector inputColVector = (TimestampColumnVector) batch.cols[inputColumnNum[0]];
+    TimestampColumnVector inputColVector = (TimestampColumnVector) batch.cols[inputColumn];
     int[] sel = batch.selected;
     boolean[] nullPos = inputColVector.isNull;
     int n = batch.size;
@@ -166,7 +169,7 @@ public class FilterTimestampColumnInList extends VectorExpression implements ITi
 
   @Override
   public String vectorExpressionParameters() {
-    return getColumnParamString(0, inputColumnNum[0]) + ", values " + Arrays.toString(inListValues);
+    return getColumnParamString(0, inputColumn) + ", values " + Arrays.toString(inListValues);
   }
 
 }

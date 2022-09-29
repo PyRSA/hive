@@ -18,7 +18,6 @@
 package org.apache.hadoop.hive.ql.optimizer.calcite.translator;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 import org.apache.calcite.adapter.druid.DruidQuery;
@@ -29,7 +28,6 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.SingleRel;
 import org.apache.calcite.rel.core.Aggregate;
 import org.apache.calcite.rel.core.AggregateCall;
-import org.apache.calcite.rel.core.Exchange;
 import org.apache.calcite.rel.core.Filter;
 import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.Project;
@@ -48,13 +46,10 @@ import org.apache.hadoop.hive.ql.optimizer.calcite.CalciteSemanticException;
 import org.apache.hadoop.hive.ql.optimizer.calcite.HiveCalciteUtil;
 import org.apache.hadoop.hive.ql.optimizer.calcite.HiveRelFactories;
 import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveAggregate;
-import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveAntiJoin;
 import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveProject;
-import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveSortExchange;
 import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveSortLimit;
 import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveSemiJoin;
 import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveTableScan;
-import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.jdbc.HiveJdbcConverter;
 import org.apache.hadoop.hive.ql.optimizer.calcite.rules.HiveRelColumnsAlignment;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
 import org.slf4j.Logger;
@@ -74,7 +69,7 @@ public class PlanModifierForASTConv {
       LOG.debug("Original plan for PlanModifier\n " + RelOptUtil.toString(newTopNode));
     }
 
-    if (!(newTopNode instanceof Project) && !(newTopNode instanceof Sort) && !(newTopNode instanceof Exchange)) {
+    if (!(newTopNode instanceof Project) && !(newTopNode instanceof Sort)) {
       newTopNode = introduceDerivedTable(newTopNode);
       if (LOG.isDebugEnabled()) {
         LOG.debug("Plan after top-level introduceDerivedTable\n "
@@ -122,10 +117,6 @@ public class PlanModifierForASTConv {
       DruidQuery dq = (DruidQuery) rel;
       return ((HiveTableScan) dq.getTableScan()).getTableAlias();
     }
-    if (rel instanceof HiveJdbcConverter) {
-      HiveJdbcConverter conv = (HiveJdbcConverter) rel;
-      return conv.getTableScan().getHiveTableScan().getTableAlias();
-    }
     if (rel instanceof Project) {
       return null;
     }
@@ -165,9 +156,7 @@ public class PlanModifierForASTConv {
         }
       }
     } else if (rel instanceof SingleRel) {
-      if (rel instanceof HiveJdbcConverter) {
-        introduceDerivedTable(rel, parent);
-      } else if (rel instanceof Filter) {
+      if (rel instanceof Filter) {
         if (!validFilterParent(rel, parent)) {
           introduceDerivedTable(rel, parent);
         }
@@ -177,10 +166,6 @@ public class PlanModifierForASTConv {
         }
         if (!validSortChild((HiveSortLimit) rel)) {
           introduceDerivedTable(((HiveSortLimit) rel).getInput(), rel);
-        }
-      } else if (rel instanceof HiveSortExchange) {
-        if (!validExchangeChild((HiveSortExchange) rel)) {
-          introduceDerivedTable(((HiveSortExchange) rel).getInput(), rel);
         }
       } else if (rel instanceof HiveAggregate) {
         RelNode newParent = parent;
@@ -211,7 +196,7 @@ public class PlanModifierForASTConv {
 
     // Assumption: top portion of tree could only be
     // (limit)?(OB)?(Project)....
-    List<RexNode> rootChildExps = originalProjRel.getProjects();
+    List<RexNode> rootChildExps = originalProjRel.getChildExps();
     if (resultSchema.size() != rootChildExps.size()) {
       // Safeguard against potential issues in CBO RowResolver construction. Disable CBO for now.
       LOG.error(PlanModifierUtil.generateInvalidSchemaMessage(originalProjRel, resultSchema, 0));
@@ -227,7 +212,7 @@ public class PlanModifierForASTConv {
     }
 
     HiveProject replacementProjectRel = HiveProject.create(originalProjRel.getInput(),
-        originalProjRel.getProjects(), newSelAliases);
+        originalProjRel.getChildExps(), newSelAliases);
 
     if (rootRel == originalProjRel) {
       return replacementProjectRel;
@@ -251,7 +236,7 @@ public class PlanModifierForASTConv {
     List<RexNode> projectList = HiveCalciteUtil.getProjsFromBelowAsInputRef(rel);
 
     HiveProject select = HiveProject.create(rel.getCluster(), rel, projectList,
-        rel.getRowType(), Collections.emptyList());
+        rel.getRowType(), rel.getCollationList());
 
     return select;
   }
@@ -289,13 +274,12 @@ public class PlanModifierForASTConv {
       // But we only need the additional project if the left child
       // is another join too; if it is not, ASTConverter will swap
       // the join inputs, leaving the join operator on the left.
-      // we also do it if parent is HiveSemiJoin or HiveAntiJoin since
-      // ASTConverter won't swap inputs then.
+      // we also do it if parent is HiveSemiJoin since ASTConverter won't
+      // swap inputs then
       // This will help triggering multijoin recognition methods that
       // are embedded in SemanticAnalyzer.
       if (((Join) parent).getRight() == joinNode &&
-            (((Join) parent).getLeft() instanceof Join || parent instanceof HiveSemiJoin
-                  || parent instanceof HiveAntiJoin) ) {
+            (((Join) parent).getLeft() instanceof Join || parent instanceof HiveSemiJoin) ) {
         validParent = false;
       }
     } else if (parent instanceof SetOp) {
@@ -330,7 +314,7 @@ public class PlanModifierForASTConv {
     }
 
     if (parent instanceof Project) {
-      for (RexNode child : ((Project) parent).getProjects()) {
+      for (RexNode child : parent.getChildExps()) {
         if (child instanceof RexOver || child instanceof RexWinAggCall) {
           // Hive can't handle select rank() over(order by sum(c1)/sum(c2)) from t1 group by c3
           // but can handle    select rank() over (order by c4) from
@@ -367,10 +351,6 @@ public class PlanModifierForASTConv {
     return validChild;
   }
 
-  private static boolean validExchangeChild(HiveSortExchange sortNode) {
-    return sortNode.getInput() instanceof Project;
-  }
-
   private static boolean validSetopParent(RelNode setop, RelNode parent) {
     boolean validChild = true;
 
@@ -402,8 +382,7 @@ public class PlanModifierForASTConv {
 
   private static void replaceEmptyGroupAggr(final RelNode rel, RelNode parent) {
     // If this function is called, the parent should only include constant
-    List<RexNode> exps = parent instanceof Project ?
-        ((Project) parent).getProjects() : Collections.emptyList();
+    List<RexNode> exps = parent.getChildExps();
     for (RexNode rexNode : exps) {
       if (!rexNode.accept(new HiveCalciteUtil.ConstantFinder())) {
         throw new RuntimeException("We expect " + parent.toString()

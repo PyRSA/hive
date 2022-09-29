@@ -81,11 +81,15 @@ public class MapredParquetInputFormat extends FileInputFormat<NullWritable, Arra
       ) throws IOException {
     try {
       if (Utilities.getIsVectorized(job)) {
-        LOG.debug("Using vectorized record reader");
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Using vectorized record reader");
+        }
         return (RecordReader) vectorizedSelf.getRecordReader(split, job, reporter);
       }
       else {
-        LOG.debug("Using row-mode record reader");
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Using row-mode record reader");
+        }
         return new ParquetRecordReaderWrapper(realInput, split, job, reporter);
       }
     } catch (final InterruptedException e) {

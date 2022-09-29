@@ -18,12 +18,13 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 
-import org.apache.hadoop.hive.common.StringInternUtils;
 import org.apache.hadoop.hive.ql.exec.SerializationUtilities;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,8 +68,7 @@ public class ProjectionPusher {
       pathToPartitionInfo.clear();
       for (final Map.Entry<Path, PartitionDesc> entry : mapWork.getPathToPartitionInfo().entrySet()) {
         // key contains scheme (such as pfile://) and we want only the path portion fix in HIVE-6366
-        pathToPartitionInfo.put(StringInternUtils.internUriStringsInPath(
-                Path.getPathWithoutSchemeAndAuthority(entry.getKey())), entry.getValue());
+        pathToPartitionInfo.put(Path.getPathWithoutSchemeAndAuthority(entry.getKey()), entry.getValue());
       }
     }
   }
@@ -85,7 +85,7 @@ public class ProjectionPusher {
 
     final Set<String> aliases = new HashSet<String>();
     try {
-      List<String> a = HiveFileFormatUtils.getFromPathRecursively(
+      ArrayList<String> a = HiveFileFormatUtils.getFromPathRecursively(
           mapWork.getPathToAliases(), new Path(splitPath), null, false, true);
       if (a != null) {
         aliases.addAll(a);
@@ -164,7 +164,7 @@ public class ProjectionPusher {
 
   private void pushFilters(final JobConf jobConf, RowSchema rowSchema, ExprNodeGenericFuncDesc filterExpr) {
     // construct column name list for reference by filter push down
-    Utilities.setColumnNameList(jobConf, rowSchema, true);
+    Utilities.setColumnNameList(jobConf, rowSchema);
 
     // push down filters
     if (filterExpr == null) {

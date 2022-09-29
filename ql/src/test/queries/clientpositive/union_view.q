@@ -1,9 +1,6 @@
---! qt:dataset:src
 set hive.mapred.mode=nonstrict;
 set hive.stats.dbclass=fs;
 set hive.explain.user=false;
-
--- SORT_QUERY_RESULTS
 
 CREATE TABLE src_union_1_n0 (key int, value string) PARTITIONED BY (ds string);
 

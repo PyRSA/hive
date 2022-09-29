@@ -1,3 +1,4 @@
+set hive.exec.dynamic.partition.mode=nonstrict;
 set hive.vectorized.execution.enabled=true;
 set hive.llap.io.enabled=true;
 set hive.map.aggr=false;

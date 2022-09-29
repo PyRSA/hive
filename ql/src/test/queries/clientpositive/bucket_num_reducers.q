@@ -1,5 +1,3 @@
---! qt:dataset:src
-
 set hive.vectorized.execution.enabled=false;
 set hive.stats.column.autogather=false;
 set hive.exec.mode.local.auto=false;

@@ -17,15 +17,16 @@
  */
 package org.apache.hadoop.hive.ql.optimizer.calcite.rules.jdbc;
 
+import java.util.Arrays;
+
 import org.apache.calcite.adapter.jdbc.JdbcRules.JdbcJoin;
+import org.apache.calcite.adapter.jdbc.JdbcRules.JdbcJoinRule;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
-import org.apache.calcite.rel.InvalidRelException;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rex.RexNode;
 import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.jdbc.HiveJdbcConverter;
 import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveJoin;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,27 +55,22 @@ public class JDBCJoinPushDownRule extends RelOptRule {
     final HiveJdbcConverter converter1 = call.rel(1);
     final HiveJdbcConverter converter2 = call.rel(2);
 
-    // First we compare the convention
+  //The actual check should be the compare of the connection string of the external tables
+    /*if (converter1.getJdbcConvention().equals(converter2.getJdbcConvention()) == false) {
+      return false;
+    }*/
+
     if (!converter1.getJdbcConvention().getName().equals(converter2.getJdbcConvention().getName())) {
       return false;
     }
 
-    // Second, we compare the connection string
-    if (!converter1.getConnectionUrl().equals(converter2.getConnectionUrl())) {
-      return false;
-    }
-
-    // Third, we compare the connection user
-    if (!converter1.getConnectionUser().equals(converter2.getConnectionUser())) {
-      return false;
-    }
-
-    //We do not push cross join
     if (cond.isAlwaysTrue()) {
+      //We don't want to push cross join
       return false;
     }
 
-    return JDBCRexCallValidator.isValidJdbcOperation(cond, converter1.getJdbcDialect());
+    boolean visitorRes = JDBCRexCallValidator.isValidJdbcOperation(cond, converter1.getJdbcDialect());
+    return visitorRes;
   }
 
   @Override
@@ -83,26 +79,21 @@ public class JDBCJoinPushDownRule extends RelOptRule {
 
     final HiveJoin join = call.rel(0);
     final HiveJdbcConverter converter1 = call.rel(1);
-    final RelNode input1 = converter1.getInput();
     final HiveJdbcConverter converter2 = call.rel(2);
-    final RelNode input2 = converter2.getInput();
 
-    JdbcJoin jdbcJoin;
-    try {
-      jdbcJoin = new JdbcJoin(
-          join.getCluster(),
-          join.getTraitSet().replace(converter1.getJdbcConvention()),
-          input1,
-          input2,
-          join.getCondition(),
-          join.getVariablesSet(),
-          join.getJoinType());
-    } catch (InvalidRelException e) {
-      LOG.warn(e.toString());
-      return;
+    RelNode input1 = converter1.getInput();
+    RelNode input2 = converter2.getInput();
+
+    HiveJoin newHiveJoin = join.copy(join.getTraitSet(), join.getCondition(), input1, input2, join.getJoinType(),
+            join.isSemiJoinDone());
+    JdbcJoin newJdbcJoin = (JdbcJoin) new JdbcJoinRule(converter1.getJdbcConvention()).convert(newHiveJoin,
+            false);
+    if (newJdbcJoin != null) {
+      RelNode converterRes = converter1.copy(converter1.getTraitSet(), Arrays.asList(newJdbcJoin));
+      if (converterRes != null) {
+        call.transformTo(converterRes);
+      }
     }
-
-    call.transformTo(converter1.copy(converter1.getTraitSet(), jdbcJoin));
   }
 
-}
+};

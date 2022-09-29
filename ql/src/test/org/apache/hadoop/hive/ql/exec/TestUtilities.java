@@ -26,7 +26,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.apache.hadoop.hive.ql.exec.Utilities.getFileExtension;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -35,8 +35,8 @@ import static org.mockito.Mockito.when;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -50,16 +50,20 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.ContentSummary;
+import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.common.type.Timestamp;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.metastore.api.hive_metastoreConstants;
 import org.apache.hadoop.hive.ql.Context;
 import org.apache.hadoop.hive.ql.exec.mr.ExecDriver;
+import org.apache.hadoop.hive.ql.exec.spark.SparkTask;
 import org.apache.hadoop.hive.ql.exec.tez.TezTask;
 import org.apache.hadoop.hive.ql.io.*;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
+import org.apache.hadoop.hive.ql.metadata.InputEstimator;
 import org.apache.hadoop.hive.ql.metadata.Table;
 import org.apache.hadoop.hive.ql.plan.DependencyCollectionWork;
 import org.apache.hadoop.hive.ql.plan.DynamicPartitionCtx;
@@ -69,13 +73,18 @@ import org.apache.hadoop.hive.ql.plan.ExprNodeGenericFuncDesc;
 import org.apache.hadoop.hive.ql.plan.FileSinkDesc;
 import org.apache.hadoop.hive.ql.plan.MapWork;
 import org.apache.hadoop.hive.ql.plan.MapredWork;
+import org.apache.hadoop.hive.ql.plan.OperatorDesc;
 import org.apache.hadoop.hive.ql.plan.PartitionDesc;
 import org.apache.hadoop.hive.ql.plan.TableDesc;
 import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFFromUtcTimestamp;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
+import org.apache.hadoop.mapred.FileInputFormat;
+import org.apache.hadoop.mapred.InputFormat;
+import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobConf;
-import org.apache.hadoop.mapreduce.MRJobConfig;
+import org.apache.hadoop.mapred.Reporter;
+import org.apache.hadoop.mapred.RecordReader;
 import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.Test;
@@ -104,6 +113,10 @@ public class TestUtilities {
         getFileExtension(jc, false, new HiveIgnoreKeyTextOutputFormat()));
     assertEquals("Deflate for uncompressed text format", ".deflate",
         getFileExtension(jc, true, new HiveIgnoreKeyTextOutputFormat()));
+    assertEquals("No extension for uncompressed default format", "",
+        getFileExtension(jc, false));
+    assertEquals("Deflate for uncompressed default format", ".deflate",
+        getFileExtension(jc, true));
 
     String extension = ".myext";
     jc.set("hive.output.file.extension", extension);
@@ -148,15 +161,8 @@ public class TestUtilities {
     assertEquals("db name", "dab1", dbtab[0]);
     assertEquals("table name", "tab1", dbtab[1]);
 
-    // test table name with metadata table name
-    tablename = "dab1.tab1.meta1";
-    dbtab = Utilities.getDbTableName(tablename);
-    assertEquals("db name", "dab1", dbtab[0]);
-    assertEquals("table name", "tab1", dbtab[1]);
-    assertEquals("metadata table name", "meta1", dbtab[2]);
-
     //test invalid table name
-    tablename = "dab1.tab1.x1.y";
+    tablename = "dab1.tab1.x1";
     try {
       dbtab = Utilities.getDbTableName(tablename);
       fail("exception was expected for invalid table name");
@@ -200,51 +206,6 @@ public class TestUtilities {
     assertEquals(NUM_BUCKETS, paths.size());
   }
 
-  @Test
-  public void testRenameFilesNotExists() throws Exception {
-    FileSystem fs = mock(FileSystem.class);
-    Path src = new Path("src");
-    Path dest = new Path("dir");
-    when(fs.exists(dest)).thenReturn(false);
-    when(fs.rename(src, dest)).thenReturn(true);
-    Utilities.renameOrMoveFiles(fs, src, dest);
-    verify(fs, times(1)).rename(src, dest);
-  }
-
-  @Test
-  public void testRenameFileExistsNonHive() throws Exception {
-    FileSystem fs = mock(FileSystem.class);
-    Path src = new Path("src");
-    Path dest = new Path("dir1");
-    Path finalPath = new Path(dest, "src_2");
-    FileStatus status = new FileStatus();
-    status.setPath(src);
-    when(fs.listStatus(src)).thenReturn(new FileStatus[]{status});
-    when(fs.exists(dest)).thenReturn(true);
-    when(fs.exists(new Path(dest, "src"))).thenReturn(true);
-    when(fs.exists(new Path(dest,"src_1"))).thenReturn(true);
-    when(fs.rename(src, finalPath)).thenReturn(true);
-    Utilities.renameOrMoveFiles(fs, src, dest);
-    verify(fs, times(1)).rename(src, finalPath);
-  }
-
-  @Test
-  public void testRenameFileExistsHivePath() throws Exception {
-    FileSystem fs = mock(FileSystem.class);
-    Path src = new Path("00001_02");
-    Path dest = new Path("dir1");
-    Path finalPath = new Path(dest, "00001_02_copy_2");
-    FileStatus status = new FileStatus();
-    status.setPath(src);
-    when(fs.listStatus(src)).thenReturn(new FileStatus[]{status});
-    when(fs.exists(dest)).thenReturn(true);
-    when(fs.exists(new Path(dest, "00001_02"))).thenReturn(true);
-    when(fs.exists(new Path(dest,"00001_02_copy_1"))).thenReturn(true);
-    when(fs.rename(src, finalPath)).thenReturn(true);
-    Utilities.renameOrMoveFiles(fs, src, dest);
-    verify(fs, times(1)).rename(src, finalPath);
-  }
-
   private List<Path> runRemoveTempOrDuplicateFilesTestCase(String executionEngine, boolean dPEnabled)
       throws Exception {
     Configuration hconf = new HiveConf(this.getClass());
@@ -255,9 +216,6 @@ public class TestUtilities {
     DynamicPartitionCtx dpCtx = getDynamicPartitionCtx(dPEnabled);
     Path tempDirPath = setupTempDirWithSingleOutputFile(hconf);
     FileSinkDesc conf = getFileSinkDesc(tempDirPath);
-    // HIVE-23354 enforces that MR speculative execution is disabled
-    hconf.setBoolean(MRJobConfig.MAP_SPECULATIVE, false);
-    hconf.setBoolean(MRJobConfig.REDUCE_SPECULATIVE, false);
 
     List<Path> paths = Utilities.removeTempOrDuplicateFiles(localFs, tempDirPath, dpCtx, conf, hconf, false);
 
@@ -288,8 +246,7 @@ public class TestUtilities {
   private FileSinkDesc getFileSinkDesc(Path tempDirPath) {
     Table table = mock(Table.class);
     when(table.getNumBuckets()).thenReturn(NUM_BUCKETS);
-    TableDesc tInfo = Utilities.getTableDesc("s", "string");
-    FileSinkDesc conf = new FileSinkDesc(tempDirPath, tInfo, false);
+    FileSinkDesc conf = new FileSinkDesc(tempDirPath, null, false);
     conf.setTable(table);
     return conf;
   }
@@ -404,7 +361,7 @@ public class TestUtilities {
       String testPartitionName = "p=" + i;
       testPartitionsPaths[i] = new Path(testTablePath, "p=" + i);
       mapWork.getPathToAliases().put(testPartitionsPaths[i], Lists.newArrayList(testPartitionName));
-      mapWork.getAliasToWork().put(testPartitionName, mock(Operator.class));
+      mapWork.getAliasToWork().put(testPartitionName, (Operator<?>) mock(Operator.class));
       mapWork.getPathToPartitionInfo().put(testPartitionsPaths[i], mockPartitionDesc);
 
     }
@@ -425,7 +382,7 @@ public class TestUtilities {
       assertEquals(mapWork.getPathToPartitionInfo().size(), numPartitions);
       assertEquals(mapWork.getAliasToWork().size(), numPartitions);
 
-      for (Map.Entry<Path, List<String>> entry : mapWork.getPathToAliases().entrySet()) {
+      for (Map.Entry<Path, ArrayList<String>> entry : mapWork.getPathToAliases().entrySet()) {
         assertNotNull(entry.getKey());
         assertNotNull(entry.getValue());
         assertEquals(entry.getValue().size(), 1);
@@ -544,7 +501,7 @@ public class TestUtilities {
     MapWork mapWork = new MapWork();
     Path scratchDir = new Path(HiveConf.getVar(jobConf, HiveConf.ConfVars.LOCALSCRATCHDIR));
 
-    Map<Path, List<String>> pathToAliasTable = new LinkedHashMap<>();
+    LinkedHashMap<Path, ArrayList<String>> pathToAliasTable = new LinkedHashMap<>();
 
     String testTableName = "testTable";
 
@@ -556,7 +513,7 @@ public class TestUtilities {
 
       pathToAliasTable.put(testPartitionsPaths[i], Lists.newArrayList(testPartitionName));
 
-      mapWork.getAliasToWork().put(testPartitionName, mock(Operator.class));
+      mapWork.getAliasToWork().put(testPartitionName, (Operator<?>) mock(Operator.class));
     }
 
     mapWork.setPathToAliases(pathToAliasTable);
@@ -580,6 +537,46 @@ public class TestUtilities {
         fs.delete(testTablePath, true);
       }
     }
+  }
+
+  @Test
+  public void testGetInputSummaryPool() throws ExecutionException, InterruptedException, IOException {
+    ExecutorService pool = mock(ExecutorService.class);
+    when(pool.submit(any(Runnable.class))).thenReturn(mock(Future.class));
+
+    Set<Path> pathNeedProcess = new HashSet<>();
+    pathNeedProcess.add(new Path("dummy-path1"));
+    pathNeedProcess.add(new Path("dummy-path2"));
+    pathNeedProcess.add(new Path("dummy-path3"));
+
+    SessionState.start(new HiveConf());
+    JobConf jobConf = new JobConf();
+    Context context = new Context(jobConf);
+
+    Utilities.getInputSummaryWithPool(context, pathNeedProcess, mock(MapWork.class), new long[3], pool);
+    verify(pool, times(3)).submit(any(Runnable.class));
+    verify(pool).shutdown();
+    verify(pool).shutdownNow();
+  }
+
+  @Test
+  public void testGetInputSummaryPoolAndFailure() throws ExecutionException, InterruptedException, IOException {
+    ExecutorService pool = mock(ExecutorService.class);
+    when(pool.submit(any(Runnable.class))).thenReturn(mock(Future.class));
+
+    Set<Path> pathNeedProcess = new HashSet<>();
+    pathNeedProcess.add(new Path("dummy-path1"));
+    pathNeedProcess.add(new Path("dummy-path2"));
+    pathNeedProcess.add(new Path("dummy-path3"));
+
+    SessionState.start(new HiveConf());
+    JobConf jobConf = new JobConf();
+    Context context = new Context(jobConf);
+
+    Utilities.getInputSummaryWithPool(context, pathNeedProcess, mock(MapWork.class), new long[3], pool);
+    verify(pool, times(3)).submit(any(Runnable.class));
+    verify(pool).shutdown();
+    verify(pool).shutdownNow();
   }
 
   @Test
@@ -633,7 +630,167 @@ public class TestUtilities {
     verify(pool).shutdownNow();
   }
 
-  private Task<?> getDependencyCollectionTask(){
+  @Test
+  public void testGetInputSummaryWithASingleThread() throws IOException {
+    final int NUM_PARTITIONS = 5;
+    final int BYTES_PER_FILE = 5;
+
+    JobConf jobConf = new JobConf();
+    Properties properties = new Properties();
+
+    jobConf.setInt(HiveConf.ConfVars.HIVE_EXEC_INPUT_LISTING_MAX_THREADS.varname, 0);
+    ContentSummary summary = runTestGetInputSummary(jobConf, properties, NUM_PARTITIONS, BYTES_PER_FILE, HiveInputFormat.class);
+    assertEquals(NUM_PARTITIONS * BYTES_PER_FILE, summary.getLength());
+    assertEquals(NUM_PARTITIONS, summary.getFileCount());
+    assertEquals(NUM_PARTITIONS, summary.getDirectoryCount());
+  }
+
+  @Test
+  public void testGetInputSummaryWithMultipleThreads() throws IOException {
+    final int NUM_PARTITIONS = 5;
+    final int BYTES_PER_FILE = 5;
+
+    JobConf jobConf = new JobConf();
+    Properties properties = new Properties();
+
+    jobConf.setInt(HiveConf.ConfVars.HIVE_EXEC_INPUT_LISTING_MAX_THREADS.varname, 2);
+    ContentSummary summary = runTestGetInputSummary(jobConf, properties, NUM_PARTITIONS, BYTES_PER_FILE, HiveInputFormat.class);
+    assertEquals(NUM_PARTITIONS * BYTES_PER_FILE, summary.getLength());
+    assertEquals(NUM_PARTITIONS, summary.getFileCount());
+    assertEquals(NUM_PARTITIONS, summary.getDirectoryCount());
+
+    // Test deprecated mapred.dfsclient.parallelism.max
+    jobConf.setInt(HiveConf.ConfVars.HIVE_EXEC_INPUT_LISTING_MAX_THREADS.varname, 0);
+    jobConf.setInt(Utilities.DEPRECATED_MAPRED_DFSCLIENT_PARALLELISM_MAX, 2);
+    summary = runTestGetInputSummary(jobConf, properties, NUM_PARTITIONS, BYTES_PER_FILE, HiveInputFormat.class);
+    assertEquals(NUM_PARTITIONS * BYTES_PER_FILE, summary.getLength());
+    assertEquals(NUM_PARTITIONS, summary.getFileCount());
+    assertEquals(NUM_PARTITIONS, summary.getDirectoryCount());
+  }
+
+  @Test
+  public void testGetInputSummaryWithInputEstimator() throws IOException, HiveException {
+    final int NUM_PARTITIONS = 5;
+    final int BYTES_PER_FILE = 10;
+    final int NUM_OF_ROWS = 5;
+
+    JobConf jobConf = new JobConf();
+    Properties properties = new Properties();
+
+    jobConf.setInt(Utilities.DEPRECATED_MAPRED_DFSCLIENT_PARALLELISM_MAX, 2);
+
+    properties.setProperty(hive_metastoreConstants.META_TABLE_STORAGE, InputEstimatorTestClass.class.getName());
+    InputEstimatorTestClass.setEstimation(new InputEstimator.Estimation(NUM_OF_ROWS, BYTES_PER_FILE));
+
+    /* Let's write more bytes to the files to test that Estimator is actually working returning the file size not from the filesystem */
+    ContentSummary summary = runTestGetInputSummary(jobConf, properties, NUM_PARTITIONS, BYTES_PER_FILE * 2, HiveInputFormat.class);
+    assertEquals(NUM_PARTITIONS * BYTES_PER_FILE, summary.getLength());
+    assertEquals(NUM_PARTITIONS * -1, summary.getFileCount());        // Current getInputSummary() returns -1 for each file found
+    assertEquals(NUM_PARTITIONS * -1, summary.getDirectoryCount());   // Current getInputSummary() returns -1 for each file found
+
+    // Test deprecated mapred.dfsclient.parallelism.max
+    jobConf.setInt(HiveConf.ConfVars.HIVE_EXEC_INPUT_LISTING_MAX_THREADS.varname, 0);
+    jobConf.setInt(HiveConf.ConfVars.HIVE_EXEC_INPUT_LISTING_MAX_THREADS.varname, 2);
+
+    properties.setProperty(hive_metastoreConstants.META_TABLE_STORAGE, InputEstimatorTestClass.class.getName());
+    InputEstimatorTestClass.setEstimation(new InputEstimator.Estimation(NUM_OF_ROWS, BYTES_PER_FILE));
+
+    /* Let's write more bytes to the files to test that Estimator is actually working returning the file size not from the filesystem */
+    summary = runTestGetInputSummary(jobConf, properties, NUM_PARTITIONS, BYTES_PER_FILE * 2, HiveInputFormat.class);
+    assertEquals(NUM_PARTITIONS * BYTES_PER_FILE, summary.getLength());
+    assertEquals(NUM_PARTITIONS * -1, summary.getFileCount());        // Current getInputSummary() returns -1 for each file found
+    assertEquals(NUM_PARTITIONS * -1, summary.getDirectoryCount());   // Current getInputSummary() returns -1 for each file found
+  }
+
+  static class ContentSummaryInputFormatTestClass extends FileInputFormat implements ContentSummaryInputFormat {
+    private static ContentSummary summary = new ContentSummary.Builder().build();
+
+    public static void setContentSummary(ContentSummary contentSummary) {
+      summary = contentSummary;
+    }
+
+    @Override
+    public RecordReader getRecordReader(InputSplit inputSplit, JobConf jobConf, Reporter reporter) throws IOException {
+      return null;
+    }
+
+    @Override
+    public ContentSummary getContentSummary(Path p, JobConf job) throws IOException {
+      return summary;
+    }
+  }
+
+  @Test
+  public void testGetInputSummaryWithContentSummaryInputFormat() throws IOException {
+    final int NUM_PARTITIONS = 5;
+    final int BYTES_PER_FILE = 10;
+
+    JobConf jobConf = new JobConf();
+    Properties properties = new Properties();
+
+    jobConf.setInt(Utilities.DEPRECATED_MAPRED_DFSCLIENT_PARALLELISM_MAX, 2);
+
+    ContentSummaryInputFormatTestClass.setContentSummary(
+        new ContentSummary.Builder().length(BYTES_PER_FILE).fileCount(2).directoryCount(1).build());
+
+    /* Let's write more bytes to the files to test that ContentSummaryInputFormat is actually working returning the file size not from the filesystem */
+    ContentSummary summary = runTestGetInputSummary(jobConf, properties, NUM_PARTITIONS, BYTES_PER_FILE * 2, ContentSummaryInputFormatTestClass.class);
+    assertEquals(NUM_PARTITIONS * BYTES_PER_FILE, summary.getLength());
+    assertEquals(NUM_PARTITIONS * 2, summary.getFileCount());
+    assertEquals(NUM_PARTITIONS, summary.getDirectoryCount());
+  }
+
+  private ContentSummary runTestGetInputSummary(JobConf jobConf, Properties properties, int numOfPartitions, int bytesPerFile, Class<? extends InputFormat> inputFormatClass) throws IOException {
+    // creates scratch directories needed by the Context object
+    SessionState.start(new HiveConf());
+
+    MapWork mapWork = new MapWork();
+    Context context = new Context(jobConf);
+    LinkedHashMap<Path, PartitionDesc> pathToPartitionInfo = new LinkedHashMap<>();
+    LinkedHashMap<Path, ArrayList<String>> pathToAliasTable = new LinkedHashMap<>();
+    TableScanOperator scanOp = new TableScanOperator();
+
+    PartitionDesc partitionDesc = new PartitionDesc(new TableDesc(inputFormatClass, null, properties), null);
+
+    String testTableName = "testTable";
+
+    Path testTablePath = new Path(testTableName);
+    Path[] testPartitionsPaths = new Path[numOfPartitions];
+    for (int i=0; i<numOfPartitions; i++) {
+      String testPartitionName = "p=" + 1;
+      testPartitionsPaths[i] = new Path(testTablePath, "p=" + i);
+
+      pathToPartitionInfo.put(testPartitionsPaths[i], partitionDesc);
+
+      pathToAliasTable.put(testPartitionsPaths[i], Lists.newArrayList(testPartitionName));
+
+      mapWork.getAliasToWork().put(testPartitionName, scanOp);
+    }
+
+    mapWork.setPathToAliases(pathToAliasTable);
+    mapWork.setPathToPartitionInfo(pathToPartitionInfo);
+
+    FileSystem fs = FileSystem.getLocal(jobConf);
+    try {
+      fs.mkdirs(testTablePath);
+      byte[] data = new byte[bytesPerFile];
+
+      for (int i=0; i<numOfPartitions; i++) {
+        fs.mkdirs(testPartitionsPaths[i]);
+        FSDataOutputStream out = fs.create(new Path(testPartitionsPaths[i], "test1.txt"));
+        out.write(data);
+        out.close();
+      }
+
+      return Utilities.getInputSummary(context, mapWork, null);
+    } finally {
+      if (fs.exists(testTablePath)) {
+        fs.delete(testTablePath, true);
+      }
+    }
+  }
+
+  private Task<? extends Serializable> getDependencyCollectionTask(){
     return TaskFactory.get(new DependencyCollectionWork());
   }
 
@@ -646,7 +803,7 @@ public class TestUtilities {
    *      \            /
    *       ---->DTc----
    */
-  private List<Task<?>> getTestDiamondTaskGraph(Task<?> providedTask){
+  private List<Task<? extends Serializable>> getTestDiamondTaskGraph(Task<? extends Serializable> providedTask){
     // Note: never instantiate a task without TaskFactory.get() if you're not
     // okay with .equals() breaking. Doing it via TaskFactory.get makes sure
     // that an id is generated, and two tasks of the same type don't show
@@ -654,12 +811,12 @@ public class TestUtilities {
     // array. Without this, DTa, DTb, and DTc would show up as one item in
     // the list of children. Thus, we're instantiating via a helper method
     // that instantiates via TaskFactory.get()
-    Task<?> root = getDependencyCollectionTask();
-    Task<?> DTa = getDependencyCollectionTask();
-    Task<?> DTb = getDependencyCollectionTask();
-    Task<?> DTc = getDependencyCollectionTask();
-    Task<?> DTd = getDependencyCollectionTask();
-    Task<?> DTe = getDependencyCollectionTask();
+    Task<? extends Serializable> root = getDependencyCollectionTask();
+    Task<? extends Serializable> DTa = getDependencyCollectionTask();
+    Task<? extends Serializable> DTb = getDependencyCollectionTask();
+    Task<? extends Serializable> DTc = getDependencyCollectionTask();
+    Task<? extends Serializable> DTd = getDependencyCollectionTask();
+    Task<? extends Serializable> DTe = getDependencyCollectionTask();
 
     root.addDependentTask(DTa);
     root.addDependentTask(DTb);
@@ -673,7 +830,7 @@ public class TestUtilities {
 
     providedTask.addDependentTask(DTe);
 
-    List<Task<?>> retVals = new ArrayList<Task<?>>();
+    List<Task<? extends Serializable>> retVals = new ArrayList<Task<? extends Serializable>>();
     retVals.add(root);
     return retVals;
   }
@@ -685,21 +842,20 @@ public class TestUtilities {
    */
   public class CountingWrappingTask extends DependencyCollectionTask {
     int count;
-    Task<?> wrappedDep = null;
+    Task<? extends Serializable> wrappedDep = null;
 
-    public CountingWrappingTask(Task<?> dep) {
+    public CountingWrappingTask(Task<? extends Serializable> dep) {
       count = 0;
       wrappedDep = dep;
       super.addDependentTask(wrappedDep);
     }
 
-    @Override
-    public boolean addDependentTask(Task<?> dependent) {
+    public boolean addDependentTask(Task<? extends Serializable> dependent) {
       return wrappedDep.addDependentTask(dependent);
     }
 
     @Override
-    public List<Task<?>> getDependentTasks() {
+    public List<Task<? extends Serializable>> getDependentTasks() {
       count++;
       System.err.println("YAH:getDepTasks got called!");
       (new Exception()).printStackTrace(System.err);
@@ -732,12 +888,15 @@ public class TestUtilities {
 
     CountingWrappingTask mrTask = new CountingWrappingTask(new ExecDriver());
     CountingWrappingTask tezTask = new CountingWrappingTask(new TezTask());
+    CountingWrappingTask sparkTask = new CountingWrappingTask(new SparkTask());
 
     // First check - we should not have repeats in results
     assertEquals("No repeated MRTasks from Utilities.getMRTasks", 1,
         Utilities.getMRTasks(getTestDiamondTaskGraph(mrTask)).size());
     assertEquals("No repeated TezTasks from Utilities.getTezTasks", 1,
         Utilities.getTezTasks(getTestDiamondTaskGraph(tezTask)).size());
+    assertEquals("No repeated TezTasks from Utilities.getSparkTasks", 1,
+        Utilities.getSparkTasks(getTestDiamondTaskGraph(sparkTask)).size());
 
     // Second check - the tasks we looked for must not have been accessed more than
     // once as a result of the traversal (note that we actually wind up accessing
@@ -746,6 +905,7 @@ public class TestUtilities {
 
     assertEquals("MRTasks should have been visited only once", 2, mrTask.getDepCallCount());
     assertEquals("TezTasks should have been visited only once", 2, tezTask.getDepCallCount());
+    assertEquals("SparkTasks should have been visited only once", 2, sparkTask.getDepCallCount());
 
   }
 
@@ -769,82 +929,5 @@ public class TestUtilities {
     assertEquals(Lists.newArrayList(rootTask, child1, child2, child11),
         Utilities.getMRTasks(getTestDiamondTaskGraph(rootTask)));
 
-  }
-
-  @Test
-  public void testSelectManifestFilesOnlyOneAttemptId() {
-    FileStatus[] manifestFiles = generateTestNotEmptyFileStatuses("000000_0.manifest", "000001_0.manifest",
-        "000002_0.manifest", "000003_0.manifest");
-    Set<String> expectedPathes =
-        getExpectedPathes("000000_0.manifest", "000001_0.manifest", "000002_0.manifest", "000003_0.manifest");
-    List<Path> foundManifestFiles = Utilities.selectManifestFiles(manifestFiles);
-    Set<String> resultPathes = getResultPathes(foundManifestFiles);
-    assertEquals(expectedPathes, resultPathes);
-  }
-
-  @Test
-  public void testSelectManifestFilesMultipleAttemptIds() {
-    FileStatus[] manifestFiles = generateTestNotEmptyFileStatuses("000000_1.manifest", "000000_0.manifest",
-        "000000_3.manifest", "000000_2.manifest", "000003_0.manifest", "000003_1.manifest", "000003_2.manifest");
-    Set<String> expectedPathes = getExpectedPathes("000000_3.manifest", "000003_2.manifest");
-    List<Path> foundManifestFiles = Utilities.selectManifestFiles(manifestFiles);
-    Set<String> resultPathes = getResultPathes(foundManifestFiles);
-    assertEquals(expectedPathes, resultPathes);
-  }
-
-  @Test
-  public void testSelectManifestFilesWithEmptyManifests() {
-    Set<String> emptyFiles = new HashSet<>();
-    emptyFiles.add("000001_0.manifest");
-    emptyFiles.add("000001_2.manifest");
-    emptyFiles.add("000002_2.manifest");
-    FileStatus[] manifestFiles = generateTestNotEmptyFileStatuses(emptyFiles, "000001_1.manifest", "000001_0.manifest",
-        "000001_3.manifest", "000001_2.manifest", "000002_0.manifest", "000002_1.manifest", "000002_2.manifest");
-    Set<String> expectedPathes = getExpectedPathes("000001_3.manifest", "000002_1.manifest");
-    List<Path> foundManifestFiles = Utilities.selectManifestFiles(manifestFiles);
-    Set<String> resultPathes = getResultPathes(foundManifestFiles);
-    assertEquals(expectedPathes, resultPathes);
-  }
-
-  @Test
-  public void testSelectManifestFilesWithWrongManifestNames() {
-    FileStatus[] manifestFiles = generateTestNotEmptyFileStatuses("000004_0.manifest", "000005.manifest",
-        "000004_1.manifest", "000006.manifest", "000007_0.wrong", "000008_1", "000004_2.manifest");
-    Set<String> expectedPathes = getExpectedPathes("000005.manifest", "000006.manifest", "000004_2.manifest");
-    List<Path> foundManifestFiles = Utilities.selectManifestFiles(manifestFiles);
-    Set<String> resultPathes = getResultPathes(foundManifestFiles);
-    assertEquals(expectedPathes, resultPathes);
-  }
-
-  private FileStatus[] generateTestNotEmptyFileStatuses(String... fileNames) {
-    return generateTestNotEmptyFileStatuses(null, fileNames);
-  }
-
-  private FileStatus[] generateTestNotEmptyFileStatuses(Set<String> emptyFiles, String... fileNames) {
-    FileStatus[] manifestFiles = new FileStatus[fileNames.length];
-    for (int i = 0; i < fileNames.length; i++) {
-      long len = 10000L;
-      if (emptyFiles != null && emptyFiles.contains(fileNames[i])) {
-        len = 0L;
-      }
-      manifestFiles[i] = new FileStatus(len, false, 0, 250L, 123456L, new Path("/sometestpath/" + fileNames[i]));
-    }
-    return manifestFiles;
-  }
-
-  private Set<String> getExpectedPathes(String... fileNames) {
-    Set<String> expectedPathes = new HashSet<>();
-    for (String fileName : fileNames) {
-      expectedPathes.add("/sometestpath/" + fileName);
-    }
-    return expectedPathes;
-  }
-
-  private Set<String> getResultPathes(List<Path> foundManifestFiles) {
-    Set<String> resultPathes = new HashSet<>();
-    for (Path path : foundManifestFiles) {
-      resultPathes.add(path.toString());
-    }
-    return resultPathes;
   }
 }

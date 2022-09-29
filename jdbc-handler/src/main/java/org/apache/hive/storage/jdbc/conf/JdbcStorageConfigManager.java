@@ -15,24 +15,23 @@
 package org.apache.hive.storage.jdbc.conf;
 
 import java.io.IOException;
-import org.apache.hadoop.hive.conf.Constants;
-import org.apache.hadoop.hive.ql.exec.Utilities;
 import org.apache.hadoop.hive.shims.ShimLoader;
 import org.apache.hadoop.hive.ql.metadata.Hive;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hive.storage.jdbc.conf.DatabaseType;
 
 import org.apache.hadoop.conf.Configuration;
+
+import org.apache.hive.storage.jdbc.QueryConditionBuilder;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.net.URISyntaxException;
 import java.util.EnumSet;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Properties;
-import java.util.function.Function;
 
 /**
  * Main configuration handler class
@@ -40,11 +39,9 @@ import java.util.function.Function;
 public class JdbcStorageConfigManager {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(JdbcStorageConfigManager.class);
-  public static final String CONFIG_USERNAME = Constants.JDBC_USERNAME;
-  public static final String CONFIG_PWD = Constants.JDBC_PASSWORD;
-  public static final String CONFIG_PWD_KEYSTORE = Constants.JDBC_KEYSTORE;
-  public static final String CONFIG_PWD_KEY = Constants.JDBC_KEY;
-  public static final String CONFIG_PWD_URI = Constants.JDBC_PASSWORD_URI;
+  public static final String CONFIG_PREFIX = "hive.sql";
+  public static final String CONFIG_PWD = CONFIG_PREFIX + ".dbcp.password";
+  public static final String CONFIG_USERNAME = CONFIG_PREFIX + ".dbcp.username";
   private static final EnumSet<JdbcStorageConfig> DEFAULT_REQUIRED_PROPERTIES =
     EnumSet.of(JdbcStorageConfig.DATABASE_TYPE,
                JdbcStorageConfig.JDBC_URL,
@@ -62,61 +59,19 @@ public class JdbcStorageConfigManager {
     checkRequiredPropertiesAreDefined(props);
     resolveMetadata(props);
     for (Entry<Object, Object> entry : props.entrySet()) {
-      String key = String.valueOf(entry.getKey());
-      if (!key.equals(CONFIG_PWD) &&
-          !key.equals(CONFIG_PWD_KEYSTORE) &&
-          !key.equals(CONFIG_PWD_KEY) &&
-          !key.equals(CONFIG_PWD_URI)) {
+      if (!String.valueOf(entry.getKey()).equals(CONFIG_PWD)) {
         jobProps.put(String.valueOf(entry.getKey()), String.valueOf(entry.getValue()));
       }
     }
   }
 
-  private static int countNonNull(String ... values) {
-    int count = 0;
-    for (String str : values) {
-      if (str != null) {
-        count++;
-      }
-    }
-    return count;
-  }
-
-  public static String getPasswordFromProperties(Properties properties, Function<String, String> keyTransform)
-      throws HiveException, IOException {
-    String passwd = properties.getProperty(keyTransform.apply(CONFIG_PWD));
-    String keystore = properties.getProperty(keyTransform.apply(CONFIG_PWD_KEYSTORE));
-    String uri = properties.getProperty(keyTransform.apply(CONFIG_PWD_URI));
-    if (countNonNull(passwd, keystore, uri) > 1) {
-      // In tez, when the job conf is copied there is a code path in HiveInputFormat where all the table properties
-      // are copied and the password is copied from the job credentials, so its possible to have 2 of them set.
-      // For now ignore this and print a warning message, we should fix so that the above code is used instead.
-      LOGGER.warn("Only one of " + CONFIG_PWD + ", " + CONFIG_PWD_KEYSTORE + ", " + CONFIG_PWD_URI + " can be set");
-      // throw new HiveException(
-      //    "Only one of " + CONFIG_PWD + ", " + CONFIG_PWD_KEYSTORE + ", " + CONFIG_PWD_URI + " can be set");
-    }
-    if (passwd == null && keystore != null) {
-      String key = properties.getProperty(keyTransform.apply(CONFIG_PWD_KEY));
-      passwd = Utilities.getPasswdFromKeystore(keystore, key);
-    }
-    if (passwd == null && uri != null) {
-      try {
-        passwd = Utilities.getPasswdFromUri(uri);
-      } catch (URISyntaxException e) {
-        // Should I include the uri in the exception? Suppressing for now, since it may have sensitive info.
-        throw new HiveException("Invalid password uri specified", e);
-      }
-    }
-    return passwd;
-  }
-
   public static void copySecretsToJob(Properties props, Map<String, String> jobSecrets)
-      throws HiveException, IOException {
+    throws HiveException, IOException {
     checkRequiredPropertiesAreDefined(props);
     resolveMetadata(props);
-    String passwd = getPasswordFromProperties(props, Function.identity());
-    if (passwd != null) {
-      jobSecrets.put(CONFIG_PWD, passwd);
+    String secret = props.getProperty(CONFIG_PWD);
+    if (secret != null) {
+      jobSecrets.put(CONFIG_PWD, secret);
     }
   }
 
@@ -132,6 +87,7 @@ public class JdbcStorageConfigManager {
 
     return conf;
   }
+
 
   private static void checkRequiredPropertiesAreDefined(Properties props) {
     DatabaseType dbType = null;
@@ -159,6 +115,24 @@ public class JdbcStorageConfigManager {
   public static String getConfigValue(JdbcStorageConfig key, Configuration config) {
     return config.get(key.getPropertyName());
   }
+
+
+  public static String getQueryToExecute(Configuration config) {
+    String query = config.get(JdbcStorageConfig.QUERY.getPropertyName());
+
+    if (query == null) {
+      String tableName = config.get(JdbcStorageConfig.TABLE.getPropertyName());
+      query = "select * from " + tableName;
+    }
+
+    String hiveFilterCondition = QueryConditionBuilder.getInstance().buildCondition(config);
+    if ((hiveFilterCondition != null) && (!hiveFilterCondition.trim().isEmpty())) {
+      query = query + " WHERE " + hiveFilterCondition;
+    }
+
+    return query;
+  }
+
 
   private static boolean isEmptyString(String value) {
     return ((value == null) || (value.trim().isEmpty()));

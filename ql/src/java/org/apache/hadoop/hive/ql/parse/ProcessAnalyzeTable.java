@@ -22,13 +22,15 @@ import java.util.List;
 import java.util.Set;
 import java.util.Stack;
 
+import org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.ql.exec.TableScanOperator;
 import org.apache.hadoop.hive.ql.exec.Task;
 import org.apache.hadoop.hive.ql.exec.TaskFactory;
+import org.apache.hadoop.hive.ql.io.orc.OrcInputFormat;
 import org.apache.hadoop.hive.ql.lib.Node;
-import org.apache.hadoop.hive.ql.lib.SemanticNodeProcessor;
+import org.apache.hadoop.hive.ql.lib.NodeProcessor;
 import org.apache.hadoop.hive.ql.lib.NodeProcessorCtx;
 import org.apache.hadoop.hive.ql.metadata.Partition;
 import org.apache.hadoop.hive.ql.metadata.Table;
@@ -37,7 +39,6 @@ import org.apache.hadoop.hive.ql.plan.StatsWork;
 import org.apache.hadoop.hive.ql.plan.MapWork;
 import org.apache.hadoop.hive.ql.plan.BasicStatsWork;
 import org.apache.hadoop.hive.ql.plan.TezWork;
-import org.apache.hadoop.hive.ql.stats.BasicStatsNoJobTask;
 import org.apache.hadoop.mapred.InputFormat;
 
 /**
@@ -45,7 +46,7 @@ import org.apache.hadoop.mapred.InputFormat;
  * (normal, no scan.) The plan at this point will be a single
  * table scan operator.
  */
-public class ProcessAnalyzeTable implements SemanticNodeProcessor {
+public class ProcessAnalyzeTable implements NodeProcessor {
 
   private static final Logger LOG = LoggerFactory.getLogger(ProcessAnalyzeTable.class.getName());
 
@@ -85,8 +86,9 @@ public class ProcessAnalyzeTable implements SemanticNodeProcessor {
 
       assert alias != null;
       TezWork tezWork = context.currentTask.getWork();
-      if (BasicStatsNoJobTask.canUseBasicStats(table, inputFormat)) {
-        // For ORC, Parquet and Iceberg tables, all the following statements are the same
+      if (OrcInputFormat.class.isAssignableFrom(inputFormat) ||
+          MapredParquetInputFormat.class.isAssignableFrom(inputFormat)) {
+        // For ORC & Parquet, all the following statements are the same
         // ANALYZE TABLE T [PARTITION (...)] COMPUTE STATISTICS
         // ANALYZE TABLE T [PARTITION (...)] COMPUTE STATISTICS noscan;
 

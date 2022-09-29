@@ -38,11 +38,13 @@ public interface HiveDriverRunHook extends Hook {
    * Invoked before Hive begins any processing of a command in the Driver,
    * notably before compilation and any customizable performance logging.
    */
-  void preDriverRun(HiveDriverRunHookContext hookContext) throws Exception;
+  public void preDriverRun(
+    HiveDriverRunHookContext hookContext) throws Exception;
 
   /**
    * Invoked after Hive performs any processing of a command, just before a
    * response is returned to the entity calling the Driver.
    */
-  void postDriverRun(HiveDriverRunHookContext hookContext) throws Exception;
+  public void postDriverRun(
+    HiveDriverRunHookContext hookContext) throws Exception;
 }

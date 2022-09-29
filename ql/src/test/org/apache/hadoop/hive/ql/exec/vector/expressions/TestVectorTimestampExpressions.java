@@ -22,7 +22,6 @@ import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -30,11 +29,7 @@ import java.util.Date;
 import java.util.Random;
 import java.util.TimeZone;
 
-import org.apache.hadoop.hive.common.type.TimestampTZ;
-import org.apache.hadoop.hive.common.type.TimestampTZUtil;
-import org.apache.hadoop.hive.common.type.TimestampUtils;
-import org.apache.hadoop.hive.conf.HiveConf;
-import org.junit.Assert;
+import junit.framework.Assert;
 
 import org.apache.hadoop.hive.ql.udf.UDFDayOfMonth;
 import org.apache.hadoop.hive.ql.udf.UDFHour;
@@ -66,7 +61,6 @@ import org.junit.Test;
  */
 public class TestVectorTimestampExpressions {
 
-  private HiveConf hiveConf = new HiveConf();
   private SimpleDateFormat dateFormat = getFormatter();
 
   private static SimpleDateFormat getFormatter() {
@@ -257,7 +251,7 @@ public class TestVectorTimestampExpressions {
       udf = new VectorUDFYearString(0, 1);
       udf.setInputTypeInfos(new TypeInfo[] {TypeInfoFactory.stringTypeInfo});
     }
-    udf.transientInit(hiveConf);
+    udf.transientInit();
     udf.evaluate(batch);
     final int in = 0;
     final int out = 1;
@@ -354,7 +348,7 @@ public class TestVectorTimestampExpressions {
       udf = new VectorUDFDayOfMonthString(0, 1);
       udf.setInputTypeInfos(new TypeInfo[] {TypeInfoFactory.stringTypeInfo});
     }
-    udf.transientInit(hiveConf);
+    udf.transientInit();
     udf.evaluate(batch);
     final int in = 0;
     final int out = 1;
@@ -443,7 +437,7 @@ public class TestVectorTimestampExpressions {
       udf = new VectorUDFHourString(0, 1);
       udf.setInputTypeInfos(new TypeInfo[] {TypeInfoFactory.stringTypeInfo});
     }
-    udf.transientInit(hiveConf);
+    udf.transientInit();
     udf.evaluate(batch);
     final int in = 0;
     final int out = 1;
@@ -533,7 +527,7 @@ public class TestVectorTimestampExpressions {
       udf = new VectorUDFMinuteString(0, 1);
       udf.setInputTypeInfos(new TypeInfo[] {TypeInfoFactory.stringTypeInfo});
     }
-    udf.transientInit(hiveConf);
+    udf.transientInit();
     udf.evaluate(batch);
     final int in = 0;
     final int out = 1;
@@ -622,7 +616,7 @@ public class TestVectorTimestampExpressions {
       udf = new VectorUDFMonthString(0, 1);
       udf.setInputTypeInfos(new TypeInfo[] {TypeInfoFactory.stringTypeInfo});
     }
-    udf.transientInit(hiveConf);
+    udf.transientInit();
     udf.evaluate(batch);
     final int in = 0;
     final int out = 1;
@@ -711,7 +705,7 @@ public class TestVectorTimestampExpressions {
       udf = new VectorUDFSecondString(0, 1);
       udf.setInputTypeInfos(new TypeInfo[] {TypeInfoFactory.stringTypeInfo});
     }
-    udf.transientInit(hiveConf);
+    udf.transientInit();
     udf.evaluate(batch);
     final int in = 0;
     final int out = 1;
@@ -782,11 +776,9 @@ public class TestVectorTimestampExpressions {
   }
 
   private void compareToUDFUnixTimeStampLong(Timestamp ts, long y) {
-    TimestampTZ tsTZ = TimestampTZUtil.convert(
-        org.apache.hadoop.hive.common.type.Timestamp.ofEpochMilli(ts.getTime()),
-        ZoneId.systemDefault());
-    if(tsTZ.getEpochSecond() != y) {
-      System.out.printf("%d vs %d for %s\n", tsTZ.getEpochSecond(), y, ts.toString());
+    long seconds = ts.getTime() / 1000;
+    if(seconds != y) {
+      System.out.printf("%d vs %d for %s\n", seconds, y, ts.toString());
       Assert.assertTrue(false);
     }
   }
@@ -801,7 +793,7 @@ public class TestVectorTimestampExpressions {
       udf = new VectorUDFUnixTimeStampString(0, 1);
       udf.setInputTypeInfos(new TypeInfo[] {TypeInfoFactory.stringTypeInfo});
     }
-    udf.transientInit(hiveConf);
+    udf.transientInit();
     udf.evaluate(batch);
     final int in = 0;
     final int out = 1;
@@ -889,7 +881,7 @@ public class TestVectorTimestampExpressions {
       udf = new VectorUDFWeekOfYearString(0, 1);
       udf.setInputTypeInfos(new TypeInfo[] {TypeInfoFactory.stringTypeInfo});
     }
-    udf.transientInit(hiveConf);
+    udf.transientInit();
     udf.evaluate(batch);
     final int in = 0;
     final int out = 1;

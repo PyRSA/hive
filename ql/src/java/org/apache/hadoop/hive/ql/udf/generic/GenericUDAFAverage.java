@@ -56,8 +56,8 @@ import org.apache.hadoop.hive.serde2.typeinfo.DecimalTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.PrimitiveTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
-import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoUtils;
 import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.util.StringUtils;
 
 /**
  * GenericUDAFAverage.
@@ -129,7 +129,7 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
     @Override
     public void doReset(AverageAggregationBuffer<Double> aggregation) throws HiveException {
       aggregation.count = 0;
-      aggregation.sum = Double.valueOf(0);
+      aggregation.sum = new Double(0);
       aggregation.uniqueObjects = new HashSet<ObjectInspectorObject>();
     }
 
@@ -224,7 +224,7 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
             throws HiveException {
           AverageAggregationBuffer<Double> myagg = (AverageAggregationBuffer<Double>) ss.wrappedBuf;
           return myagg.count == 0 ? null : new Object[] {
-              myagg.sum, myagg.count};
+              new Double(myagg.sum), myagg.count };
         }
 
       };
@@ -235,13 +235,11 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
         WindowFrameDef winFrame,
         PTFPartition partition,
         List<PTFExpressionDef> parameters,
-        ObjectInspector outputOI,
-        boolean nullsLast) {
+        ObjectInspector outputOI) {
       try {
-        return new BasePartitionEvaluator.AvgPartitionDoubleEvaluator(this, winFrame, partition,
-            parameters, inputOI, outputOI, nullsLast);
+        return new BasePartitionEvaluator.AvgPartitionDoubleEvaluator(this, winFrame, partition, parameters, inputOI, outputOI);
       } catch(HiveException e) {
-        return super.createPartitionEvaluator(winFrame, partition, parameters, outputOI, nullsLast);
+        return super.createPartitionEvaluator(winFrame, partition, parameters, outputOI);
       }
     }
   }
@@ -251,25 +249,6 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
     VectorUDAFAvgDecimal64ToDecimal.class, VectorUDAFAvgDecimal64ToDecimalComplete.class,
     VectorUDAFAvgDecimalPartial2.class, VectorUDAFAvgDecimalFinal.class})
   public static class GenericUDAFAverageEvaluatorDecimal extends AbstractGenericUDAFAverageEvaluator<HiveDecimal> {
-
-    private int resultPrecision = -1;
-    private int resultScale = -1;
-
-    @Override
-    public ObjectInspector init(Mode m, ObjectInspector[] parameters)
-        throws HiveException {
-
-      // Intercept result ObjectInspector so we can extract the DECIMAL precision and scale.
-      ObjectInspector resultOI = super.init(m, parameters);
-      if (m == Mode.COMPLETE || m == Mode.FINAL) {
-        DecimalTypeInfo decimalTypeInfo =
-            (DecimalTypeInfo)
-                TypeInfoUtils.getTypeInfoFromObjectInspector(resultOI);
-        resultPrecision = decimalTypeInfo.getPrecision();
-        resultScale = decimalTypeInfo.getScale();
-      }
-      return resultOI;
-    }
 
     @Override
     public void doReset(AverageAggregationBuffer<HiveDecimal> aggregation) throws HiveException {
@@ -357,7 +336,6 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
       } else {
         HiveDecimalWritable result = new HiveDecimalWritable(HiveDecimal.ZERO);
         result.set(aggregation.sum.divide(HiveDecimal.create(aggregation.count)));
-        result.mutateEnforcePrecisionScale(resultPrecision, resultScale);
         return result;
       }
     }
@@ -415,13 +393,11 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
         WindowFrameDef winFrame,
         PTFPartition partition,
         List<PTFExpressionDef> parameters,
-        ObjectInspector outputOI,
-        boolean nullsLast) {
+        ObjectInspector outputOI) {
       try {
-        return new BasePartitionEvaluator.AvgPartitionHiveDecimalEvaluator(this, winFrame,
-            partition, parameters, inputOI, outputOI, nullsLast);
+        return new BasePartitionEvaluator.AvgPartitionHiveDecimalEvaluator(this, winFrame, partition, parameters, inputOI, outputOI);
       } catch(HiveException e) {
-        return super.createPartitionEvaluator(winFrame, partition, parameters, outputOI, nullsLast);
+        return super.createPartitionEvaluator(winFrame, partition, parameters, outputOI);
       }
     }
   }
@@ -551,7 +527,7 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
         } catch (NumberFormatException e) {
           if (!warned) {
             warned = true;
-            LOG.warn("Ignoring similar exceptions", e);
+            LOG.warn("Ignoring similar exceptions: " + StringUtils.stringifyException(e));
           }
         }
       }

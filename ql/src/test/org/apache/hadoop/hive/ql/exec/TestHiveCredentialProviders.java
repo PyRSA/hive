@@ -18,8 +18,6 @@
 package org.apache.hadoop.hive.ql.exec;
 
 import java.lang.reflect.Field;
-import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -29,8 +27,6 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConfUtil;
 import org.apache.hadoop.mapred.JobConf;
-import org.apache.hadoop.mapreduce.MRJobConfig;
-import org.apache.tez.dag.api.TezConfiguration;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -47,12 +43,6 @@ public class TestHiveCredentialProviders {
   private static final String JOB_CREDSTORE_LOCATION = "jceks://hdfs/user/hive/creds.jceks";
   private static final String HADOOP_CREDSTORE_LOCATION =
       "localjceks://file/user/hive/localcreds.jceks";
-
-  private static final Collection<String> REDACTED_PROPERTIES = Arrays.asList(
-      JobConf.MAPRED_MAP_TASK_ENV,
-      JobConf.MAPRED_REDUCE_TASK_ENV,
-      MRJobConfig.MR_AM_ADMIN_USER_ENV,
-      TezConfiguration.TEZ_AM_LAUNCH_ENV);
 
   private Configuration jobConf;
 
@@ -103,16 +93,6 @@ public class TestHiveCredentialProviders {
     // make sure REDUCE task environment points to HIVE_JOB_CREDSTORE_PASSWORD
     Assert.assertEquals(HIVE_JOB_CREDSTORE_PASSWORD_ENVVAR_VAL, getValueFromJobConf(
         jobConf.get(JobConf.MAPRED_REDUCE_TASK_ENV), HADOOP_CREDENTIAL_PASSWORD_ENVVAR));
-
-    Assert.assertEquals(HIVE_JOB_CREDSTORE_PASSWORD_ENVVAR_VAL, getValueFromJobConf(
-        jobConf.get(MRJobConfig.MR_AM_ADMIN_USER_ENV), HADOOP_CREDENTIAL_PASSWORD_ENVVAR));
-
-    // make sure TEZ AM environment points to HIVE_JOB_CREDSTORE_PASSWORD
-    Assert.assertEquals(HIVE_JOB_CREDSTORE_PASSWORD_ENVVAR_VAL, getValueFromJobConf(
-        jobConf.get(TezConfiguration.TEZ_AM_LAUNCH_ENV), HADOOP_CREDENTIAL_PASSWORD_ENVVAR));
-
-    Assert.assertTrue(jobConf.getStringCollection(MRJobConfig.MR_JOB_REDACTED_PROPERTIES)
-        .containsAll(REDACTED_PROPERTIES));
   }
 
   /*
@@ -134,16 +114,6 @@ public class TestHiveCredentialProviders {
     // make sure REDUCE task environment points to HADOOP_CREDSTORE_PASSWORD
     Assert.assertEquals(HADOOP_CREDSTORE_PASSWORD_ENVVAR_VAL, getValueFromJobConf(
         jobConf.get(JobConf.MAPRED_REDUCE_TASK_ENV), HADOOP_CREDENTIAL_PASSWORD_ENVVAR));
-
-    Assert.assertEquals(HADOOP_CREDSTORE_PASSWORD_ENVVAR_VAL, getValueFromJobConf(
-        jobConf.get(MRJobConfig.MR_AM_ADMIN_USER_ENV), HADOOP_CREDENTIAL_PASSWORD_ENVVAR));
-
-    // make sure TEZ AM environment points to HADOOP_CREDSTORE_PASSWORD
-    Assert.assertEquals(HADOOP_CREDSTORE_PASSWORD_ENVVAR_VAL, getValueFromJobConf(
-        jobConf.get(TezConfiguration.TEZ_AM_LAUNCH_ENV), HADOOP_CREDENTIAL_PASSWORD_ENVVAR));
-
-    Assert.assertTrue(jobConf.getStringCollection(MRJobConfig.MR_JOB_REDACTED_PROPERTIES)
-        .containsAll(REDACTED_PROPERTIES));
   }
 
   /*
@@ -161,16 +131,6 @@ public class TestHiveCredentialProviders {
 
     Assert.assertNull(getValueFromJobConf(jobConf.get(JobConf.MAPRED_REDUCE_TASK_ENV),
         HADOOP_CREDENTIAL_PASSWORD_ENVVAR));
-
-    Assert.assertNull(getValueFromJobConf(jobConf.get(MRJobConfig.MR_AM_ADMIN_USER_ENV),
-        HADOOP_CREDENTIAL_PASSWORD_ENVVAR));
-
-    Assert.assertNull(getValueFromJobConf(jobConf.get(TezConfiguration.TEZ_AM_LAUNCH_ENV),
-        HADOOP_CREDENTIAL_PASSWORD_ENVVAR));
-
-    REDACTED_PROPERTIES.forEach(property -> Assert.assertFalse(
-        jobConf.getStringCollection(MRJobConfig.MR_JOB_REDACTED_PROPERTIES)
-            .contains(property)));
   }
 
   /*
@@ -190,15 +150,6 @@ public class TestHiveCredentialProviders {
 
     Assert.assertEquals(HADOOP_CREDSTORE_PASSWORD_ENVVAR_VAL, getValueFromJobConf(
         jobConf.get(JobConf.MAPRED_REDUCE_TASK_ENV), HADOOP_CREDENTIAL_PASSWORD_ENVVAR));
-
-    Assert.assertEquals(HADOOP_CREDSTORE_PASSWORD_ENVVAR_VAL, getValueFromJobConf(
-        jobConf.get(MRJobConfig.MR_AM_ADMIN_USER_ENV), HADOOP_CREDENTIAL_PASSWORD_ENVVAR));
-
-    Assert.assertEquals(HADOOP_CREDSTORE_PASSWORD_ENVVAR_VAL, getValueFromJobConf(
-        jobConf.get(TezConfiguration.TEZ_AM_LAUNCH_ENV), HADOOP_CREDENTIAL_PASSWORD_ENVVAR));
-
-    Assert.assertTrue(jobConf.getStringCollection(MRJobConfig.MR_JOB_REDACTED_PROPERTIES)
-        .containsAll(REDACTED_PROPERTIES));
   }
 
   /*
@@ -214,12 +165,6 @@ public class TestHiveCredentialProviders {
         jobConf.get(HADOOP_CREDENTIAL_PROVIDER_PATH_CONFIG));
     Assert.assertNull(jobConf.get(JobConf.MAPRED_MAP_TASK_ENV));
     Assert.assertNull(jobConf.get(JobConf.MAPRED_REDUCE_TASK_ENV));
-    Assert.assertNull(jobConf.get(MRJobConfig.MR_AM_ADMIN_USER_ENV));
-    Assert.assertNull(jobConf.get(TezConfiguration.TEZ_AM_LAUNCH_ENV));
-
-    REDACTED_PROPERTIES.forEach(property -> Assert.assertFalse(
-        jobConf.getStringCollection(MRJobConfig.MR_JOB_REDACTED_PROPERTIES)
-            .contains(property)));
 
     resetConfig();
     setupConfigs(true, false, false, false);
@@ -229,12 +174,6 @@ public class TestHiveCredentialProviders {
         jobConf.get(HADOOP_CREDENTIAL_PROVIDER_PATH_CONFIG));
     Assert.assertNull(jobConf.get(JobConf.MAPRED_MAP_TASK_ENV));
     Assert.assertNull(jobConf.get(JobConf.MAPRED_REDUCE_TASK_ENV));
-    Assert.assertNull(jobConf.get(MRJobConfig.MR_AM_ADMIN_USER_ENV));
-    Assert.assertNull(jobConf.get(TezConfiguration.TEZ_AM_LAUNCH_ENV));
-
-    REDACTED_PROPERTIES.forEach(property -> Assert.assertFalse(
-        jobConf.getStringCollection(MRJobConfig.MR_JOB_REDACTED_PROPERTIES)
-            .contains(property)));
   }
 
   /*
@@ -254,15 +193,6 @@ public class TestHiveCredentialProviders {
 
     assertEquals(HADOOP_CREDSTORE_PASSWORD_ENVVAR_VAL, getValueFromJobConf(
         jobConf.get(JobConf.MAPRED_REDUCE_TASK_ENV), HADOOP_CREDENTIAL_PASSWORD_ENVVAR));
-
-    Assert.assertEquals(HADOOP_CREDSTORE_PASSWORD_ENVVAR_VAL, getValueFromJobConf(
-        jobConf.get(MRJobConfig.MR_AM_ADMIN_USER_ENV), HADOOP_CREDENTIAL_PASSWORD_ENVVAR));
-
-    Assert.assertEquals(HADOOP_CREDSTORE_PASSWORD_ENVVAR_VAL, getValueFromJobConf(
-        jobConf.get(TezConfiguration.TEZ_AM_LAUNCH_ENV), HADOOP_CREDENTIAL_PASSWORD_ENVVAR));
-
-    Assert.assertTrue(jobConf.getStringCollection(MRJobConfig.MR_JOB_REDACTED_PROPERTIES)
-        .containsAll(REDACTED_PROPERTIES));
   }
 
   /*
@@ -280,16 +210,6 @@ public class TestHiveCredentialProviders {
 
     assertNull(getValueFromJobConf(jobConf.get(JobConf.MAPRED_REDUCE_TASK_ENV),
         HADOOP_CREDENTIAL_PASSWORD_ENVVAR));
-
-    assertNull(getValueFromJobConf(jobConf.get(MRJobConfig.MR_AM_ADMIN_USER_ENV),
-        HADOOP_CREDENTIAL_PASSWORD_ENVVAR));
-
-    assertNull(getValueFromJobConf(jobConf.get(TezConfiguration.TEZ_AM_LAUNCH_ENV),
-        HADOOP_CREDENTIAL_PASSWORD_ENVVAR));
-
-    REDACTED_PROPERTIES.forEach(property -> Assert.assertFalse(
-        jobConf.getStringCollection(MRJobConfig.MR_JOB_REDACTED_PROPERTIES)
-            .contains(property)));
   }
 
   /*

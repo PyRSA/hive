@@ -24,7 +24,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
 
-import org.apache.hadoop.hive.metastore.conf.MetastoreConf;
 import org.apache.orc.CompressionKind;
 import org.apache.orc.TypeDescription;
 import org.slf4j.Logger;
@@ -82,7 +81,8 @@ public class OrcOutputFormat extends FileOutputFormat<NullWritable, OrcSerdeRow>
     public void write(NullWritable nullWritable,
                       OrcSerdeRow row) throws IOException {
       if (writer == null) {
-        init(row);
+        options.inspector(row.getInspector());
+        writer = OrcFile.createWriter(path, options);
       }
       writer.addRow(row.getRow());
     }
@@ -91,7 +91,8 @@ public class OrcOutputFormat extends FileOutputFormat<NullWritable, OrcSerdeRow>
     public void write(Writable row) throws IOException {
       OrcSerdeRow serdeRow = (OrcSerdeRow) row;
       if (writer == null) {
-        init(serdeRow);
+        options.inspector(serdeRow.getInspector());
+        writer = OrcFile.createWriter(path, options);
       }
       writer.addRow(serdeRow.getRow());
     }
@@ -118,14 +119,6 @@ public class OrcOutputFormat extends FileOutputFormat<NullWritable, OrcSerdeRow>
       stats.setRawDataSize(null == writer ? 0 : writer.getRawDataSize());
       stats.setRowCount(null == writer ? 0 : writer.getNumberOfRows());
       return stats;
-    }
-
-    private void init(OrcSerdeRow serdeRow) throws IOException {
-      options.inspector(serdeRow.getInspector());
-      writer = OrcFile.createWriter(path, options);
-      if (options.isCompaction()) {
-        AcidUtils.OrcAcidVersion.setAcidVersionInDataFile(writer);
-      }
     }
   }
 
@@ -162,7 +155,9 @@ public class OrcOutputFormat extends FileOutputFormat<NullWritable, OrcSerdeRow>
           schema.addField(columnNames.get(i),
               OrcInputFormat.convertTypeInfo(columnTypes.get(i)));
         }
-        LOG.debug("ORC schema = {}", schema);
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("ORC schema = " + schema);
+        }
         result.setSchema(schema);
       }
     }
@@ -272,11 +267,6 @@ public class OrcOutputFormat extends FileOutputFormat<NullWritable, OrcSerdeRow>
       stringifyObject(buffer, obj, inspector);
       return buffer.toString();
     }
-
-    @Override
-    public Path getUpdatedFilePath() {
-      return null;
-    }
   }
 
   @Override
@@ -298,14 +288,12 @@ public class OrcOutputFormat extends FileOutputFormat<NullWritable, OrcSerdeRow>
     if (!options.isWritingBase()) {
       opts.bufferSize(OrcRecordUpdater.DELTA_BUFFER_SIZE)
           .stripeSize(OrcRecordUpdater.DELTA_STRIPE_SIZE)
-          .blockPadding(false);
-      if(!MetastoreConf.getBoolVar(options.getConfiguration(),
-          MetastoreConf.ConfVars.COMPACTOR_MINOR_STATS_COMPRESSION)) {
-        opts.compress(CompressionKind.NONE).rowIndexStride(0);
-      }
+          .blockPadding(false)
+          .compress(CompressionKind.NONE)
+          .rowIndexStride(0);
     }
     final OrcRecordUpdater.KeyIndexBuilder watcher =
-        new OrcRecordUpdater.KeyIndexBuilder();
+        new OrcRecordUpdater.KeyIndexBuilder("compactor");
     opts.inspector(options.getInspector())
         .callback(watcher);
     final Writer writer = OrcFile.createWriter(filename, opts);

@@ -17,39 +17,23 @@
  */
 package org.apache.hadoop.hive.ql.parse.repl.load.log;
 
-import org.apache.hadoop.hive.ql.exec.repl.ReplStatsTracker;
 import org.apache.hadoop.hive.ql.parse.repl.load.log.state.IncrementalLoadBegin;
 import org.apache.hadoop.hive.ql.parse.repl.load.log.state.IncrementalLoadEnd;
 import org.apache.hadoop.hive.ql.parse.repl.load.log.state.IncrementalLoadEvent;
 import org.apache.hadoop.hive.ql.parse.repl.ReplLogger;
 import org.apache.hadoop.hive.ql.parse.repl.ReplState.LogTag;
 
-/**
- * IncrementalLoadLogger.
- *
- * Repllogger for Incremental Load.
- **/
-public class IncrementalLoadLogger extends ReplLogger<String> {
-  private final ReplStatsTracker replStatsTracker;
+public class IncrementalLoadLogger extends ReplLogger {
   private String dbName;
   private String dumpDir;
   private long numEvents;
   private long eventSeqNo;
-  private long currentEventTimestamp;
 
-  public IncrementalLoadLogger(String dbName, String dumpDir, int numEvents, ReplStatsTracker replStatsTracker) {
+  public IncrementalLoadLogger(String dbName, String dumpDir, int numEvents) {
     this.dbName = dbName;
     this.dumpDir = dumpDir;
     this.numEvents = numEvents;
     this.eventSeqNo = 0;
-    this.currentEventTimestamp = 0;
-    this.replStatsTracker = replStatsTracker;
-  }
-
-  public void initiateEventTimestamp(long timestamp) {
-    if (this.currentEventTimestamp == 0) {
-      this.currentEventTimestamp = timestamp;
-    }
   }
 
   @Override
@@ -60,19 +44,12 @@ public class IncrementalLoadLogger extends ReplLogger<String> {
   @Override
   public void eventLog(String eventId, String eventType) {
     eventSeqNo++;
-    long previousEventTimestamp = this.currentEventTimestamp;
-    IncrementalLoadEvent incEvent = new IncrementalLoadEvent(dbName,
-            eventId, eventType, eventSeqNo, numEvents, previousEventTimestamp, replStatsTracker);
-    incEvent.log(LogTag.EVENT_LOAD);
-    this.currentEventTimestamp = incEvent.getLoadTimeMillis();
+    (new IncrementalLoadEvent(dbName, eventId, eventType, eventSeqNo, numEvents))
+            .log(LogTag.EVENT_LOAD);
   }
 
   @Override
   public void endLog(String lastReplId) {
     (new IncrementalLoadEnd(dbName, numEvents, dumpDir, lastReplId)).log(LogTag.END);
-  }
-
-  public ReplStatsTracker getReplStatsTracker() {
-    return replStatsTracker;
   }
 }

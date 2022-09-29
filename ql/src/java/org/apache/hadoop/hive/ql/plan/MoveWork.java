@@ -19,68 +19,53 @@
 package org.apache.hadoop.hive.ql.plan;
 
 import java.io.Serializable;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 import org.apache.hadoop.hive.metastore.api.Partition;
 import org.apache.hadoop.hive.ql.exec.Utilities;
 import org.apache.hadoop.hive.ql.hooks.ReadEntity;
 import org.apache.hadoop.hive.ql.hooks.WriteEntity;
-import org.apache.hadoop.hive.ql.io.AcidUtils;
-import org.apache.hadoop.hive.ql.metadata.HiveException;
-import org.apache.hadoop.hive.ql.parse.ImportSemanticAnalyzer;
-import org.apache.hadoop.hive.ql.parse.repl.metric.ReplicationMetricCollector;
-import org.apache.hadoop.hive.ql.plan.BaseCopyWork;
-import org.apache.hadoop.hive.ql.plan.DeferredWorkContext;
 import org.apache.hadoop.hive.ql.plan.Explain.Level;
-
-import java.util.Collections;
-import java.util.TreeMap;
 
 /**
  * MoveWork.
  *
  */
 @Explain(displayName = "Move Operator", explainLevels = { Level.USER, Level.DEFAULT, Level.EXTENDED })
-public class MoveWork implements Serializable, BaseCopyWork {
+public class MoveWork implements Serializable {
   private static final long serialVersionUID = 1L;
   private LoadTableDesc loadTableWork;
   private LoadFileDesc loadFileWork;
   private LoadMultiFilesDesc loadMultiFilesWork;
   private boolean checkFileFormat;
   private boolean srcLocal;
-  private boolean needCleanTarget;
-  private boolean isReplication;
-  private String dumpDirectory;
-  private transient ReplicationMetricCollector metricCollector;
-  private boolean isCTAS;
 
   /**
    * ReadEntitites that are passed to the hooks.
    */
-  protected Set<ReadEntity> inputs;
+  protected HashSet<ReadEntity> inputs;
   /**
    * List of WriteEntities that are passed to the hooks.
    */
-  protected Set<WriteEntity> outputs;
+  protected HashSet<WriteEntity> outputs;
 
   /**
    * List of inserted partitions
    */
   protected List<Partition> movedParts;
-  private boolean isInReplicationScope = false;
+  private boolean isNoop;
 
   public MoveWork() {
   }
 
 
-  private MoveWork(Set<ReadEntity> inputs, Set<WriteEntity> outputs) {
+  private MoveWork(HashSet<ReadEntity> inputs, HashSet<WriteEntity> outputs) {
     this.inputs = inputs;
     this.outputs = outputs;
-    this.needCleanTarget = true;
   }
 
-  public MoveWork(Set<ReadEntity> inputs, Set<WriteEntity> outputs,
+  public MoveWork(HashSet<ReadEntity> inputs, HashSet<WriteEntity> outputs,
       final LoadTableDesc loadTableWork, final LoadFileDesc loadFileWork,
       boolean checkFileFormat, boolean srcLocal) {
     this(inputs, outputs);
@@ -94,26 +79,10 @@ public class MoveWork implements Serializable, BaseCopyWork {
     this.srcLocal = srcLocal;
   }
 
-  public MoveWork(Set<ReadEntity> inputs, Set<WriteEntity> outputs,
+  public MoveWork(HashSet<ReadEntity> inputs, HashSet<WriteEntity> outputs,
       final LoadTableDesc loadTableWork, final LoadFileDesc loadFileWork,
       boolean checkFileFormat) {
     this(inputs, outputs, loadTableWork, loadFileWork, checkFileFormat, false);
-  }
-
-  public MoveWork(boolean isCTAS, Set<ReadEntity> inputs, Set<WriteEntity> outputs, final LoadTableDesc loadTableWork,
-      final LoadFileDesc loadFileWork, boolean checkFileFormat) {
-    this(inputs, outputs, loadTableWork, loadFileWork, checkFileFormat);
-    this.isCTAS = isCTAS;
-  }
-
-  public MoveWork(Set<ReadEntity> inputs, Set<WriteEntity> outputs,
-                  final LoadTableDesc loadTableWork, final LoadFileDesc loadFileWork,
-                  boolean checkFileFormat, String dumpRoot, ReplicationMetricCollector metricCollector,
-                  boolean isReplication) {
-    this(inputs, outputs, loadTableWork, loadFileWork, checkFileFormat, false);
-    this.dumpDirectory = dumpRoot;
-    this.metricCollector = metricCollector;
-    this.isReplication = isReplication;
   }
 
   public MoveWork(final MoveWork o) {
@@ -124,10 +93,6 @@ public class MoveWork implements Serializable, BaseCopyWork {
     srcLocal = o.isSrcLocal();
     inputs = o.getInputs();
     outputs = o.getOutputs();
-    needCleanTarget = o.needCleanTarget;
-  }
-  public boolean isCTAS() {
-    return isCTAS;
   }
 
   @Explain(displayName = "tables", explainLevels = { Level.USER, Level.DEFAULT, Level.EXTENDED })
@@ -165,19 +130,19 @@ public class MoveWork implements Serializable, BaseCopyWork {
     this.checkFileFormat = checkFileFormat;
   }
 
-  public Set<ReadEntity> getInputs() {
+  public HashSet<ReadEntity> getInputs() {
     return inputs;
   }
 
-  public Set<WriteEntity> getOutputs() {
+  public HashSet<WriteEntity> getOutputs() {
     return outputs;
   }
 
-  public void setInputs(Set<ReadEntity> inputs) {
+  public void setInputs(HashSet<ReadEntity> inputs) {
     this.inputs = inputs;
   }
 
-  public void setOutputs(Set<WriteEntity> outputs) {
+  public void setOutputs(HashSet<WriteEntity> outputs) {
     this.outputs = outputs;
   }
 
@@ -188,53 +153,5 @@ public class MoveWork implements Serializable, BaseCopyWork {
   public void setSrcLocal(boolean srcLocal) {
     this.srcLocal = srcLocal;
   }
-
-  public boolean isNeedCleanTarget() {
-    return needCleanTarget;
-  }
-
-  public void setNeedCleanTarget(boolean needCleanTarget) {
-    this.needCleanTarget = needCleanTarget;
-  }
-
-  public void setIsInReplicationScope(boolean isInReplicationScope) {
-    this.isInReplicationScope = isInReplicationScope;
-  }
-
-  public ReplicationMetricCollector getMetricCollector() {
-    return metricCollector;
-  }
-
-  public String getDumpDirectory() {
-    return dumpDirectory;
-  }
-
-  public boolean isReplication() {
-    return isReplication;
-  }
-
-  public boolean getIsInReplicationScope() {
-    return this.isInReplicationScope;
-  }
-
-  public void initializeFromDeferredContext(DeferredWorkContext deferredContext) throws HiveException {
-    if (!deferredContext.isCalculated()) {
-      // Read metadata from metastore and populate the members of the context
-      ImportSemanticAnalyzer.setupDeferredContextFromMetadata(deferredContext);
-    }
-
-    if (deferredContext.inReplScope && AcidUtils.isTransactionalTable(deferredContext.table)) {
-      LoadMultiFilesDesc loadFilesWork = new LoadMultiFilesDesc(
-          Collections.singletonList(deferredContext.destPath),
-          Collections.singletonList(deferredContext.tgtPath),
-          true, null, null);
-      setMultiFilesDesc(loadFilesWork);
-      setNeedCleanTarget(deferredContext.replace);
-    } else {
-      LoadTableDesc loadTableWork = new LoadTableDesc(
-          deferredContext.loadPath, Utilities.getTableDesc(deferredContext.table), new TreeMap<>(), deferredContext.loadFileType, deferredContext.writeId);
-      loadTableWork.setStmtId(deferredContext.stmtId);
-      setLoadTableWork(loadTableWork);
-    }
-  }
+  
 }

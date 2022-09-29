@@ -1,4 +1,3 @@
---! qt:dataset:part
 set hive.mapred.mode=nonstrict;
 create table part2_n4( 
     p2_partkey INT,

@@ -17,19 +17,15 @@ package org.apache.hive.storage.jdbc;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.conf.Constants;
 import org.apache.hadoop.hive.metastore.HiveMetaHook;
-import org.apache.hadoop.hive.metastore.api.Table;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.metadata.HiveStorageHandler;
 import org.apache.hadoop.hive.ql.metadata.JarUtils;
 import org.apache.hadoop.hive.ql.plan.TableDesc;
 import org.apache.hadoop.hive.ql.security.authorization.HiveAuthorizationProvider;
-import org.apache.hadoop.hive.ql.security.authorization.HiveCustomStorageHandlerUtils;
 import org.apache.hadoop.hive.serde2.AbstractSerDe;
 import org.apache.hadoop.mapred.InputFormat;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.OutputFormat;
-import org.apache.hive.storage.jdbc.conf.DatabaseType;
-import org.apache.hive.storage.jdbc.conf.JdbcStorageConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,8 +37,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.net.URI;
-import java.net.URISyntaxException;
 
 public class JdbcStorageHandler implements HiveStorageHandler {
 
@@ -99,17 +93,6 @@ public class JdbcStorageHandler implements HiveStorageHandler {
   }
 
   @Override
-  public URI getURIForAuth(Table table) throws URISyntaxException {
-    Map<String, String> tableProperties = HiveCustomStorageHandlerUtils.getTableProperties(table);
-    DatabaseType dbType = DatabaseType.valueOf(
-      tableProperties.get(JdbcStorageConfig.DATABASE_TYPE.getPropertyName()));
-    String host_url = DatabaseType.METASTORE == dbType ?
-      "jdbc:metastore://" : tableProperties.get(Constants.JDBC_URL);
-    String table_name = tableProperties.get(Constants.JDBC_TABLE);
-    return new URI(host_url+"/"+table_name);
-  }
-
-  @Override
   public void configureInputJobCredentials(TableDesc tableDesc, Map<String, String> jobSecrets) {
     try {
       LOGGER.debug("Adding secrets to input job conf");
@@ -146,8 +129,8 @@ public class JdbcStorageHandler implements HiveStorageHandler {
 
     List<Class<?>> classesToLoad = new ArrayList<>();
     classesToLoad.add(org.apache.hive.storage.jdbc.JdbcInputSplit.class);
-    classesToLoad.add(org.apache.commons.dbcp2.BasicDataSourceFactory.class);
-    classesToLoad.add(org.apache.commons.pool2.impl.GenericObjectPool.class);
+    classesToLoad.add(org.apache.commons.dbcp.BasicDataSourceFactory.class);
+    classesToLoad.add(org.apache.commons.pool.impl.GenericObjectPool.class);
     // Adding mysql jdbc driver if exists
     try {
       classesToLoad.add(Class.forName("com.mysql.jdbc.Driver"));
@@ -166,10 +149,6 @@ public class JdbcStorageHandler implements HiveStorageHandler {
       classesToLoad.add(Class.forName("com.microsoft.sqlserver.jdbc.SQLServerDriver"));
     } catch (Exception e) {
     }
-    try {
-      classesToLoad.add(Class.forName("com.ibm.db2.jcc.DB2Driver"));
-    } catch (Exception e) {
-    } // Adding db2 jdbc driver if exists
     try {
       JarUtils.addDependencyJars(conf, classesToLoad);
     } catch (IOException e) {

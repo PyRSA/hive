@@ -37,18 +37,19 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.ContentSummary;
-import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
@@ -61,7 +62,9 @@ import org.apache.hadoop.hive.common.ValidWriteIdList;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.api.NotificationEvent;
-import org.apache.hadoop.hive.metastore.messaging.MessageBuilder;
+import org.apache.hadoop.hive.metastore.messaging.EventUtils;
+import org.apache.hadoop.hive.metastore.messaging.MessageFactory;
+import org.apache.hadoop.hive.ql.exec.Utilities;
 import org.apache.hadoop.hive.ql.hooks.Entity.Type;
 import org.apache.hadoop.hive.ql.hooks.ReadEntity;
 import org.apache.hadoop.hive.ql.io.AcidUtils;
@@ -191,7 +194,6 @@ public final class QueryResultsCache {
     private QueryInfo queryInfo;
     private FetchWork fetchWork;
     private Path cachedResultsPath;
-    private Set<FileStatus> cachedResultPaths;
 
     // Cache administration
     private long size;
@@ -211,9 +213,9 @@ public final class QueryResultsCache {
     }
 
     public String toString() {
-      return String.format("CacheEntry#%s query: [ %s ], status: %s, location: %s, size: %d",
-          System.identityHashCode(this), getQueryInfo().getLookupInfo().getQueryText(), status,
-          cachedResultsPath, size);
+      return "CacheEntry query: [" + getQueryInfo().getLookupInfo().getQueryText()
+          + "], status: " + status + ", location: " + cachedResultsPath
+          + ", size: " + size;
     }
 
     public boolean addReader() {
@@ -276,9 +278,8 @@ public final class QueryResultsCache {
 
     public FetchWork getFetchWork() {
       // FetchWork's sink is used to hold results, so each query needs a separate copy of FetchWork
-      FetchWork fetch = new FetchWork(fetchWork.getTblDir(), fetchWork.getTblDesc(), fetchWork.getLimit());
+      FetchWork fetch = new FetchWork(cachedResultsPath, fetchWork.getTblDesc(), fetchWork.getLimit());
       fetch.setCachedResult(true);
-      fetch.setFilesToFetch(this.cachedResultPaths);
       return fetch;
     }
 
@@ -296,7 +297,7 @@ public final class QueryResultsCache {
      *         false if the status changes from PENDING to INVALID
      */
     public boolean waitForValidStatus() {
-      LOG.info("Waiting on pending cacheEntry: {}", this);
+      LOG.info("Waiting on pending cacheEntry");
       long timeout = 1000;
 
       long startTime = System.nanoTime();
@@ -364,6 +365,7 @@ public final class QueryResultsCache {
     // Set up cache directory
     Path rootCacheDir = new Path(conf.getVar(HiveConf.ConfVars.HIVE_QUERY_RESULTS_CACHE_DIRECTORY));
     LOG.info("Initializing query results cache at {}", rootCacheDir);
+    Utilities.ensurePathIsWritable(rootCacheDir, conf);
 
     String currentCacheDirName = "results-" + UUID.randomUUID().toString();
     cacheDirPath = new Path(rootCacheDir, currentCacheDirName);
@@ -399,7 +401,7 @@ public final class QueryResultsCache {
         if (metrics != null) {
           registerMetrics(metrics, instance);
         }
-      } catch (Exception err) {
+      } catch (IOException err) {
         inited.set(false);
         throw err;
       }
@@ -410,13 +412,13 @@ public final class QueryResultsCache {
     return instance;
   }
 
-  public Path getCacheDirPath() {
-    return cacheDirPath;
-  }
-
   /**
    * Check if the cache contains an entry for the requested LookupInfo.
    * @param request
+   * @param addReader Should the reader count be incremented during the lookup.
+   *        This will ensure the returned entry can be used after the lookup.
+   *        If true, the caller will be responsible for decrementing the reader count
+   *        using CacheEntry.releaseReader().
    * @return  The cached result if there is a match in the cache, or null if no match is found.
    */
   public CacheEntry lookup(LookupInfo request) {
@@ -522,26 +524,30 @@ public final class QueryResultsCache {
    * @return
    */
   public boolean setEntryValid(CacheEntry cacheEntry, FetchWork fetchWork) {
+    String queryText = cacheEntry.getQueryText();
+    boolean dataDirMoved = false;
     Path queryResultsPath = null;
     Path cachedResultsPath = null;
 
     try {
-      // if we are here file sink op should have created files to fetch from
-      assert(fetchWork.getFilesToFetch() != null );
-
-      boolean requiresCaching = true;
+      boolean requiresMove = true;
       queryResultsPath = fetchWork.getTblDir();
       FileSystem resultsFs = queryResultsPath.getFileSystem(conf);
+      long resultSize;
+      if (resultsFs.exists(queryResultsPath)) {
+        ContentSummary cs = resultsFs.getContentSummary(queryResultsPath);
+        resultSize = cs.getLength();
+      } else {
+        // No actual result directory, no need to move anything.
+        cachedResultsPath = zeroRowsPath;
+        // Even if there are no results to move, at least check that we have permission
+        // to check the existence of zeroRowsPath, or the read using the cache will fail.
+        // A failure here will cause this query to not be added to the cache.
+        FileSystem cacheFs = cachedResultsPath.getFileSystem(conf);
+        boolean fakePathExists = cacheFs.exists(zeroRowsPath);
 
-      long resultSize = 0;
-      for(FileStatus fs:fetchWork.getFilesToFetch()) {
-        if(resultsFs.exists(fs.getPath())) {
-          resultSize +=  fs.getLen();
-        } else {
-          // No actual result directory, no need to cache anything.
-          requiresCaching = false;
-          break;
-        }
+        resultSize = 0;
+        requiresMove = false;
       }
 
       if (!shouldEntryBeAdded(cacheEntry, resultSize)) {
@@ -556,22 +562,20 @@ public final class QueryResultsCache {
           return false;
         }
 
-        if (requiresCaching) {
-          cacheEntry.cachedResultPaths = new HashSet<>();
-            for(FileStatus fs:fetchWork.getFilesToFetch()) {
-              cacheEntry.cachedResultPaths.add(fs);
-            }
-          LOG.info("Cached query result paths located at {} (size {}) for query '{}'",
-              queryResultsPath, resultSize, cacheEntry.getQueryText());
+        if (requiresMove) {
+          // Move the query results to the query cache directory.
+          cachedResultsPath = moveResultsToCacheDirectory(queryResultsPath);
+          dataDirMoved = true;
         }
+        LOG.info("Moved query results from {} to {} (size {}) for query '{}'",
+            queryResultsPath, cachedResultsPath, resultSize, queryText);
 
         // Create a new FetchWork to reference the new cache location.
         FetchWork fetchWorkForCache =
-            new FetchWork(fetchWork.getTblDir(), fetchWork.getTblDesc(), fetchWork.getLimit());
+            new FetchWork(cachedResultsPath, fetchWork.getTblDesc(), fetchWork.getLimit());
         fetchWorkForCache.setCachedResult(true);
-        fetchWorkForCache.setFilesToFetch(fetchWork.getFilesToFetch());
         cacheEntry.fetchWork = fetchWorkForCache;
-        //cacheEntry.cachedResultsPath = cachedResultsPath;
+        cacheEntry.cachedResultsPath = cachedResultsPath;
         cacheEntry.size = resultSize;
         this.cacheSize += resultSize;
 
@@ -588,10 +592,23 @@ public final class QueryResultsCache {
       incrementMetric(MetricsConstant.QC_VALID_ENTRIES);
       incrementMetric(MetricsConstant.QC_TOTAL_ENTRIES_ADDED);
     } catch (Exception err) {
-      String queryText = cacheEntry.getQueryText();
       LOG.error("Failed to create cache entry for query results for query: " + queryText, err);
-      cacheEntry.size = 0;
-      cacheEntry.cachedResultsPath = null;
+
+      if (dataDirMoved) {
+        // If data was moved from original location to cache directory, we need to move it back!
+        LOG.info("Restoring query results from {} back to {}", cachedResultsPath, queryResultsPath);
+        try {
+          FileSystem fs = cachedResultsPath.getFileSystem(conf);
+          fs.rename(cachedResultsPath, queryResultsPath);
+          cacheEntry.size = 0;
+          cacheEntry.cachedResultsPath = null;
+        } catch (Exception err2) {
+          String errMsg = "Failed cleanup during failed attempt to cache query: " + queryText;
+          LOG.error(errMsg);
+          throw new RuntimeException(errMsg);
+        }
+      }
+
       // Invalidate the entry. Rely on query cleanup to remove from lookup.
       cacheEntry.invalidate();
       return false;
@@ -771,6 +788,14 @@ public final class QueryResultsCache {
     }
 
     return true;
+  }
+
+  private Path moveResultsToCacheDirectory(Path queryResultsPath) throws IOException {
+    String dirName = UUID.randomUUID().toString();
+    Path cachedResultsPath = new Path(cacheDirPath, dirName);
+    FileSystem fs = cachedResultsPath.getFileSystem(conf);
+    fs.rename(queryResultsPath, cachedResultsPath);
+    return cachedResultsPath;
   }
 
   private boolean hasSpaceForCacheEntry(CacheEntry entry, long size) {
@@ -966,12 +991,12 @@ public final class QueryResultsCache {
       String tableName;
 
       switch (event.getEventType()) {
-      case MessageBuilder.ADD_PARTITION_EVENT:
-      case MessageBuilder.ALTER_PARTITION_EVENT:
-      case MessageBuilder.DROP_PARTITION_EVENT:
-      case MessageBuilder.ALTER_TABLE_EVENT:
-      case MessageBuilder.DROP_TABLE_EVENT:
-      case MessageBuilder.INSERT_EVENT:
+      case MessageFactory.ADD_PARTITION_EVENT:
+      case MessageFactory.ALTER_PARTITION_EVENT:
+      case MessageFactory.DROP_PARTITION_EVENT:
+      case MessageFactory.ALTER_TABLE_EVENT:
+      case MessageFactory.DROP_TABLE_EVENT:
+      case MessageFactory.INSERT_EVENT:
         dbName = event.getDbName();
         tableName = event.getTableName();
         break;

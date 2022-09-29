@@ -21,8 +21,6 @@ package org.apache.hadoop.hive.ql.plan;
 import java.io.Serializable;
 
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.hive.ql.ddl.table.create.CreateTableDesc;
-import org.apache.hadoop.hive.ql.ddl.view.create.CreateMaterializedViewDesc;
 import org.apache.hadoop.hive.ql.exec.Utilities;
 import org.apache.hadoop.hive.ql.io.AcidUtils;
 
@@ -38,9 +36,8 @@ public class LoadFileDesc extends LoadDesc implements Serializable {
   private String columns;
   private String columnTypes;
   private transient CreateTableDesc ctasCreateTableDesc;
-  private transient CreateMaterializedViewDesc createViewDesc;
+  private transient CreateViewDesc createViewDesc;
   private boolean isMmCtas;
-  private String moveTaskId;
 
   public LoadFileDesc(final LoadFileDesc o) {
     super(o.getSourcePath(), o.getWriteType());
@@ -54,14 +51,14 @@ public class LoadFileDesc extends LoadDesc implements Serializable {
     this.createViewDesc = o.createViewDesc;
   }
 
-  public LoadFileDesc(final CreateTableDesc createTableDesc, final CreateMaterializedViewDesc createViewDesc,
+  public LoadFileDesc(final CreateTableDesc createTableDesc, final CreateViewDesc createViewDesc,
       final Path sourcePath, final Path targetDir, final boolean isDfsDir,
       final String columns, final String columnTypes, AcidUtils.Operation writeType, boolean isMmCtas) {
     this(sourcePath, targetDir, isDfsDir, columns, columnTypes, writeType, isMmCtas);
     if (createTableDesc != null && createTableDesc.isCTAS()) {
       this.ctasCreateTableDesc = createTableDesc;
     }
-    if (createViewDesc != null) {
+    if (createViewDesc != null && createViewDesc.isMaterialized()) {
       this.createViewDesc = createViewDesc;
     }
   }
@@ -137,19 +134,11 @@ public class LoadFileDesc extends LoadDesc implements Serializable {
     return ctasCreateTableDesc;
   }
 
-  public CreateMaterializedViewDesc getCreateViewDesc() {
+  public CreateViewDesc getCreateViewDesc() {
     return createViewDesc;
   }
 
   public boolean isMmCtas() {
     return isMmCtas;
-  }
-
-  public String getMoveTaskId() {
-    return moveTaskId;
-  }
-
-  public void setMoveTaskId(String moveTaskId) {
-    this.moveTaskId = moveTaskId;
   }
 }

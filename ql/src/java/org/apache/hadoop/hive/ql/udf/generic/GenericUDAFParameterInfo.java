@@ -88,5 +88,4 @@ public interface GenericUDAFParameterInfo {
    */
   boolean isAllColumns();
 
-  boolean respectNulls();
 }

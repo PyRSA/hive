@@ -17,29 +17,21 @@
  */
 package org.apache.hadoop.hive.ql.udf.generic;
 
-import org.apache.hadoop.hive.ql.exec.Description;
 import org.apache.hadoop.hive.ql.exec.UDFArgumentException;
 import org.apache.hadoop.hive.ql.exec.UDFArgumentLengthException;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.TimestampLocalTZObjectInspector;
-import org.apache.hadoop.hive.serde2.objectinspector.primitive.TimestampObjectInspector;
 import org.apache.hadoop.io.LongWritable;
 
 /**
  * GenericUDFEpochMilli.
  */
-@Description(name = "to_epoch_milli",
-        value = "_FUNC_(timestamp) - Converts the specified timestamp to number of milliseconds since 1970-01-01",
-        extended = "Example:\n"
-                + "  > SELECT _FUNC_(cast('2012-02-11 04:30:00' as timestamp));" +
-                "1328934600000")
 public class GenericUDFEpochMilli extends GenericUDF {
 
   private transient final LongWritable result = new LongWritable();
-  private transient TimestampLocalTZObjectInspector tsWithLocalTzOi = null;
-  private transient TimestampObjectInspector tsOi = null;
+  private transient TimestampLocalTZObjectInspector oi;
 
   @Override
   public ObjectInspector initialize(ObjectInspector[] arguments) throws UDFArgumentException {
@@ -47,11 +39,7 @@ public class GenericUDFEpochMilli extends GenericUDF {
       throw new UDFArgumentLengthException(
           "The operator GenericUDFEpochMilli only accepts 1 argument.");
     }
-    if (arguments[0] instanceof TimestampObjectInspector) {
-      tsOi = (TimestampObjectInspector) arguments[0];
-    } else {
-      tsWithLocalTzOi = (TimestampLocalTZObjectInspector) arguments[0];
-    }
+    oi = (TimestampLocalTZObjectInspector) arguments[0];
     return PrimitiveObjectInspectorFactory.writableLongObjectInspector;
   }
 
@@ -61,10 +49,7 @@ public class GenericUDFEpochMilli extends GenericUDF {
     if (a0 == null) {
       return null;
     }
-
-    result.set(tsOi == null ?
-        tsWithLocalTzOi.getPrimitiveJavaObject(a0).getZonedDateTime().toInstant().toEpochMilli() :
-        tsOi.getPrimitiveJavaObject(a0).toEpochMilli());
+    result.set(oi.getPrimitiveJavaObject(a0).getZonedDateTime().toInstant().toEpochMilli());
     return result;
   }
 

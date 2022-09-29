@@ -43,6 +43,7 @@ import org.apache.hadoop.hive.ql.exec.ScriptOperator;
 import org.apache.hadoop.hive.ql.exec.SelectOperator;
 import org.apache.hadoop.hive.ql.exec.TableScanOperator;
 import org.apache.hadoop.hive.ql.exec.Utilities;
+import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.optimizer.correlation.ReduceSinkDeDuplication.ReduceSinkDeduplicateProcCtx;
 import org.apache.hadoop.hive.ql.parse.ParseContext;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
@@ -96,7 +97,7 @@ public final class CorrelationUtilities {
    * @param throwException if throw a exception when the input operator has multiple parents
    * @return the single parent or null when the input operator has multiple parents and
    *         throwException is false;
-   * @throws SemanticException
+   * @throws HiveException
    */
   protected static Operator<?> getSingleParent(Operator<?> operator,
       boolean throwException) throws SemanticException {
@@ -126,7 +127,7 @@ public final class CorrelationUtilities {
    * @param throwException if throw a exception when the input operator has multiple children
    * @return the single child or null when the input operator has multiple children and
    *         throwException is false;
-   * @throws SemanticException
+   * @throws HiveException
    */
   protected static Operator<?> getSingleChild(Operator<?> operator,
       boolean throwException) throws SemanticException {
@@ -383,24 +384,10 @@ public final class CorrelationUtilities {
   protected static SelectOperator replaceReduceSinkWithSelectOperator(ReduceSinkOperator childRS,
       ParseContext context, AbstractCorrelationProcCtx procCtx) throws SemanticException {
     RowSchema inputRS = childRS.getSchema();
-
-    List<String> columnNames = new ArrayList<String>();
-
-    for (String colName : childRS.getConf().getOutputValueColumnNames()) {
-      columnNames.add("VALUE." + colName);
-    }
-    for (String colName : childRS.getConf().getOutputKeyColumnNames()) {
-      columnNames.add("KEY." + colName);
-    }
-
-    List<ExprNodeDesc> colExprs = new ArrayList<ExprNodeDesc>();
-    colExprs.addAll(childRS.getConf().getKeyCols());
-    colExprs.addAll(childRS.getConf().getValueCols());
-
-    SelectDesc select = new SelectDesc(colExprs, columnNames);
+    SelectDesc select = new SelectDesc(childRS.getConf().getValueCols(), childRS.getConf().getOutputValueColumnNames());
 
     Operator<?> parent = getSingleParent(childRS);
-    parent.removeChild(childRS);
+    parent.getChildOperators().clear();
 
     SelectOperator sel = (SelectOperator) OperatorFactory.getAndMakeChild(
             select, new RowSchema(inputRS.getSignature()), parent);
@@ -490,7 +477,8 @@ public final class CorrelationUtilities {
    * @param newOperator the operator will be inserted between child and parent
    * @param child
    * @param parent
-   * @throws SemanticException
+   * @param context
+   * @throws HiveException
    */
   protected static void insertOperatorBetween(
       Operator<?> newOperator, Operator<?> parent, Operator<?> child)

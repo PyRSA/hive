@@ -43,7 +43,7 @@ public class UDFCos extends UDFMath {
    */
   @Override
   protected DoubleWritable doEvaluate(DoubleWritable a) {
-    result.set(StrictMath.cos(a.get()));
+    result.set(Math.cos(a.get()));
     return result;
   }
 

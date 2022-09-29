@@ -17,38 +17,33 @@
  */
 package org.apache.hadoop.hive.ql.parse.repl.load.message;
 
-import org.apache.hadoop.hive.common.TableName;
 import org.apache.hadoop.hive.metastore.messaging.AlterTableMessage;
-import org.apache.hadoop.hive.ql.ddl.DDLWork;
-import org.apache.hadoop.hive.ql.ddl.table.misc.truncate.TruncateTableDesc;
 import org.apache.hadoop.hive.ql.exec.Task;
 import org.apache.hadoop.hive.ql.exec.TaskFactory;
-import org.apache.hadoop.hive.ql.exec.repl.util.ReplUtils;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
+import org.apache.hadoop.hive.ql.plan.DDLWork;
+import org.apache.hadoop.hive.ql.plan.TruncateTableDesc;
 
+import java.io.Serializable;
+import java.util.Collections;
 import java.util.List;
 
 public class TruncateTableHandler extends AbstractMessageHandler {
   @Override
-  public List<Task<?>> handle(Context context) throws SemanticException {
+  public List<Task<? extends Serializable>> handle(Context context) throws SemanticException {
     AlterTableMessage msg = deserializer.getAlterTableMessage(context.dmd.getPayload());
-    final TableName tName = TableName.fromString(msg.getTable(), null,
-        context.isDbNameEmpty() ? msg.getDB() : context.dbName);
+    String actualDbName = context.isDbNameEmpty() ? msg.getDB() : context.dbName;
+    String actualTblName = context.isTableNameEmpty() ? msg.getTable() : context.tableName;
 
-    TruncateTableDesc truncateTableDesc = new TruncateTableDesc(tName, null, context.eventOnlyReplicationSpec());
-    truncateTableDesc.setWriteId(msg.getWriteId());
-    Task<DDLWork> truncateTableTask = TaskFactory.get(new DDLWork(readEntitySet, writeEntitySet,
-                truncateTableDesc, true, context.getDumpDirectory(),
-                context.getMetricCollector()), context.hiveConf);
+    TruncateTableDesc truncateTableDesc = new TruncateTableDesc(
+            actualDbName + "." + actualTblName,
+            null, context.eventOnlyReplicationSpec());
+    Task<DDLWork> truncateTableTask = TaskFactory.get(
+        new DDLWork(readEntitySet, writeEntitySet, truncateTableDesc), context.hiveConf);
 
-    context.log.debug("Added truncate tbl task : {}:{}:{}", truncateTableTask.getId(),
-        truncateTableDesc.getTableName(), truncateTableDesc.getWriteId());
-    updatedMetadata.set(context.dmd.getEventTo().toString(), tName.getDb(), tName.getTable(), null);
-
-    try {
-      return ReplUtils.addChildTask(truncateTableTask);
-    } catch (Exception e) {
-      throw new SemanticException(e.getMessage());
-    }
+    context.log.debug("Added truncate tbl task : {}:{}", truncateTableTask.getId(),
+        truncateTableDesc.getTableName());
+    updatedMetadata.set(context.dmd.getEventTo().toString(), actualDbName, actualTblName, null);
+    return Collections.singletonList(truncateTableTask);
   }
 }

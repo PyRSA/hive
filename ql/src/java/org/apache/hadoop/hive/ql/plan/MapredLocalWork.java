@@ -50,6 +50,8 @@ public class MapredLocalWork implements Serializable {
   private BucketMapJoinContext bucketMapjoinContext;
   private Path tmpPath;
   private String stageID;
+  // Temp HDFS path for Spark HashTable sink
+  private Path tmpHDFSPath;
 
   private List<Operator<? extends OperatorDesc>> dummyParentOp;
   private Map<MapJoinOperator, List<Operator<? extends OperatorDesc>>> directFetchOp;
@@ -171,6 +173,14 @@ public class MapredLocalWork implements Serializable {
 
   public Path getTmpPath() {
     return tmpPath;
+  }
+
+  public void setTmpHDFSPath(Path tmpPath) {
+    this.tmpHDFSPath = tmpPath;
+  }
+
+  public Path getTmpHDFSPath() {
+    return tmpHDFSPath;
   }
 
   public String getBucketFileName(String bigFileName) {

@@ -1,4 +1,3 @@
---! qt:dataset:src
 set hive.security.authorization.manager=org.apache.hadoop.hive.ql.security.authorization.DefaultHiveAuthorizationProvider;
 
 create table my_passwd (
@@ -12,6 +11,7 @@ insert into my_passwd values
                       ("Prasanth", 4),
                       ("Gopal", 5),
                       ("Sergey", 6);
+
 
 set hive.cbo.enable=false;
 create view my_passwd_vw as select * from my_passwd limit 3;

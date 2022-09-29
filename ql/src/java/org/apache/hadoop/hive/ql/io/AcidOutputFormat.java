@@ -51,40 +51,24 @@ public interface AcidOutputFormat<K extends WritableComparable, V> extends HiveO
     private Reporter reporter;
     private long minimumWriteId;
     private long maximumWriteId;
-    private Integer attemptId;
-    /**
-     * actual bucketId (as opposed to bucket property via BucketCodec)
-     */
     private int bucketId;
+    /**
+     * Based on {@link org.apache.hadoop.hive.ql.metadata.Hive#mvFile(HiveConf, FileSystem, Path, FileSystem, Path, boolean, boolean)}
+     * _copy_N starts with 1.
+     */
+    private int copyNumber = 0;
     private PrintStream dummyStream = null;
     private boolean oldStyle = false;
     private int recIdCol = -1;  // Column the record identifier is in, -1 indicates no record id
     //unique within a transaction
-    /**
-     * todo: Link to AcidUtils?
-     */
     private int statementId = 0;
     private Path finalDestination;
-    /**
-     * todo: link to AcidUtils?
-     */
-    private long visibilityTxnId = 0;
-    private boolean temporary = false;
-
-    private final boolean writeVersionFile;
-    private int maxStmtId = -1;
-
     /**
      * Create the options object.
      * @param conf Use the given configuration
      */
     public Options(Configuration conf) {
       this.configuration = conf;
-      if (conf != null) {
-        writeVersionFile = HiveConf.getBoolVar(configuration, HiveConf.ConfVars.HIVE_WRITE_ACID_VERSION_FILE);
-      } else {
-        writeVersionFile = true;
-      }
     }
 
     /**
@@ -202,6 +186,18 @@ public interface AcidOutputFormat<K extends WritableComparable, V> extends HiveO
     }
 
     /**
+     * Multiple inserts into legacy (pre-acid) tables can generate multiple copies of each bucket
+     * file.
+     * @see org.apache.hadoop.hive.ql.exec.Utilities#COPY_KEYWORD
+     * @param copyNumber the number of the copy ( > 0)
+     * @return this
+     */
+    public Options copyNumber(int copyNumber) {
+      this.copyNumber = copyNumber;
+      return this;
+    }
+
+    /**
      * Whether it should use the old style (0000000_0) filenames.
      * @param value should use the old style names
      * @return this
@@ -232,11 +228,6 @@ public interface AcidOutputFormat<K extends WritableComparable, V> extends HiveO
       return this;
     }
 
-    public Options attemptId(Integer attemptId) {
-      this.attemptId = attemptId;
-      return this;
-    }
-
     /**
      * @since 1.3.0
      * This can be set to -1 to make the system generate old style (delta_xxxx_yyyy) file names.
@@ -259,10 +250,6 @@ public interface AcidOutputFormat<K extends WritableComparable, V> extends HiveO
      */
     public Options finalDestination(Path p) {
       this.finalDestination = p;
-      return this;
-    }
-    public Options visibilityTxnId(long visibilityTxnId) {
-      this.visibilityTxnId = visibilityTxnId;
       return this;
     }
 
@@ -310,10 +297,6 @@ public interface AcidOutputFormat<K extends WritableComparable, V> extends HiveO
       return bucketId;
     }
 
-    public Integer getAttemptId() {
-      return attemptId;
-    }
-
     public int getRecordIdColumn() {
       return recIdCol;
     }
@@ -328,33 +311,11 @@ public interface AcidOutputFormat<K extends WritableComparable, V> extends HiveO
     public int getStatementId() {
       return statementId;
     }
+    public int getCopyNumber() {
+      return copyNumber;
+    }
     public Path getFinalDestination() {
       return finalDestination;
-    }
-    public long getVisibilityTxnId() {
-      return visibilityTxnId;
-    }
-
-    public boolean isWriteVersionFile() {
-      return writeVersionFile;
-    }
-
-    public Options temporary(boolean temporary) {
-      this.temporary = temporary;
-      return this;
-    }
-
-    public boolean isTemporary() {
-      return temporary;
-    }
-
-    public Options maxStmtId(int maxStmtId) {
-      this.maxStmtId = maxStmtId;
-      return this;
-    }
-
-    public int getMaxStmtId() {
-      return maxStmtId;
     }
   }
 

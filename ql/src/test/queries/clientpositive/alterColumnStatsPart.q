@@ -1,5 +1,6 @@
 set hive.stats.column.autogather=false;
 set hive.mapred.mode=nonstrict;
+set hive.exec.dynamic.partition.mode=nonstrict;
 
 drop table p;
 

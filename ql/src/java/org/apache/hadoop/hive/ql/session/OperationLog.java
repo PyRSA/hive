@@ -17,35 +17,25 @@
  */
 package org.apache.hadoop.hive.ql.session;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
-import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-
-import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.io.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.*;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * OperationLog wraps the actual operation log file, and provides interface
  * for accessing, reading, writing, and removing the file.
  */
 public class OperationLog {
-  private static final Logger LOG = LoggerFactory.getLogger(OperationLog.class);
+  private static final Logger LOG = LoggerFactory.getLogger(OperationLog.class.getName());
 
   private final String operationName;
-
   private final LogFile logFile;
   // If in test mode then the LogDivertAppenderForTest created an extra log file containing only
   // the output needed for the qfile results.
@@ -54,10 +44,8 @@ public class OperationLog {
   // requested.
   private final boolean isShortLogs;
   // True if the logs should be removed after the operation. Should be used only in test mode
-  // or the historic operation log is enabled
   private final boolean isRemoveLogs;
-
-  private final LoggingLevel opLoggingLevel;
+  private LoggingLevel opLoggingLevel = LoggingLevel.UNKNOWN;
 
   public enum LoggingLevel {
     NONE, EXECUTION, PERFORMANCE, VERBOSE, UNKNOWN
@@ -70,8 +58,6 @@ public class OperationLog {
     if (hiveConf.getBoolVar(HiveConf.ConfVars.HIVE_SERVER2_LOGGING_OPERATION_ENABLED)) {
       String logLevel = hiveConf.getVar(HiveConf.ConfVars.HIVE_SERVER2_LOGGING_OPERATION_LEVEL);
       opLoggingLevel = getLoggingLevel(logLevel);
-    } else {
-      opLoggingLevel = LoggingLevel.UNKNOWN;
     }
 
     // If in test mod create a test log file which will contain only logs which are supposed to
@@ -88,24 +74,20 @@ public class OperationLog {
     } else {
       testLogFile = null;
       isShortLogs = false;
-      // If the historic operation log is enabled, don't remove it, the operation log will be cleaned by
-      // a daemon when the query info of the operation is no longer found at webui
-      isRemoveLogs = !hiveConf.getBoolVar(HiveConf.ConfVars.HIVE_SERVER2_HISTORIC_OPERATION_LOG_ENABLED);
+      isRemoveLogs = true;
     }
   }
 
   public static LoggingLevel getLoggingLevel (String mode) {
-    String m = StringUtils.defaultString(mode).toLowerCase();
-    switch (m) {
-    case "none":
+    if (mode.equalsIgnoreCase("none")) {
       return LoggingLevel.NONE;
-    case "execution":
+    } else if (mode.equalsIgnoreCase("execution")) {
       return LoggingLevel.EXECUTION;
-    case "verbose":
+    } else if (mode.equalsIgnoreCase("verbose")) {
       return LoggingLevel.VERBOSE;
-    case "performance":
+    } else if (mode.equalsIgnoreCase("performance")) {
       return LoggingLevel.PERFORMANCE;
-    default:
+    } else {
       return LoggingLevel.UNKNOWN;
     }
   }
@@ -123,8 +105,11 @@ public class OperationLog {
    */
   public List<String> readOperationLog(boolean isFetchFirst, long maxRows)
       throws SQLException {
-    LogFile lf = (isShortLogs) ? testLogFile : logFile;
-    return lf.read(isFetchFirst, maxRows);
+    if (isShortLogs) {
+      return testLogFile.read(isFetchFirst, maxRows);
+    } else {
+      return logFile.read(isFetchFirst, maxRows);
+    }
   }
 
   /**
@@ -136,7 +121,7 @@ public class OperationLog {
       logFile.close(isRemoveLogs);
       testLogFile.close(isRemoveLogs);
     } else {
-      logFile.close(isRemoveLogs);
+      logFile.close(true);
     }
   }
 
@@ -159,10 +144,8 @@ public class OperationLog {
       if (isFetchFirst) {
         resetIn();
       }
-      if (maxRows >= (long) Integer.MAX_VALUE) {
-        throw new SQLException("Cannot support loading this many rows: " + maxRows);
-      }
-      return readResults((int)maxRows);
+
+      return readResults(maxRows);
     }
 
     /**
@@ -171,57 +154,58 @@ public class OperationLog {
      */
     synchronized void close(boolean removeLog) {
       try {
-        resetIn();
-        if (removeLog && !isRemoved) {
-          if (file.exists()) {
-            FileUtils.forceDelete(file);
-          }
+        if (in != null) {
+          in.close();
+        }
+        if (!isRemoved && removeLog && file.exists()) {
+          FileUtils.forceDelete(file);
           isRemoved = true;
         }
-      } catch (IOException e) {
-        LOG.error("Failed to remove corresponding log file of operation: {}", operationName, e);
+      } catch (Exception e) {
+        LOG.error("Failed to remove corresponding log file of operation: " + operationName, e);
       }
     }
 
     private void resetIn() {
-      IOUtils.closeStream(in);
-      in = null;
+      if (in != null) {
+        IOUtils.closeStream(in);
+        in = null;
+      }
     }
 
-    private List<String> readResults(final int nLines) throws SQLException {
-      final List<String> logs = new ArrayList<String>();
-      int readCount = (nLines <= 0) ? Integer.MAX_VALUE : nLines;
-
+    private List<String> readResults(long nLines) throws SQLException {
+      List<String> logs = new ArrayList<String>();
       if (in == null) {
         try {
-          in = new BufferedReader(new InputStreamReader(
-              new FileInputStream(file), StandardCharsets.UTF_8));
+          in = new BufferedReader(new InputStreamReader(new FileInputStream(file)));
+          // Adding name of the log file in an extra log line, so it is easier to find
+          // the original if there is a test error
           if (isShortLogs) {
-            // Adding name of the log file in an extra log line, so it is easier to find
-            // the original if there is a test error
             logs.add("Reading log file: " + file);
-            readCount--;
+            nLines--;
           }
         } catch (FileNotFoundException e) {
-          return Collections.emptyList();
+          return logs;
         }
       }
 
-      try {
-        while (readCount > 0) {
-          final String line = in.readLine();
-          readCount--;
-          final boolean added = CollectionUtils.addIgnoreNull(logs, line);
-          if (!added) {
+      String line = "";
+      // if nLines <= 0, read all lines in log file.
+      for (int i = 0; i < nLines || nLines <= 0; i++) {
+        try {
+          line = in.readLine();
+          if (line == null) {
             break;
+          } else {
+            logs.add(line);
           }
-        }
-      } catch (IOException e) {
-        if (isRemoved) {
-          throw new SQLException("The operation has been closed and its log file " +
-            file.getAbsolutePath() + " will be removed", e);
-        } else {
-          throw new SQLException("Reading operation log file encountered an exception", e);
+        } catch (IOException e) {
+          if (isRemoved) {
+            throw new SQLException("The operation has been closed and its log file " +
+                file.getAbsolutePath() + " has been removed.", e);
+          } else {
+            throw new SQLException("Reading operation log file encountered an exception: ", e);
+          }
         }
       }
       return logs;

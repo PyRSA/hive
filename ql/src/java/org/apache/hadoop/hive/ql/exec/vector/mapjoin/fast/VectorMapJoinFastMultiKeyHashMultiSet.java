@@ -24,7 +24,6 @@ import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.io.BytesWritable;
 
 import com.google.common.annotations.VisibleForTesting;
-import org.apache.hive.common.util.HashCodeUtil;
 
 /*
  * An multi-key hash multi-set optimized for vector map join.
@@ -44,16 +43,13 @@ public class VectorMapJoinFastMultiKeyHashMultiSet
       testKeyBytesWritable = new BytesWritable();
     }
     testKeyBytesWritable.set(currentKey, 0, currentKey.length);
-    long hashCode = HashCodeUtil.murmurHash(currentKey, 0, currentKey.length);
-    putRow(hashCode, testKeyBytesWritable, null);
+    putRow(testKeyBytesWritable, null);
   }
 
   public VectorMapJoinFastMultiKeyHashMultiSet(
-      boolean isFullOuter,
-      int initialCapacity, float loadFactor, int writeBuffersSize, long estimatedKeyCount) {
-    super(
-        isFullOuter,
-        initialCapacity, loadFactor, writeBuffersSize, estimatedKeyCount);
+        boolean isOuterJoin,
+        int initialCapacity, float loadFactor, int writeBuffersSize, long estimatedKeyCount) {
+    super(initialCapacity, loadFactor, writeBuffersSize, estimatedKeyCount);
   }
 
   @Override

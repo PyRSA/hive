@@ -18,7 +18,6 @@
 
 package org.apache.hadoop.hive.ql.exec.vector;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -355,7 +354,7 @@ public class VectorAssignRow {
       ColumnVector columnVector, int batchIndex, TypeInfo targetTypeInfo, Object object) {
 
     if (object == null) {
-      assignNullRowColumn(columnVector, batchIndex, targetTypeInfo);
+      VectorizedBatchUtil.setNullColIsNullValue(columnVector, batchIndex);
       return;
     }
     switch (targetTypeInfo.getCategory()) {
@@ -515,22 +514,12 @@ public class VectorAssignRow {
           }
           break;
         case DECIMAL:
-          if (columnVector instanceof DecimalColumnVector) {
-            if (object instanceof HiveDecimal) {
-              ((DecimalColumnVector) columnVector).set(
-                  batchIndex, (HiveDecimal) object);
-            } else {
-              ((DecimalColumnVector) columnVector).set(
-                  batchIndex, (HiveDecimalWritable) object);
-            }
+          if (object instanceof HiveDecimal) {
+            ((DecimalColumnVector) columnVector).set(
+                batchIndex, (HiveDecimal) object);
           } else {
-            if (object instanceof HiveDecimal) {
-              ((Decimal64ColumnVector) columnVector).set(
-                  batchIndex, (HiveDecimal) object);
-            } else {
-              ((Decimal64ColumnVector) columnVector).set(
-                  batchIndex, (HiveDecimalWritable) object);
-            }
+            ((DecimalColumnVector) columnVector).set(
+                batchIndex, (HiveDecimalWritable) object);
           }
           break;
         case INTERVAL_YEAR_MONTH:
@@ -635,24 +624,7 @@ public class VectorAssignRow {
     columnVector.isNull[batchIndex] = false;
   }
 
-  private void assignNullRowColumn(
-    ColumnVector columnVector, int batchIndex, TypeInfo targetTypeInfo) {
-
-    VectorizedBatchUtil.setNullColIsNullValue(columnVector, batchIndex);     
-    
-    if (targetTypeInfo.getCategory() == Category.STRUCT) {
-      final StructColumnVector structColumnVector = (StructColumnVector) columnVector;
-      final StructTypeInfo targetStructTypeInfo = (StructTypeInfo) targetTypeInfo;
-      final List<TypeInfo> targetFieldTypeInfos = targetStructTypeInfo.getAllStructFieldTypeInfos();
-      final int size = targetFieldTypeInfos.size();
-      
-      for (int i = 0; i < size; i++) {
-        assignRowColumn(structColumnVector.fields[i], batchIndex, targetFieldTypeInfos.get(i), null);
-      }
-    }
-  }
-
-    /**
+  /**
    * Convert row's column object and then assign it the ColumnVector at batchIndex
    * in the VectorizedRowBatch.
    *
@@ -1009,17 +981,6 @@ public class VectorAssignRow {
         assignConvertRowColumn(batch, batchIndex, i, objects[i]);
       } else {
         assignRowColumn(batch, batchIndex, i, objects[i]);
-      }
-    }
-  }
-
-  public void assignRow(VectorizedRowBatch batch, int batchIndex, ArrayList<Object> objectList) {
-    final int count = isConvert.length;
-    for (int i = 0; i < count; i++) {
-      if (isConvert[i]) {
-        assignConvertRowColumn(batch, batchIndex, i, objectList.get(i));
-      } else {
-        assignRowColumn(batch, batchIndex, i, objectList.get(i));
       }
     }
   }

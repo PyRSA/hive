@@ -17,7 +17,7 @@
  */
 package org.apache.hadoop.hive.ql.exec.repl.bootstrap.load;
 
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.metastore.api.Function;
@@ -26,10 +26,9 @@ import org.apache.hadoop.hive.ql.ErrorMsg;
 import org.apache.hadoop.hive.ql.exec.Task;
 import org.apache.hadoop.hive.ql.exec.TaskFactory;
 import org.apache.hadoop.hive.ql.exec.repl.ReplStateLogWork;
-import org.apache.hadoop.hive.ql.exec.repl.util.AddDependencyToLeaves;
+import org.apache.hadoop.hive.ql.exec.repl.bootstrap.AddDependencyToLeaves;
 import org.apache.hadoop.hive.ql.exec.repl.bootstrap.events.FunctionEvent;
 import org.apache.hadoop.hive.ql.exec.repl.bootstrap.load.util.Context;
-import org.apache.hadoop.hive.ql.exec.repl.util.TaskTracker;
 import org.apache.hadoop.hive.ql.exec.util.DAGTraversal;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.parse.EximUtil;
@@ -38,7 +37,6 @@ import org.apache.hadoop.hive.ql.parse.repl.ReplLogger;
 import org.apache.hadoop.hive.ql.parse.repl.load.MetaData;
 import org.apache.hadoop.hive.ql.parse.repl.load.message.CreateFunctionHandler;
 import org.apache.hadoop.hive.ql.parse.repl.load.message.MessageHandler;
-import org.apache.hadoop.hive.ql.parse.repl.metric.ReplicationMetricCollector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,35 +54,20 @@ public class LoadFunction {
   private final FunctionEvent event;
   private final String dbNameToLoadIn;
   private final TaskTracker tracker;
-  String dumpDirectory;
-  private final ReplicationMetricCollector metricCollector;
 
   public LoadFunction(Context context, ReplLogger replLogger, FunctionEvent event,
-                      String dbNameToLoadIn, TaskTracker existingTracker, ReplicationMetricCollector metricCollector) {
+                      String dbNameToLoadIn, TaskTracker existingTracker) {
     this.context = context;
     this.replLogger = replLogger;
     this.event = event;
     this.dbNameToLoadIn = dbNameToLoadIn;
     this.tracker = new TaskTracker(existingTracker);
-    this.metricCollector = metricCollector;
   }
 
-  public LoadFunction(Context context, ReplLogger replLogger, FunctionEvent event,
-                      String dbNameToLoadIn, TaskTracker existingTracker,
-                      String dumpDirectory, ReplicationMetricCollector metricCollector) {
-    this.context = context;
-    this.replLogger = replLogger;
-    this.event = event;
-    this.dbNameToLoadIn = dbNameToLoadIn;
-    this.tracker = new TaskTracker(existingTracker);
-    this.dumpDirectory = dumpDirectory;
-    this.metricCollector = metricCollector;
-  }
-
-  private void createFunctionReplLogTask(List<Task<?>> functionTasks,
+  private void createFunctionReplLogTask(List<Task<? extends Serializable>> functionTasks,
                                          String functionName) {
-    ReplStateLogWork replLogWork = new ReplStateLogWork(replLogger, functionName, dumpDirectory, metricCollector);
-    Task<ReplStateLogWork> replLogTask = TaskFactory.get(replLogWork, context.hiveConf);
+    ReplStateLogWork replLogWork = new ReplStateLogWork(replLogger, functionName);
+    Task<ReplStateLogWork> replLogTask = TaskFactory.get(replLogWork);
     DAGTraversal.traverse(functionTasks, new AddDependencyToLeaves(replLogTask));
   }
 
@@ -98,10 +81,10 @@ public class LoadFunction {
         return tracker;
       }
       CreateFunctionHandler handler = new CreateFunctionHandler();
-      List<Task<?>> tasks = handler.handle(
+      List<Task<? extends Serializable>> tasks = handler.handle(
           new MessageHandler.Context(
-              dbNameToLoadIn, fromPath.toString(), null, null, context.hiveConf,
-              context.hiveDb, context.nestedContext, LOG, dumpDirectory, metricCollector)
+              dbNameToLoadIn, null, fromPath.toString(), null, null, context.hiveConf,
+              context.hiveDb, context.nestedContext, LOG)
       );
       createFunctionReplLogTask(tasks, handler.getFunctionName());
       tasks.forEach(tracker::addTask);

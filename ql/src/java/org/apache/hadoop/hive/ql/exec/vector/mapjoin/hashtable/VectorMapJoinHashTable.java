@@ -21,7 +21,6 @@ package org.apache.hadoop.hive.ql.exec.vector.mapjoin.hashtable;
 import java.io.IOException;
 
 import org.apache.hadoop.hive.common.MemoryEstimate;
-import org.apache.hadoop.hive.ql.exec.persistence.MatchTracker;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.serde2.SerDeException;
 import org.apache.hadoop.io.BytesWritable;
@@ -32,31 +31,18 @@ import org.apache.hadoop.io.BytesWritable;
  */
 public interface VectorMapJoinHashTable extends MemoryEstimate {
 
-  /**
-   * @param hashCode current HashCode to avoid re-computation
-   * @param currentKey The current Key in bytes
-   * @param currentValue The current Value in bytes
-   */
-  void putRow(long hashCode, BytesWritable currentKey, BytesWritable currentValue)
-      throws SerDeException, HiveException, IOException;
 
-  /**
-   *
+  /*
    * @param currentKey
-   *          The key to check for existence.
-   * @return true
-   *          If HashTable contains the given key.
+   *          The current key.
+   * @param currentValue
+   *          The current value.
    */
-  boolean containsLongKey(long currentKey);
+  void putRow(BytesWritable currentKey, BytesWritable currentValue)
+      throws SerDeException, HiveException, IOException;
 
   /**
    * Get hash table size
    */
   int size();
-
-  MatchTracker createMatchTracker();
-
-  VectorMapJoinNonMatchedIterator createNonMatchedIterator(MatchTracker matchTracker);
-
-  int spillPartitionId();
 }

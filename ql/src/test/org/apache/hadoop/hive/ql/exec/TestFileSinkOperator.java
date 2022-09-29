@@ -283,10 +283,10 @@ public class TestFileSinkOperator {
       partCols.add(new ExprNodeColumnDesc(TypeInfoFactory.stringTypeInfo, PARTCOL_NAME, "a", true));
       Map<String, String> partColMap= new LinkedHashMap<String, String>(1);
       partColMap.put(PARTCOL_NAME, null);
-      DynamicPartitionCtx dpCtx = new DynamicPartitionCtx(partColMap, "Sunday", 100);
+      DynamicPartitionCtx dpCtx = new DynamicPartitionCtx(null, partColMap, "Sunday", 100);
       //todo: does this need the finalDestination?
       desc = new FileSinkDesc(basePath, tableDesc, false, 1, false,
-          false, 1, 1, partCols, dpCtx, null, null, false, false, false, false, false, writeType, false);
+          false, 1, 1, partCols, dpCtx, null, null, false, false);
     } else {
       desc = new FileSinkDesc(basePath, tableDesc, false);
     }
@@ -705,8 +705,7 @@ public class TestFileSinkOperator {
                                               int bucket,
                                               ValidWriteIdList validWriteIdList,
                                               Path baseDirectory,
-                                              Path[] deltaDirectory,
-                                              Map<String,Integer> deltaToAttemptId) throws
+                                              Path[] deltaDirectory) throws
         IOException {
       return null;
     }
@@ -779,11 +778,6 @@ public class TestFileSinkOperator {
         public long getBufferedRowCount() {
           return records.size();
         }
-
-        @Override
-        public Path getUpdatedFilePath() {
-          return null;
-        }
       };
     }
 
@@ -839,8 +833,8 @@ public class TestFileSinkOperator {
   public static class TFSOSerDe extends AbstractSerDe {
 
     @Override
-    public void initialize(Configuration configuration, Properties tableProperties, Properties partitionProperties)
-        throws SerDeException {
+    public void initialize(Configuration conf, Properties tbl) throws SerDeException {
+
     }
 
     @Override
@@ -862,6 +856,11 @@ public class TestFileSinkOperator {
 
     @Override
     public ObjectInspector getObjectInspector() throws SerDeException {
+      return null;
+    }
+
+    @Override
+    public SerDeStats getSerDeStats() {
       return null;
     }
   }

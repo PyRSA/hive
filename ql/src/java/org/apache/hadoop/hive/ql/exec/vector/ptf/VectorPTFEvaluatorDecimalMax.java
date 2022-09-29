@@ -18,10 +18,13 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.ptf;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.hive.common.type.FastHiveDecimal;
 import org.apache.hadoop.hive.common.type.HiveDecimal;
-import org.apache.hadoop.hive.ql.exec.vector.ColumnVector.Type;
 import org.apache.hadoop.hive.ql.exec.vector.DecimalColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
+import org.apache.hadoop.hive.ql.exec.vector.ColumnVector.Type;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorExpression;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.plan.ptf.WindowFrameDef;
@@ -34,6 +37,10 @@ import com.google.common.base.Preconditions;
  */
 public class VectorPTFEvaluatorDecimalMax extends VectorPTFEvaluatorBase {
 
+  private static final long serialVersionUID = 1L;
+  private static final String CLASS_NAME = VectorPTFEvaluatorDecimalMax.class.getName();
+  private static final Log LOG = LogFactory.getLog(CLASS_NAME);
+
   protected boolean isGroupResultNull;
   protected HiveDecimalWritable max;
 
@@ -44,8 +51,7 @@ public class VectorPTFEvaluatorDecimalMax extends VectorPTFEvaluatorBase {
     resetEvaluator();
   }
 
-  @Override
-  public void evaluateGroupBatch(VectorizedRowBatch batch)
+  public void evaluateGroupBatch(VectorizedRowBatch batch, boolean isLastGroupBatch)
       throws HiveException {
 
     evaluateInputExpr(batch);
@@ -98,15 +104,15 @@ public class VectorPTFEvaluatorDecimalMax extends VectorPTFEvaluatorBase {
           return;
         }
       }
-
       HiveDecimalWritable[] vector = decimalColVector.vector;
-
-      final HiveDecimalWritable firstValue = vector[i++];
       if (isGroupResultNull) {
-        max.set(firstValue);
+        max.set(vector[i++]);
         isGroupResultNull = false;
-      } else if (firstValue.compareTo(max) == 1) {
-        max.set(firstValue);
+      } else {
+        final HiveDecimalWritable dec = vector[i++];
+        if (dec.compareTo(max) == 1) {
+          max.set(dec);
+        }
       }
       for (; i < size; i++) {
         if (!batchIsNull[i]) {
@@ -120,12 +126,6 @@ public class VectorPTFEvaluatorDecimalMax extends VectorPTFEvaluatorBase {
   }
 
   @Override
-  public boolean streamsResult() {
-    // We must evaluate whole group before producing a result.
-    return false;
-  }
-
-  @Override
   public boolean isGroupResultNull() {
     return isGroupResultNull;
   }
@@ -136,13 +136,15 @@ public class VectorPTFEvaluatorDecimalMax extends VectorPTFEvaluatorBase {
   }
 
   @Override
-  public Object getGroupResult() {
+  public HiveDecimalWritable getDecimalGroupResult() {
     return max;
   }
+
+  private static HiveDecimal MIN_VALUE = HiveDecimal.create("-99999999999999999999999999999999999999");
 
   @Override
   public void resetEvaluator() {
     isGroupResultNull = true;
-    max.setFromLong(0);
+    max.set(MIN_VALUE);
   }
 }

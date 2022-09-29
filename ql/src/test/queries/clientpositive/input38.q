@@ -1,4 +1,3 @@
---! qt:dataset:src
 
 CREATE TABLE dest1_n91(key STRING, value STRING) STORED AS TEXTFILE;
 

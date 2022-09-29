@@ -58,7 +58,7 @@ public class GenericUDFUpper extends GenericUDF {
 
     if (arguments[0].getCategory() != Category.PRIMITIVE) {
       throw new UDFArgumentException(
-          "UPPER only takes primitive types, got " + arguments[0].getTypeName());
+          "UPPER only takes primitive types, got " + argumentOI.getTypeName());
     }
     argumentOI = (PrimitiveObjectInspector) arguments[0];
 

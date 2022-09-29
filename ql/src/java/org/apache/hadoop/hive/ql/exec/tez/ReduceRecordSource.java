@@ -34,10 +34,13 @@ import org.apache.hadoop.hive.ql.exec.vector.VectorDeserializeRow;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedBatchUtil;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatchCtx;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorExpressionWriter;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorExpressionWriterFactory;
 import org.apache.hadoop.hive.ql.log.PerfLogger;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.plan.TableDesc;
 import org.apache.hadoop.hive.ql.session.SessionState;
+import org.apache.hadoop.hive.serde2.Deserializer;
 import org.apache.hadoop.hive.serde2.AbstractSerDe;
 import org.apache.hadoop.hive.serde2.SerDeException;
 import org.apache.hadoop.hive.serde2.SerDeUtils;
@@ -74,11 +77,11 @@ public class ReduceRecordSource implements RecordSource {
 
   private boolean abort = false;
 
-  private AbstractSerDe inputKeySerDe;
+  private Deserializer inputKeyDeserializer;
 
   // Input value serde needs to be an array to support different SerDe
   // for different tags
-  private AbstractSerDe inputValueSerDe;
+  private AbstractSerDe inputValueDeserializer;
 
   private TableDesc keyTableDesc;
   private TableDesc valueTableDesc;
@@ -151,10 +154,10 @@ public class ReduceRecordSource implements RecordSource {
     this.tag = tag;
 
     try {
-      inputKeySerDe = ReflectionUtils.newInstance(keyTableDesc.getSerDeClass(), null);
-      inputKeySerDe.initialize(null, keyTableDesc.getProperties(), null);
-
-      keyObjectInspector = inputKeySerDe.getObjectInspector();
+      inputKeyDeserializer = ReflectionUtils.newInstance(keyTableDesc
+          .getDeserializerClass(), null);
+      SerDeUtils.initializeSerDe(inputKeyDeserializer, null, keyTableDesc.getProperties(), null);
+      keyObjectInspector = inputKeyDeserializer.getObjectInspector();
 
       if(vectorized) {
         keyStructInspector = (StructObjectInspector) keyObjectInspector;
@@ -163,9 +166,11 @@ public class ReduceRecordSource implements RecordSource {
 
       // We should initialize the SerDe with the TypeInfo when available.
       this.valueTableDesc = valueTableDesc;
-      inputValueSerDe = (AbstractSerDe) ReflectionUtils.newInstance(valueTableDesc.getSerDeClass(), null);
-      inputValueSerDe.initialize(null, valueTableDesc.getProperties(), null);
-      valueObjectInspector = inputValueSerDe.getObjectInspector();
+      inputValueDeserializer = (AbstractSerDe) ReflectionUtils.newInstance(
+          valueTableDesc.getDeserializerClass(), null);
+      SerDeUtils.initializeSerDe(inputValueDeserializer, null,
+          valueTableDesc.getProperties(), null);
+      valueObjectInspector = inputValueDeserializer.getObjectInspector();
 
       ArrayList<ObjectInspector> ois = new ArrayList<ObjectInspector>();
 
@@ -181,35 +186,27 @@ public class ReduceRecordSource implements RecordSource {
         batch = batchContext.createVectorizedRowBatch();
 
         // Setup vectorized deserialization for the key and value.
-        BinarySortableSerDe binarySortableSerDe = (BinarySortableSerDe) inputKeySerDe;
+        BinarySortableSerDe binarySortableSerDe = (BinarySortableSerDe) inputKeyDeserializer;
 
         keyBinarySortableDeserializeToRow =
-            new VectorDeserializeRow<BinarySortableDeserializeRead>(
-                new BinarySortableDeserializeRead(
-                    VectorizedBatchUtil.typeInfosFromStructObjectInspector(
-                        keyStructInspector),
-                    (batchContext.getRowdataTypePhysicalVariations().length > firstValueColumnOffset)
-                        ? Arrays.copyOfRange(batchContext.getRowdataTypePhysicalVariations(), 0,
-                            firstValueColumnOffset)
-                        : batchContext.getRowdataTypePhysicalVariations(),
-                    /* useExternalBuffer */ true,
-                    binarySortableSerDe.getSortOrders(),
-                    binarySortableSerDe.getNullMarkers(),
-                    binarySortableSerDe.getNotNullMarkers()));
+                  new VectorDeserializeRow<BinarySortableDeserializeRead>(
+                        new BinarySortableDeserializeRead(
+                                  VectorizedBatchUtil.typeInfosFromStructObjectInspector(
+                                      keyStructInspector),
+                                  /* useExternalBuffer */ true,
+                                  binarySortableSerDe.getSortOrders(),
+                                  binarySortableSerDe.getNullMarkers(),
+                                  binarySortableSerDe.getNotNullMarkers()));
         keyBinarySortableDeserializeToRow.init(0);
 
         final int valuesSize = valueStructInspectors.getAllStructFieldRefs().size();
         if (valuesSize > 0) {
           valueLazyBinaryDeserializeToRow =
-              new VectorDeserializeRow<LazyBinaryDeserializeRead>(
-                  new LazyBinaryDeserializeRead(
-                      VectorizedBatchUtil.typeInfosFromStructObjectInspector(
-                          valueStructInspectors),
-                      (batchContext.getRowdataTypePhysicalVariations().length >= totalColumns)
-                          ? Arrays.copyOfRange(batchContext.getRowdataTypePhysicalVariations(),
-                              firstValueColumnOffset, totalColumns)
-                          : null,
-                      /* useExternalBuffer */ true));
+                  new VectorDeserializeRow<LazyBinaryDeserializeRead>(
+                        new LazyBinaryDeserializeRead(
+                            VectorizedBatchUtil.typeInfosFromStructObjectInspector(
+                                       valueStructInspectors),
+                            /* useExternalBuffer */ true));
           valueLazyBinaryDeserializeToRow.init(firstValueColumnOffset);
 
           // Create data buffers for value bytes column vectors.
@@ -237,11 +234,7 @@ public class ReduceRecordSource implements RecordSource {
         throw new RuntimeException("Reduce operator initialization failed", e);
       }
     }
-    perfLogger.perfLogEnd(CLASS_NAME, PerfLogger.TEZ_INIT_OPERATORS);
-  }
-
-  public TableDesc getKeyTableDesc() {
-    return keyTableDesc;
+    perfLogger.PerfLogEnd(CLASS_NAME, PerfLogger.TEZ_INIT_OPERATORS);
   }
 
   @Override
@@ -275,7 +268,7 @@ public class ReduceRecordSource implements RecordSource {
 
       //Set the key, check if this is a new group or same group
       try {
-        keyObject = inputKeySerDe.deserialize(keyWritable);
+        keyObject = inputKeyDeserializer.deserialize(keyWritable);
       } catch (Exception e) {
         throw new HiveException("Hive Runtime Error: Unable to deserialize reduce input key from "
             + Utilities.formatBinaryString(keyWritable.getBytes(), 0, keyWritable.getLength())
@@ -317,7 +310,7 @@ public class ReduceRecordSource implements RecordSource {
       throws HiveException {
 
     try {
-      return inputValueSerDe.deserialize(valueWritable);
+      return inputValueDeserializer.deserialize(valueWritable);
     } catch (SerDeException e) {
       throw new HiveException(
           "Hive Runtime Error: Unable to deserialize reduce input value (tag="
@@ -356,7 +349,7 @@ public class ReduceRecordSource implements RecordSource {
       } else {
         row.add(passDownKey.get(0));
       }
-      if ((passDownKey == null) && (reducer instanceof CommonMergeJoinOperator) && hasNext()) {
+      if ((passDownKey == null) && (reducer instanceof CommonMergeJoinOperator)) {
         passDownKey =
             (List<Object>) ObjectInspectorUtils.copyToStandardObject(row,
                 reducer.getInputObjInspectors()[tag], ObjectInspectorCopyOption.WRITABLE);
@@ -376,13 +369,8 @@ public class ReduceRecordSource implements RecordSource {
           rowString = "[Error getting row data with exception "
               + StringUtils.stringifyException(e2) + " ]";
         }
-
-        // Log the contents of the row that caused exception so that it's available for debugging. But
-        // when exposed through an error message it can leak sensitive information, even to the
-        // client application.
-        l4j.trace("Hive Runtime Error while processing row (tag="
-                + tag + ") " + rowString);
-        throw new HiveException("Hive Runtime Error while processing row", e);
+        throw new HiveException("Hive Runtime Error while processing row (tag="
+            + tag + ") " + rowString, e);
       }
     }
   }
@@ -463,11 +451,6 @@ public class ReduceRecordSource implements RecordSource {
           }
           reducer.process(batch, tag);
 
-          // Do the non-column batch reset logic.
-          batch.selectedInUse = false;
-          batch.size = 0;
-          batch.endOfFile = false;
-
           // Reset just the value columns and value buffer.
           for (int i = firstValueColumnOffset; i < batch.numCols; i++) {
             // Note that reset also resets the data buffer for bytes column vectors.
@@ -532,7 +515,6 @@ public class ReduceRecordSource implements RecordSource {
     return rowObjectInspector;
   }
 
-  @Override
   public void setFlushLastRecord(boolean flushLastRecord) {
     this.flushLastRecord = flushLastRecord;
   }

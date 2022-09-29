@@ -27,7 +27,6 @@ import org.apache.hadoop.hive.ql.metadata.Hive;
 import org.apache.hadoop.hive.ql.parse.ReplicationSpec;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
 import org.apache.hadoop.hive.ql.parse.repl.load.UpdatedMetaDataTracker;
-import org.apache.hadoop.hive.ql.parse.repl.metric.ReplicationMetricCollector;
 import org.slf4j.Logger;
 
 import java.io.Serializable;
@@ -38,7 +37,7 @@ import org.apache.hadoop.hive.ql.parse.repl.load.DumpMetaData;
 
 public interface MessageHandler {
 
-  List<Task<?>> handle(Context withinContext) throws SemanticException;
+  List<Task<? extends Serializable>> handle(Context withinContext) throws SemanticException;
 
   Set<ReadEntity> readEntities();
 
@@ -47,21 +46,20 @@ public interface MessageHandler {
   UpdatedMetaDataTracker getUpdatedMetadata();
 
   class Context {
-    public String location;
-    public final String dbName;
-    public final Task<?> precursor;
+    public String dbName;
+    public final String tableName, location;
+    public final Task<? extends Serializable> precursor;
     public DumpMetaData dmd;
     final HiveConf hiveConf;
     final Hive db;
     final org.apache.hadoop.hive.ql.Context nestedContext;
     final Logger log;
-    String dumpDirectory;
-    private transient ReplicationMetricCollector metricCollector;
 
-    public Context(String dbName, String location,
-        Task<?> precursor, DumpMetaData dmd, HiveConf hiveConf,
+    public Context(String dbName, String tableName, String location,
+        Task<? extends Serializable> precursor, DumpMetaData dmd, HiveConf hiveConf,
         Hive db, org.apache.hadoop.hive.ql.Context nestedContext, Logger log) {
       this.dbName = dbName;
+      this.tableName = tableName;
       this.location = location;
       this.precursor = precursor;
       this.dmd = dmd;
@@ -71,24 +69,9 @@ public interface MessageHandler {
       this.log = log;
     }
 
-    public Context(String dbName, String location,
-                   Task<?> precursor, DumpMetaData dmd, HiveConf hiveConf,
-                   Hive db, org.apache.hadoop.hive.ql.Context nestedContext, Logger log,
-                   String dumpDirectory, ReplicationMetricCollector metricCollector) {
+    public Context(Context other, String dbName, String tableName) {
       this.dbName = dbName;
-      this.location = location;
-      this.precursor = precursor;
-      this.dmd = dmd;
-      this.hiveConf = hiveConf;
-      this.db = db;
-      this.nestedContext = nestedContext;
-      this.log = log;
-      this.dumpDirectory = dumpDirectory;
-      this.metricCollector = metricCollector;
-    }
-
-    public Context(Context other, String dbName) {
-      this.dbName = dbName;
+      this.tableName = tableName;
       this.location = other.location;
       this.precursor = other.precursor;
       this.dmd = other.dmd;
@@ -98,27 +81,14 @@ public interface MessageHandler {
       this.log = other.log;
     }
 
-    public Context(Context other, String dbName, String dumpDirectory, ReplicationMetricCollector metricCollector) {
-      this.dbName = dbName;
-      this.location = other.location;
-      this.precursor = other.precursor;
-      this.dmd = other.dmd;
-      this.hiveConf = other.hiveConf;
-      this.db = other.db;
-      this.nestedContext = other.nestedContext;
-      this.log = other.log;
-      this.dumpDirectory = dumpDirectory;
-      this.metricCollector = metricCollector;
+    boolean isTableNameEmpty() {
+      return StringUtils.isEmpty(tableName);
     }
 
     public boolean isDbNameEmpty() {
       return StringUtils.isEmpty(dbName);
     }
 
-    /**
-     * not sure why we have this, this should always be read from the _metadata file via the
-     * {@link org.apache.hadoop.hive.ql.parse.repl.load.MetadataJson#readReplicationSpec}
-     */
     ReplicationSpec eventOnlyReplicationSpec() throws SemanticException {
       String eventId = dmd.getEventTo().toString();
       return new ReplicationSpec(eventId, eventId);
@@ -128,20 +98,8 @@ public interface MessageHandler {
       return nestedContext;
     }
 
-    public String getDumpDirectory() {
-      return dumpDirectory;
-    }
-
-    public ReplicationMetricCollector getMetricCollector() {
-      return metricCollector;
-    }
-
     public HiveTxnManager getTxnMgr() {
       return nestedContext.getHiveTxnManager();
-    }
-
-    public void setLocation(String location) {
-      this.location = location;
     }
   }
 }

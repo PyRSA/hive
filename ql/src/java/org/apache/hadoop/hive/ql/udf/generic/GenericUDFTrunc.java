@@ -28,14 +28,6 @@ import org.apache.hadoop.hive.ql.exec.Description;
 import org.apache.hadoop.hive.ql.exec.UDFArgumentException;
 import org.apache.hadoop.hive.ql.exec.UDFArgumentLengthException;
 import org.apache.hadoop.hive.ql.exec.UDFArgumentTypeException;
-import org.apache.hadoop.hive.ql.exec.vector.VectorizedExpressions;
-import org.apache.hadoop.hive.ql.exec.vector.expressions.TruncDateFromDate;
-import org.apache.hadoop.hive.ql.exec.vector.expressions.TruncDateFromString;
-import org.apache.hadoop.hive.ql.exec.vector.expressions.TruncDateFromTimestamp;
-import org.apache.hadoop.hive.ql.exec.vector.expressions.TruncDecimal;
-import org.apache.hadoop.hive.ql.exec.vector.expressions.TruncDecimalNoScale;
-import org.apache.hadoop.hive.ql.exec.vector.expressions.TruncFloat;
-import org.apache.hadoop.hive.ql.exec.vector.expressions.TruncFloatNoScale;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.serde2.io.ByteWritable;
 import org.apache.hadoop.hive.serde2.io.DateWritableV2;
@@ -54,12 +46,10 @@ import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectIn
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorUtils;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorUtils.PrimitiveGrouping;
-import org.apache.hadoop.hive.serde2.typeinfo.DecimalTypeInfo;
 import org.apache.hadoop.io.FloatWritable;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
-import org.apache.hive.common.util.DateParser;
 
 /**
  * GenericUDFTrunc.
@@ -72,7 +62,8 @@ import org.apache.hive.common.util.DateParser;
     + "to the unit specified by the format model fmt. If you omit fmt, then date is truncated to "
     + "the nearest day. It currently only supports 'MONTH'/'MON'/'MM', 'QUARTER'/'Q' and 'YEAR'/'YYYY'/'YY' as format."
     + "If input is a number group returns N truncated to D decimal places. If D is omitted, then N is truncated to 0 places."
-    + "D can be negative to truncate (make zero) D digits left of the decimal point.", extended = "date is a string in the format 'yyyy-MM-dd HH:mm:ss' or 'yyyy-MM-dd'."
+    + "D can be negative to truncate (make zero) D digits left of the decimal point."
+    , extended = "date is a string in the format 'yyyy-MM-dd HH:mm:ss' or 'yyyy-MM-dd'."
         + " The time part of date is ignored.\n" + "Example:\n "
         + " > SELECT _FUNC_('2009-02-12', 'MM');\n" + "OK\n" + " '2009-02-01'" + "\n"
         + " > SELECT _FUNC_('2017-03-15', 'Q');\n" + "OK\n" + " '2017-01-01'" + "\n"
@@ -81,8 +72,6 @@ import org.apache.hive.common.util.DateParser;
         + " > SELECT _FUNC_(1234567891.1234567891,-4);\n" + "OK\n" + " 1234560000"
         + " > SELECT _FUNC_(1234567891.1234567891,0);\n" + "OK\n" + " 1234567891" + "\n"
         + " > SELECT _FUNC_(1234567891.1234567891);\n" + "OK\n" + " 1234567891")
-@VectorizedExpressions({ TruncDateFromTimestamp.class, TruncDateFromString.class,
-    TruncDateFromDate.class, TruncFloat.class, TruncFloatNoScale.class, TruncDecimal.class, TruncDecimalNoScale.class})
 public class GenericUDFTrunc extends GenericUDF {
 
   private transient TimestampConverter timestampConverter;
@@ -199,10 +188,7 @@ public class GenericUDFTrunc extends GenericUDF {
     ObjectInspector outputOI = null;
     switch (inputType1) {
     case DECIMAL:
-      int outputScale = scale > 0 ? scale : 0;
-      int outputPrecision = ((PrimitiveObjectInspector) arguments[0]).precision() - ((PrimitiveObjectInspector) arguments[0]).scale() + outputScale;
-      DecimalTypeInfo t = new DecimalTypeInfo(outputPrecision, outputScale);
-      outputOI = PrimitiveObjectInspectorFactory.getPrimitiveWritableObjectInspector(t);
+      outputOI = PrimitiveObjectInspectorFactory.getPrimitiveWritableObjectInspector(inputType1);
       break;
     case VOID:
     case BYTE:
@@ -311,8 +297,9 @@ public class GenericUDFTrunc extends GenericUDF {
     switch (inputType1) {
     case STRING:
       String dateString = textConverter1.convert(arguments[0].get()).toString();
-      d = DateParser.parseDate(dateString);
-      if (d == null) {
+      try {
+        d = Date.valueOf(dateString.toString());
+      } catch (IllegalArgumentException e) {
         return null;
       }
       break;

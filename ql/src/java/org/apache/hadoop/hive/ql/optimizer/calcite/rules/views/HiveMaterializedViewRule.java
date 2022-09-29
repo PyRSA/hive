@@ -29,12 +29,12 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.Filter;
 import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.TableScan;
-import org.apache.calcite.rel.rules.materialize.MaterializedViewProjectFilterRule;
-import org.apache.calcite.rel.rules.materialize.MaterializedViewOnlyFilterRule;
-import org.apache.calcite.rel.rules.materialize.MaterializedViewProjectJoinRule;
-import org.apache.calcite.rel.rules.materialize.MaterializedViewOnlyJoinRule;
-import org.apache.calcite.rel.rules.materialize.MaterializedViewProjectAggregateRule;
-import org.apache.calcite.rel.rules.materialize.MaterializedViewOnlyAggregateRule;
+import org.apache.calcite.rel.rules.AbstractMaterializedViewRule.MaterializedViewProjectFilterRule;
+import org.apache.calcite.rel.rules.AbstractMaterializedViewRule.MaterializedViewOnlyFilterRule;
+import org.apache.calcite.rel.rules.AbstractMaterializedViewRule.MaterializedViewProjectJoinRule;
+import org.apache.calcite.rel.rules.AbstractMaterializedViewRule.MaterializedViewOnlyJoinRule;
+import org.apache.calcite.rel.rules.AbstractMaterializedViewRule.MaterializedViewProjectAggregateRule;
+import org.apache.calcite.rel.rules.AbstractMaterializedViewRule.MaterializedViewOnlyAggregateRule;
 import org.apache.calcite.rel.rules.ProjectRemoveRule;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlAggFunction;
@@ -50,6 +50,7 @@ import org.apache.hadoop.hive.ql.optimizer.calcite.rules.HiveJoinProjectTranspos
 import org.apache.hadoop.hive.ql.optimizer.calcite.rules.HiveProjectMergeRule;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Enable join and aggregate materialized view rewriting
@@ -64,8 +65,7 @@ public class HiveMaterializedViewRule {
    * the root of the plan.
    */
   private static final HepProgram PROGRAM = new HepProgramBuilder()
-      .addRuleInstance(HiveHepExtractRelNodeRule.INSTANCE)
-      .addRuleInstance(HiveVolcanoExtractRelNodeRule.INSTANCE)
+      .addRuleInstance(HiveExtractRelNodeRule.INSTANCE)
       .addRuleInstance(HiveTableScanProjectInsert.INSTANCE)
       .addRuleCollection(
           ImmutableList.of(
@@ -74,41 +74,25 @@ public class HiveMaterializedViewRule {
               HiveJoinProjectTransposeRule.LEFT_PROJECT,
               HiveJoinProjectTransposeRule.RIGHT_PROJECT,
               HiveProjectMergeRule.INSTANCE))
-      .addRuleInstance(ProjectRemoveRule.Config.DEFAULT.toRule())
+      .addRuleInstance(ProjectRemoveRule.INSTANCE)
       .addRuleInstance(HiveRootJoinProjectInsert.INSTANCE)
       .build();
 
   public static final MaterializedViewProjectFilterRule INSTANCE_PROJECT_FILTER =
-    (MaterializedViewProjectFilterRule) MaterializedViewProjectFilterRule.Config.DEFAULT
-      .withGenerateUnionRewriting(true)
-      .withFastBailOut(false)
-      .withUnionRewritingPullProgram(PROGRAM)
-      .withRelBuilderFactory(HiveRelFactories.HIVE_BUILDER)
-      .toRule();
+      new MaterializedViewProjectFilterRule(HiveRelFactories.HIVE_BUILDER,
+          true, PROGRAM, false);
 
   public static final MaterializedViewOnlyFilterRule INSTANCE_FILTER =
-    (MaterializedViewOnlyFilterRule) MaterializedViewOnlyFilterRule.Config.DEFAULT
-      .withGenerateUnionRewriting(true)
-      .withFastBailOut(false)
-      .withUnionRewritingPullProgram(PROGRAM)
-      .withRelBuilderFactory(HiveRelFactories.HIVE_BUILDER)
-      .toRule();
+      new MaterializedViewOnlyFilterRule(HiveRelFactories.HIVE_BUILDER,
+          true, PROGRAM, false);
 
   public static final MaterializedViewProjectJoinRule INSTANCE_PROJECT_JOIN =
-    (MaterializedViewProjectJoinRule) MaterializedViewProjectJoinRule.Config.DEFAULT
-      .withGenerateUnionRewriting(true)
-      .withFastBailOut(false)
-      .withUnionRewritingPullProgram(PROGRAM)
-      .withRelBuilderFactory(HiveRelFactories.HIVE_BUILDER)
-      .toRule();
+      new MaterializedViewProjectJoinRule(HiveRelFactories.HIVE_BUILDER,
+          true, PROGRAM, false);
 
   public static final MaterializedViewOnlyJoinRule INSTANCE_JOIN =
-    (MaterializedViewOnlyJoinRule) MaterializedViewOnlyJoinRule.Config.DEFAULT
-      .withGenerateUnionRewriting(true)
-      .withFastBailOut(false)
-      .withUnionRewritingPullProgram(PROGRAM)
-      .withRelBuilderFactory(HiveRelFactories.HIVE_BUILDER)
-      .toRule();
+      new MaterializedViewOnlyJoinRule(HiveRelFactories.HIVE_BUILDER,
+          true, PROGRAM, false);
 
   public static final HiveMaterializedViewProjectAggregateRule INSTANCE_PROJECT_AGGREGATE =
       new HiveMaterializedViewProjectAggregateRule(HiveRelFactories.HIVE_BUILDER,
@@ -117,15 +101,6 @@ public class HiveMaterializedViewRule {
   public static final HiveMaterializedViewOnlyAggregateRule INSTANCE_AGGREGATE =
       new HiveMaterializedViewOnlyAggregateRule(HiveRelFactories.HIVE_BUILDER,
           true, PROGRAM);
-
-  public static final RelOptRule[] MATERIALIZED_VIEW_REWRITING_RULES =
-      new RelOptRule[] {
-          HiveMaterializedViewRule.INSTANCE_PROJECT_FILTER,
-          HiveMaterializedViewRule.INSTANCE_FILTER,
-          HiveMaterializedViewRule.INSTANCE_PROJECT_JOIN,
-          HiveMaterializedViewRule.INSTANCE_JOIN,
-          HiveMaterializedViewRule.INSTANCE_PROJECT_AGGREGATE,
-          HiveMaterializedViewRule.INSTANCE_AGGREGATE };
 
 
   protected static class HiveMaterializedViewProjectAggregateRule extends MaterializedViewProjectAggregateRule {
@@ -165,37 +140,15 @@ public class HiveMaterializedViewRule {
   /**
    * This rule is used within the PROGRAM that rewrites the query for
    * partial rewritings. Its goal is to extract the RelNode from the
-   * HepRelVertex node so the rest of the rules in the PROGRAM can be
-   * applied correctly.
-   */
-  private static class HiveHepExtractRelNodeRule extends RelOptRule {
-
-    private static final HiveHepExtractRelNodeRule INSTANCE =
-        new HiveHepExtractRelNodeRule();
-
-    private HiveHepExtractRelNodeRule() {
-      super(operand(HepRelVertex.class, any()));
-    }
-
-    @Override
-    public void onMatch(RelOptRuleCall call) {
-      final HepRelVertex rel = call.rel(0);
-      call.transformTo(rel.getCurrentRel());
-    }
-  }
-
-  /**
-   * This rule is used within the PROGRAM that rewrites the query for
-   * partial rewritings. Its goal is to extract the RelNode from the
    * RelSubset node so the rest of the rules in the PROGRAM can be
    * applied correctly.
    */
-  private static class HiveVolcanoExtractRelNodeRule extends RelOptRule {
+  private static class HiveExtractRelNodeRule extends RelOptRule {
 
-    private static final HiveVolcanoExtractRelNodeRule INSTANCE =
-        new HiveVolcanoExtractRelNodeRule();
+    private static final HiveExtractRelNodeRule INSTANCE =
+        new HiveExtractRelNodeRule();
 
-    private HiveVolcanoExtractRelNodeRule() {
+    private HiveExtractRelNodeRule() {
       super(operand(RelSubset.class, any()));
     }
 
@@ -233,7 +186,7 @@ public class HiveMaterializedViewRule {
       List<RexNode> identityFields = relBuilder.fields(
           ImmutableBitSet.range(0, rel.getRowType().getFieldCount()).asList());
       RelNode newRel = relBuilder
-          .project(identityFields, ImmutableList.of(), true)
+          .project(identityFields, ImmutableList.<String>of(), true)
           .build();
       call.transformTo(fil.copy(fil.getTraitSet(), ImmutableList.of(newRel)));
     }
@@ -269,7 +222,7 @@ public class HiveMaterializedViewRule {
       relBuilder.push(join);
       List<RexNode> identityFields = relBuilder.fields(
           ImmutableBitSet.range(0, join.getRowType().getFieldCount()).asList());
-      relBuilder.project(identityFields, ImmutableList.of(), true);
+      relBuilder.project(identityFields, ImmutableList.<String>of(), true);
       call.transformTo(relBuilder.build());
     }
 

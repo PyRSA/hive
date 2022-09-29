@@ -35,10 +35,12 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.SortedSet;
+import java.util.TreeSet;
 
 import static org.apache.tez.dag.api.client.DAGStatus.State.KILLED;
 
-public class TezProgressMonitor implements ProgressMonitor {
+class TezProgressMonitor implements ProgressMonitor {
   private static final int COLUMN_1_WIDTH = 16;
   private final List<BaseWork> topSortedWork;
   private final SessionState.LogHelper console;
@@ -209,7 +211,7 @@ public class TezProgressMonitor implements ProgressMonitor {
     return mode;
   }
 
-  public static class VertexProgress {
+  static class VertexProgress {
     private final int totalTaskCount;
     private final int succeededTaskCount;
     private final int failedTaskAttemptCount;
@@ -325,9 +327,5 @@ public class TezProgressMonitor implements ProgressMonitor {
       result = 31 * result + dagState.hashCode();
       return result;
     }
-  }
-
-  public DAGStatus getStatus() {
-    return status;
   }
 }

@@ -17,12 +17,10 @@ package org.apache.hive.storage.jdbc.conf;
 public enum DatabaseType {
   MYSQL,
   H2,
-  DB2,
   DERBY,
   ORACLE,
   POSTGRES,
   MSSQL,
   METASTORE,
-  JETHRO_DATA,
-  HIVE
+  JETHRO_DATA
 }

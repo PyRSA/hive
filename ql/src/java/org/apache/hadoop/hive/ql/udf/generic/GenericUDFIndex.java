@@ -25,8 +25,6 @@ import org.apache.hadoop.hive.ql.exec.UDFArgumentTypeException;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedExpressions;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.ListIndexColColumn;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.ListIndexColScalar;
-import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorUDFMapIndexDecimalCol;
-import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorUDFMapIndexDecimalScalar;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorUDFMapIndexDoubleCol;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorUDFMapIndexDoubleScalar;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorUDFMapIndexLongCol;
@@ -50,9 +48,8 @@ import org.apache.hadoop.io.IntWritable;
 @Description(name = "index", value = "_FUNC_(a, n) - Returns the n-th element of a ")
 @VectorizedExpressions({ListIndexColScalar.class, ListIndexColColumn.class,
     VectorUDFMapIndexStringScalar.class, VectorUDFMapIndexLongScalar.class,
-    VectorUDFMapIndexDoubleScalar.class, VectorUDFMapIndexDecimalScalar.class,
-    VectorUDFMapIndexStringCol.class, VectorUDFMapIndexLongCol.class,
-    VectorUDFMapIndexDoubleCol.class, VectorUDFMapIndexDecimalCol.class})
+    VectorUDFMapIndexDoubleScalar.class, VectorUDFMapIndexStringCol.class,
+    VectorUDFMapIndexLongCol.class, VectorUDFMapIndexDoubleCol.class})
 public class GenericUDFIndex extends GenericUDF {
 
   private transient MapObjectInspector mapOI;

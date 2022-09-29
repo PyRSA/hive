@@ -18,18 +18,23 @@
 
 package org.apache.hadoop.hive.ql.hooks;
 
-import org.apache.hadoop.hive.conf.HiveConf;
-
+import java.util.ArrayList;
 import java.util.List;
+
+import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
+import org.apache.hadoop.hive.ql.exec.Utilities;
+import org.apache.logging.log4j.util.Strings;
 
 public class HookUtils {
 
-  public static String redactLogString(HiveConf conf, String logString) {
+  public static String redactLogString(HiveConf conf, String logString)
+          throws InstantiationException, IllegalAccessException, ClassNotFoundException {
 
     String redactedString = logString;
 
     if (conf != null && logString != null) {
-      List<Redactor> queryRedactors = readHooksFromConf(conf, HookContext.HookType.QUERY_REDACTOR_HOOKS);
+      List<Redactor> queryRedactors = readHooksFromConf(conf, ConfVars.QUERYREDACTORHOOKS);
       for (Redactor redactor : queryRedactors) {
         redactor.setConf(conf);
         redactedString = redactor.redactQuery(redactedString);
@@ -38,7 +43,18 @@ public class HookUtils {
     return redactedString;
   }
 
-  public static <T> List<T> readHooksFromConf(HiveConf conf, HookContext.HookType type) {
-    return new HiveHooks(conf).getHooks(type);
+  public static <T extends Hook> List<T> readHooksFromConf(HiveConf conf, HiveConf.ConfVars hookConfVar)
+      throws InstantiationException, IllegalAccessException, ClassNotFoundException {
+    String csHooks = conf.getVar(hookConfVar);
+    List<T> hooks = new ArrayList<>();
+    if (Strings.isBlank(csHooks)) {
+      return hooks;
+    }
+    String[] hookClasses = csHooks.split(",");
+    for (String hookClass : hookClasses) {
+      T hook = (T) Class.forName(hookClass.trim(), true, Utilities.getSessionSpecifiedClassLoader()).newInstance();
+      hooks.add(hook);
+    }
+    return hooks;
   }
 }

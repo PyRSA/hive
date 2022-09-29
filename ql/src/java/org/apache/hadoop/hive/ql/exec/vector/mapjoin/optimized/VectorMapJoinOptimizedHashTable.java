@@ -19,7 +19,6 @@
 package org.apache.hadoop.hive.ql.exec.vector.mapjoin.optimized;
 
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 
 import org.apache.hadoop.hive.ql.util.JavaDataModel;
 import org.slf4j.Logger;
@@ -27,31 +26,27 @@ import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.ql.exec.JoinUtil;
 import org.apache.hadoop.hive.ql.exec.persistence.BytesBytesMultiHashMap;
 import org.apache.hadoop.hive.ql.exec.persistence.MapJoinTableContainer;
-import org.apache.hadoop.hive.ql.exec.persistence.MatchTracker;
 import org.apache.hadoop.hive.ql.exec.persistence.MapJoinTableContainerDirectAccess;
 import org.apache.hadoop.hive.ql.exec.persistence.ReusableGetAdaptorDirectAccess;
 import org.apache.hadoop.hive.ql.exec.persistence.MapJoinTableContainer.ReusableGetAdaptor;
-import org.apache.hadoop.hive.ql.exec.vector.mapjoin.hashtable.VectorMapJoinBytesHashTable;
 import org.apache.hadoop.hive.ql.exec.vector.mapjoin.hashtable.VectorMapJoinHashTable;
 import org.apache.hadoop.hive.ql.exec.vector.mapjoin.hashtable.VectorMapJoinHashTableResult;
-import org.apache.hadoop.hive.ql.exec.vector.mapjoin.hashtable.VectorMapJoinNonMatchedIterator;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.serde2.SerDeException;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.Writable;
 
-/**
+/*
  * Root interface for a vector map join hash table (which could be a hash map, hash multi-set, or
  * hash set).
  */
-public abstract class VectorMapJoinOptimizedHashTable
-    implements VectorMapJoinHashTable, VectorMapJoinBytesHashTable {
+public abstract class VectorMapJoinOptimizedHashTable implements VectorMapJoinHashTable {
 
   private static final Logger LOG = LoggerFactory.getLogger(VectorMapJoinOptimizedMultiKeyHashMap.class.getName());
 
   protected final MapJoinTableContainer originalTableContainer;
   protected final MapJoinTableContainerDirectAccess containerDirectAccess;
-  protected final ReusableGetAdaptorDirectAccess adapterDirectAccess;
+  protected final ReusableGetAdaptorDirectAccess adapatorDirectAccess;
 
   public static class SerializedBytes {
     byte[] bytes;
@@ -60,26 +55,10 @@ public abstract class VectorMapJoinOptimizedHashTable
   }
 
   @Override
-  public VectorMapJoinNonMatchedIterator createNonMatchedIterator(MatchTracker matchTracker) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public int spillPartitionId() {
-    return adapterDirectAccess.directSpillPartitionId();
-  }
-
-  @Override
-  public void putRow(long hashCode, BytesWritable currentKey, BytesWritable currentValue)
+  public void putRow(BytesWritable currentKey, BytesWritable currentValue)
       throws SerDeException, HiveException, IOException {
-    // Method only supported by FAST HashTable implementations
-    throw new UnsupportedEncodingException();
-  }
 
-  @Override
-  public boolean containsLongKey(long currentKey) {
-    // Method only supported by FAST HashTable implementations
-    throw new UnsupportedOperationException();
+    putRowInternal(currentKey, currentValue);
   }
 
   protected void putRowInternal(BytesWritable key, BytesWritable value)
@@ -90,15 +69,15 @@ public abstract class VectorMapJoinOptimizedHashTable
 
   public JoinUtil.JoinResult doLookup(byte[] keyBytes, int keyOffset, int keyLength,
           BytesBytesMultiHashMap.Result bytesBytesMultiHashMapResult,
-          VectorMapJoinHashTableResult hashTableResult, MatchTracker matchTracker) {
+          VectorMapJoinHashTableResult hashTableResult) {
 
     hashTableResult.forget();
 
     JoinUtil.JoinResult joinResult =
-            adapterDirectAccess.setDirect(keyBytes, keyOffset, keyLength,
-                bytesBytesMultiHashMapResult, matchTracker);
+            adapatorDirectAccess.setDirect(keyBytes, keyOffset, keyLength,
+                bytesBytesMultiHashMapResult);
     if (joinResult == JoinUtil.JoinResult.SPILL) {
-      hashTableResult.setSpillPartitionId(adapterDirectAccess.directSpillPartitionId());
+      hashTableResult.setSpillPartitionId(adapatorDirectAccess.directSpillPartitionId());
     }
 
     hashTableResult.setJoinResult(joinResult);
@@ -111,7 +90,7 @@ public abstract class VectorMapJoinOptimizedHashTable
 
     this.originalTableContainer = originalTableContainer;
     containerDirectAccess = (MapJoinTableContainerDirectAccess) originalTableContainer;
-    adapterDirectAccess = (ReusableGetAdaptorDirectAccess) hashMapRowGetter;
+    adapatorDirectAccess = (ReusableGetAdaptorDirectAccess) hashMapRowGetter;
   }
 
   @Override
@@ -125,10 +104,5 @@ public abstract class VectorMapJoinOptimizedHashTable
     size += originalTableContainer == null ? 0 : originalTableContainer.getEstimatedMemorySize();
     size += (2 * JavaDataModel.get().object());
     return size;
-  }
-
-  @Override
-  public MatchTracker createMatchTracker() {
-    return adapterDirectAccess.createMatchTracker();
   }
 }

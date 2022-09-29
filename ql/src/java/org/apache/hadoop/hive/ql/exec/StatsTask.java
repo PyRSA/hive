@@ -27,10 +27,10 @@ import java.util.concurrent.Executors;
 
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
-import org.apache.hadoop.hive.ql.Context;
+import org.apache.hadoop.hive.ql.CompilationOpContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.apache.hadoop.hive.ql.TaskQueue;
+import org.apache.hadoop.hive.ql.DriverContext;
 import org.apache.hadoop.hive.ql.QueryPlan;
 import org.apache.hadoop.hive.ql.QueryState;
 import org.apache.hadoop.hive.ql.metadata.Hive;
@@ -63,8 +63,9 @@ public class StatsTask extends Task<StatsWork> implements Serializable {
   List<IStatsProcessor> processors = new ArrayList<>();
 
   @Override
-  public void initialize(QueryState queryState, QueryPlan queryPlan, TaskQueue taskQueue, Context context) {
-    super.initialize(queryState, queryPlan, taskQueue, context);
+  public void initialize(QueryState queryState, QueryPlan queryPlan, DriverContext ctx,
+      CompilationOpContext opContext) {
+    super.initialize(queryState, queryPlan, ctx, opContext);
 
     if (work.getBasicStatsWork() != null) {
       BasicStatsTask task = new BasicStatsTask(conf, work.getBasicStatsWork());
@@ -79,14 +80,14 @@ public class StatsTask extends Task<StatsWork> implements Serializable {
     }
 
     for (IStatsProcessor p : processors) {
-      p.initialize(context.getOpContext());
+      p.initialize(opContext);
     }
   }
 
 
   @Override
-  public int execute() {
-    if (context.getExplainAnalyze() == AnalyzeState.RUNNING) {
+  public int execute(DriverContext driverContext) {
+    if (driverContext.getCtx().getExplainAnalyze() == AnalyzeState.RUNNING) {
       return 0;
     }
     if (work.isAggregating() && work.isFooterScan()) {
@@ -111,7 +112,6 @@ public class StatsTask extends Task<StatsWork> implements Serializable {
       }
     } catch (Exception e) {
       LOG.error("Failed to run stats task", e);
-      setException(e);
       return 1;
     }
     return 0;
@@ -119,7 +119,12 @@ public class StatsTask extends Task<StatsWork> implements Serializable {
 
 
   private Table getTable(Hive db) throws SemanticException, HiveException {
-    return db.getTable(work.getFullTableName());
+    Table tbl = work.getTable();
+    // FIXME for ctas this is still needed because location is not set sometimes
+    if (tbl.getSd().getLocation() == null) {
+      tbl = db.getTable(work.getFullTableName());
+    }
+    return tbl;
   }
 
   @Override
