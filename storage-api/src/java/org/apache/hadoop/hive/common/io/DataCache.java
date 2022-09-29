@@ -19,12 +19,10 @@
 package org.apache.hadoop.hive.common.io;
 
 import org.apache.hadoop.hive.common.io.encoded.MemoryBuffer;
-import org.apache.hive.common.util.SuppressFBWarnings;
 
 /** An abstract data cache that IO formats can use to retrieve and cache data. */
 public interface DataCache {
-  @SuppressFBWarnings(value = "UUF_UNUSED_PUBLIC_OR_PROTECTED_FIELD", justification = "Used by interface consumers")
-  final class BooleanRef {
+  public static final class BooleanRef {
     public boolean value;
   }
 
@@ -112,5 +110,5 @@ public interface DataCache {
    *         the replacement chunks from cache are updated directly in the array.
    */
   long[] putFileData(Object fileKey, DiskRange[] ranges,
-      MemoryBuffer[] data, long baseOffset, CacheTag tag);
+      MemoryBuffer[] data, long baseOffset, String tag);
 }

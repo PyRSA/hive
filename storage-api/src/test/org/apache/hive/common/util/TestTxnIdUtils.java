@@ -19,10 +19,8 @@ package org.apache.hive.common.util;
 
 import java.util.BitSet;
 
-import org.apache.hadoop.hive.common.ValidWriteIdList;
 import org.apache.hadoop.hive.common.ValidReaderWriteIdList;
 import org.junit.Test;
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -115,91 +113,5 @@ public class TestTxnIdUtils {
     assertFalse(TxnIdUtils.checkEquivalentWriteIds(id2, id5));
     assertFalse(TxnIdUtils.checkEquivalentWriteIds(id3, id5));
     assertFalse(TxnIdUtils.checkEquivalentWriteIds(id4, id5));
-  }
-
-  @Test
-  public void testCompareWriteIds() throws Exception {
-    // same writeids
-    assertEquals(TxnIdUtils.compare(
-        new ValidReaderWriteIdList("default.table1", new long[] {}, new BitSet(), 5),
-        new ValidReaderWriteIdList("default.table1", new long[] {}, new BitSet(), 5)),
-    0);
-
-    // b has high hwm
-    assertEquals(TxnIdUtils.compare(
-        new ValidReaderWriteIdList("default.table1", new long[] {}, new BitSet(), 4),
-        new ValidReaderWriteIdList("default.table1", new long[] {}, new BitSet(), 5)),
-    -1);
-
-    // a has a hole in invalid writeids
-    assertEquals(TxnIdUtils.compare(
-        new ValidReaderWriteIdList("default.table1", new long[] {1,2,4,5}, new BitSet(), 5),
-        new ValidReaderWriteIdList("default.table1", new long[] {1,2,3,4,5}, new BitSet(), 5)),
-    1);
-
-    // a has high hwm
-    assertEquals(TxnIdUtils.compare(
-        new ValidReaderWriteIdList("default.table1", new long[] {2,4,5}, new BitSet(), 6),
-        new ValidReaderWriteIdList("default.table1", new long[] {2,4,5}, new BitSet(), 5)),
-    1);
-
-    // non are committed
-    assertEquals(TxnIdUtils.compare(
-        new ValidReaderWriteIdList("default.table1", new long[] {1,2,3}, new BitSet(), 3),
-        new ValidReaderWriteIdList("default.table1", new long[] {1,2,3,4,5}, new BitSet(), 5)),
-    0);
-
-    // all invalid above lower hwm
-    assertEquals(TxnIdUtils.compare(
-        new ValidReaderWriteIdList("default.table1", new long[] {1,2,3}, new BitSet(), 9),
-        new ValidReaderWriteIdList("default.table1", new long[] {1,2,3,10,11}, new BitSet(), 11)),
-    0);
-
-    // same invalid writeids, different hwm
-    assertEquals(TxnIdUtils.compare(
-        new ValidReaderWriteIdList("default.table1", new long[] {1,2,3}, new BitSet(), 9),
-        new ValidReaderWriteIdList("default.table1", new long[] {1,2,3}, new BitSet(), 11)),
-    -1);
-
-    // all invalid above lower hwm
-    assertEquals(TxnIdUtils.compare(
-        new ValidReaderWriteIdList("default.table1", new long[] {}, new BitSet(), 9),
-        new ValidReaderWriteIdList("default.table1", new long[] {10,11}, new BitSet(), 11)),
-    0);
-
-    // not all invalid above lower hwm
-    assertEquals(TxnIdUtils.compare(
-        new ValidReaderWriteIdList("default.table1", new long[] {}, new BitSet(), 9),
-        new ValidReaderWriteIdList("default.table1", new long[] {10}, new BitSet(), 11)),
-    -1);
-
-    // not all invalid above lower hwm
-    assertEquals(TxnIdUtils.compare(
-        new ValidReaderWriteIdList("default.table1", new long[] {8}, new BitSet(), 9),
-        new ValidReaderWriteIdList("default.table1", new long[] {8}, new BitSet(), 11)),
-    -1);
-
-    // all invalid above lower hwm
-    assertEquals(TxnIdUtils.compare(
-        new ValidReaderWriteIdList("default.table1", new long[] {8}, new BitSet(), 9),
-        new ValidReaderWriteIdList("default.table1", new long[] {8,10,11}, new BitSet(), 11)),
-    0);
-
-    // table name is different
-    assertEquals(TxnIdUtils.compare(
-        new ValidReaderWriteIdList("default.table1", new long[] {8,10,11}, new BitSet(), 11),
-        new ValidReaderWriteIdList("default.table2", new long[] {8,10,11}, new BitSet(), 11)),
-    -1);
-
-    ValidWriteIdList a =
-        new ValidReaderWriteIdList("default.test:1:1:1:");
-    ValidWriteIdList b =
-        new ValidReaderWriteIdList("default.test:1:9223372036854775807::");
-
-    // should return -1 since b is more recent
-    assertEquals(TxnIdUtils.compare(a, b), -1);
-
-    // should return 1 since b is more recent
-    assertEquals(TxnIdUtils.compare(b, a), 1);
   }
 }

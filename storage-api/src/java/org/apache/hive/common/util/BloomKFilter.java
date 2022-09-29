@@ -18,16 +18,12 @@
 
 package org.apache.hive.common.util;
 
-import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-
-import org.apache.hadoop.io.IOUtils;
 
 /**
  * BloomKFilter is variation of {@link BloomFilter}. Unlike BloomFilter, BloomKFilter will spread
@@ -40,20 +36,23 @@ import org.apache.hadoop.io.IOUtils;
  * This implementation has much lesser L1 data cache misses than {@link BloomFilter}.
  */
 public class BloomKFilter {
+  private final byte[] BYTE_ARRAY_4 = new byte[4];
+  private final byte[] BYTE_ARRAY_8 = new byte[8];
   public static final float DEFAULT_FPP = 0.05f;
   private static final int DEFAULT_BLOCK_SIZE = 8;
   private static final int DEFAULT_BLOCK_SIZE_BITS = (int) (Math.log(DEFAULT_BLOCK_SIZE) / Math.log(2));
   private static final int DEFAULT_BLOCK_OFFSET_MASK = DEFAULT_BLOCK_SIZE - 1;
   private static final int DEFAULT_BIT_OFFSET_MASK = Long.SIZE - 1;
+  private final long[] masks = new long[DEFAULT_BLOCK_SIZE];
   private final BitSet bitSet;
-  private final long m;
+  private final int m;
   private final int k;
   // spread k-1 bits to adjacent longs, default is 8
   // spreading hash bits within blockSize * longs will make bloom filter L1 cache friendly
   // default block size is set to 8 as most cache line sizes are 64 bytes and also AVX512 friendly
   private final int totalBlockCount;
 
-  private static void checkArgument(boolean expression, String message) {
+  static void checkArgument(boolean expression, String message) {
     if (!expression) {
       throw new IllegalArgumentException(message);
     }
@@ -63,9 +62,9 @@ public class BloomKFilter {
     checkArgument(maxNumEntries > 0, "expectedEntries should be > 0");
     long numBits = optimalNumOfBits(maxNumEntries, DEFAULT_FPP);
     this.k = optimalNumOfHashFunctions(maxNumEntries, numBits);
-    long nLongs = (long) Math.ceil((double) numBits / (double) Long.SIZE);
+    int nLongs = (int) Math.ceil((double) numBits / (double) Long.SIZE);
     // additional bits to pad long array to block size
-    long padLongs = DEFAULT_BLOCK_SIZE - nLongs % DEFAULT_BLOCK_SIZE;
+    int padLongs = DEFAULT_BLOCK_SIZE - nLongs % DEFAULT_BLOCK_SIZE;
     this.m = (nLongs + padLongs) * Long.SIZE;
     this.bitSet = new BitSet(m);
     checkArgument((bitSet.data.length % DEFAULT_BLOCK_SIZE) == 0, "bitSet has to be block aligned");
@@ -74,8 +73,8 @@ public class BloomKFilter {
 
   /**
    * A constructor to support rebuilding the BloomFilter from a serialized representation.
-   * @param bits BloomK sketch data in form of array of longs.
-   * @param numFuncs  Number of functions called as K.
+   * @param bits
+   * @param numFuncs
    */
   public BloomKFilter(long[] bits, int numFuncs) {
     super();
@@ -142,7 +141,7 @@ public class BloomKFilter {
   }
 
   public void addString(String val) {
-    addBytes(val.getBytes(StandardCharsets.UTF_8));
+    addBytes(val.getBytes());
   }
 
   public void addByte(byte val) {
@@ -150,7 +149,8 @@ public class BloomKFilter {
   }
 
   public void addInt(int val) {
-    addHash(Murmur3.hash64(val));
+    // puts int in little endian order
+    addBytes(intToByteArrayLE(val));
   }
 
 
@@ -184,7 +184,6 @@ public class BloomKFilter {
   private boolean testHash(long hash64) {
     final int hash1 = (int) hash64;
     final int hash2 = (int) (hash64 >>> 32);
-    final long[] bits = bitSet.data;
 
     int firstHash = hash1 + hash2;
     // hashcode should be positive, flip all the bits if it's negative
@@ -208,20 +207,27 @@ public class BloomKFilter {
       }
       // LSB 3 bits is used to locate offset within the block
       final int wordOffset = combinedHash & DEFAULT_BLOCK_OFFSET_MASK;
-      final int absOffset = blockBaseOffset + wordOffset;
       // Next 6 bits are used to locate offset within a long/word
       final int bitPos = (combinedHash >>> DEFAULT_BLOCK_SIZE_BITS) & DEFAULT_BIT_OFFSET_MASK;
-      final long bloomWord = bits[absOffset];
-      if (0 == (bloomWord & (1L << bitPos))) {
-        return false;
-      }
+      masks[wordOffset] |= (1L << bitPos);
     }
 
-    return true;
+    // traverse data and masks array together, check for set bits
+    long expected = 0;
+    for (int i = 0; i < DEFAULT_BLOCK_SIZE; i++) {
+      final long mask = masks[i];
+      expected |= (bitSet.data[blockBaseOffset + i] & mask) ^ mask;
+    }
+
+    // clear the mask for array reuse (this is to avoid masks array allocation in inner loop)
+    Arrays.fill(masks, 0);
+
+    // if all bits are set, expected should be 0
+    return expected == 0;
   }
 
   public boolean testString(String val) {
-    return testBytes(val.getBytes(StandardCharsets.UTF_8));
+    return testBytes(val.getBytes());
   }
 
   public boolean testByte(byte val) {
@@ -229,7 +235,7 @@ public class BloomKFilter {
   }
 
   public boolean testInt(int val) {
-    return testHash(Murmur3.hash64(val));
+    return testBytes(intToByteArrayLE(val));
   }
 
   public boolean testLong(long val) {
@@ -244,6 +250,26 @@ public class BloomKFilter {
     return testLong(Double.doubleToLongBits(val));
   }
 
+  private byte[] intToByteArrayLE(int val) {
+    BYTE_ARRAY_4[0] = (byte) (val >> 0);
+    BYTE_ARRAY_4[1] = (byte) (val >> 8);
+    BYTE_ARRAY_4[2] = (byte) (val >> 16);
+    BYTE_ARRAY_4[3] = (byte) (val >> 24);
+    return BYTE_ARRAY_4;
+  }
+
+  private byte[] longToByteArrayLE(long val) {
+    BYTE_ARRAY_8[0] = (byte) (val >> 0);
+    BYTE_ARRAY_8[1] = (byte) (val >> 8);
+    BYTE_ARRAY_8[2] = (byte) (val >> 16);
+    BYTE_ARRAY_8[3] = (byte) (val >> 24);
+    BYTE_ARRAY_8[4] = (byte) (val >> 32);
+    BYTE_ARRAY_8[5] = (byte) (val >> 40);
+    BYTE_ARRAY_8[6] = (byte) (val >> 48);
+    BYTE_ARRAY_8[7] = (byte) (val >> 56);
+    return BYTE_ARRAY_8;
+  }
+
   public long sizeInBytes() {
     return getBitSize() / 8;
   }
@@ -256,7 +282,7 @@ public class BloomKFilter {
     return k;
   }
 
-  public long getNumBits() {
+  public int getNumBits() {
     return m;
   }
 
@@ -288,16 +314,18 @@ public class BloomKFilter {
   }
 
   /**
-   * Serialize a bloom filter:
-   * Serialized BloomKFilter format:
-   * 1 byte for the number of hash functions.
-   * 1 big endian int(That is how OutputStream works) for the number of longs in the bitset
-   * big endian longs in the BloomKFilter bitset
+   * Serialize a bloom filter
    *
    * @param out         output stream to write to
-   * @param bloomFilter BloomKFilter that needs to be serialized
+   * @param bloomFilter BloomKFilter that needs to be seralized
    */
   public static void serialize(OutputStream out, BloomKFilter bloomFilter) throws IOException {
+    /**
+     * Serialized BloomKFilter format:
+     * 1 byte for the number of hash functions.
+     * 1 big endian int(That is how OutputStream works) for the number of longs in the bitset
+     * big endina longs in the BloomKFilter bitset
+     */
     DataOutputStream dataOutputStream = new DataOutputStream(out);
     dataOutputStream.writeByte(bloomFilter.k);
     dataOutputStream.writeInt(bloomFilter.getBitSet().length);
@@ -329,7 +357,9 @@ public class BloomKFilter {
       }
       return new BloomKFilter(data, numHashFunc);
     } catch (RuntimeException e) {
-      throw new IOException("Unable to deserialize BloomKFilter", e);
+      IOException io = new IOException("Unable to deserialize BloomKFilter");
+      io.initCause(e);
+      throw io;
     }
   }
 
@@ -338,28 +368,20 @@ public class BloomKFilter {
   // NumHashFunctions (1 byte) + bitset array length (4 bytes)
   public static final int START_OF_SERIALIZED_LONGS = 5;
 
-  public static void mergeBloomFilterBytes(
-    byte[] bf1Bytes, int bf1Start, int bf1Length,
-    byte[] bf2Bytes, int bf2Start, int bf2Length) {
-    mergeBloomFilterBytes(bf1Bytes, bf1Start, bf1Length, bf2Bytes, bf2Start, bf2Length,
-        START_OF_SERIALIZED_LONGS, bf1Length);
-  }
-
   /**
    * Merges BloomKFilter bf2 into bf1.
    * Assumes 2 BloomKFilters with the same size/hash functions are serialized to byte arrays
    *
-   * @param bf1Bytes Data of bloom filter 1.
-   * @param bf1Start Start index of BF1.
-   * @param bf1Length BF1 length.
-   * @param bf2Bytes Data of bloom filter 1
-   * @param bf2Start Start index of BF2.
-   * @param bf2Length BF2 length.
+   * @param bf1Bytes
+   * @param bf1Start
+   * @param bf1Length
+   * @param bf2Bytes
+   * @param bf2Start
+   * @param bf2Length
    */
   public static void mergeBloomFilterBytes(
     byte[] bf1Bytes, int bf1Start, int bf1Length,
-    byte[] bf2Bytes, int bf2Start, int bf2Length, int mergeStart, int mergeEnd) {
-
+    byte[] bf2Bytes, int bf2Start, int bf2Length) {
     if (bf1Length != bf2Length) {
       throw new IllegalArgumentException("bf1Length " + bf1Length + " does not match bf2Length " + bf2Length);
     }
@@ -373,22 +395,8 @@ public class BloomKFilter {
 
     // Just bitwise-OR the bits together - size/# functions should be the same,
     // rest of the data is serialized long values for the bitset which are supposed to be bitwise-ORed.
-    for (int idx = mergeStart; idx < mergeEnd; ++idx) {
+    for (int idx = START_OF_SERIALIZED_LONGS; idx < bf1Length; ++idx) {
       bf1Bytes[bf1Start + idx] |= bf2Bytes[bf2Start + idx];
-    }
-  }
-
-  public static byte[] getInitialBytes(long expectedEntries) {
-    ByteArrayOutputStream bytesOut = null;
-    try {
-      bytesOut = new ByteArrayOutputStream();
-      BloomKFilter bf = new BloomKFilter(expectedEntries);
-      BloomKFilter.serialize(bytesOut, bf);
-      return bytesOut.toByteArray();
-    } catch (Exception err) {
-      throw new IllegalArgumentException("Error creating aggregation buffer", err);
-    } finally {
-      IOUtils.closeStream(bytesOut);
     }
   }
 
@@ -408,7 +416,6 @@ public class BloomKFilter {
      *
      * @param data - bit array
      */
-    @SuppressFBWarnings(value = "EI_EXPOSE_REP2", justification = "Ref external obj for efficiency")
     public BitSet(long[] data) {
       assert data.length > 0 : "data length is zero!";
       this.data = data;
@@ -440,7 +447,6 @@ public class BloomKFilter {
       return data.length * Long.SIZE;
     }
 
-    @SuppressFBWarnings(value = "EI_EXPOSE_REP", justification = "Expose internal rep for efficiency")
     public long[] getData() {
       return data;
     }

@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.LinkedHashMap;
 
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.QueryPlan;
 import org.apache.hadoop.hive.ql.parse.TableAccessInfo;
@@ -34,7 +34,7 @@ import org.apache.hadoop.hive.ql.plan.OperatorDesc;
 /*
  * This hook is used for verifying the table access key information
  * that is generated and maintained in the QueryPlan object by the
- * TableAccessAnalyzer. All the hook does is print out the table/keys
+ * TableAccessAnalyer. All the hook does is print out the table/keys
  * per operator recorded in the TableAccessInfo in the QueryPlan.
  */
 public class CheckTableAccessHook implements ExecuteWithHookContext {

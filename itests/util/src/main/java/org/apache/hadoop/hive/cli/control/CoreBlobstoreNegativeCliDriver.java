@@ -23,7 +23,7 @@ public class CoreBlobstoreNegativeCliDriver extends AbstractCoreBlobstoreCliDriv
   }
 
   @Override
-  public void runTest(String tname, String fname, String fpath) {
+  public void runTest(String tname, String fname, String fpath) throws Exception {
     super.runTestHelper(tname, fname, fpath, false);
   }
 }

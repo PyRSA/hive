@@ -228,21 +228,6 @@ public class DiskRangeList extends DiskRange {
     return result;
   }
 
-  /**
-   * This class provides just a simplistic iterator interface (check {@link DiskRangeList}).
-   * Thus, for equality/hashcode just check the actual DiskRange content.
-   * @return hashcode
-   */
-  @Override
-  public int hashCode() {
-    return super.hashCode();
-  }
-
-  @Override
-  public boolean equals(Object other) {
-    return super.equals(other);
-  }
-
   public static class CreateHelper {
     private DiskRangeList tail = null, head;
 

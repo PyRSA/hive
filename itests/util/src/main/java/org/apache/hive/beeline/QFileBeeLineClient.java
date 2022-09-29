@@ -20,7 +20,6 @@ package org.apache.hive.beeline;
 
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.hadoop.hive.ql.QTestUtil;
-import org.apache.hadoop.hive.ql.dataset.QTestDatasetHandler;
 import org.apache.hive.beeline.ConvertedOutputFile.Converter;
 
 import java.io.File;
@@ -29,11 +28,8 @@ import java.io.PrintStream;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
-import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
 
 /**
@@ -153,7 +149,7 @@ public class QFileBeeLineClient implements AutoCloseable {
           .map(database -> "DROP DATABASE `" + database + "` CASCADE;")
           .collect(Collectors.toSet());
 
-      Set<String> srcTables = QTestDatasetHandler.getSrcTables();
+      Set<String> srcTables = QTestUtil.getSrcTables();
       dropCommands.addAll(getTables().stream()
           .filter(table -> !srcTables.contains(table))
           .map(table -> "DROP TABLE `" + table + "` PURGE;")
@@ -193,20 +189,7 @@ public class QFileBeeLineClient implements AutoCloseable {
   }
 
   public void execute(QFile qFile) throws Exception {
-    execute(qFile, null);
-  }
-
-  public void execute(QFile qFile, List<Callable<Void>> preCommands) throws Exception {
-    if (preCommands == null) {
-      preCommands = new ArrayList<Callable<Void>>();
-    }
-
     beforeExecute(qFile);
-
-    for (Callable<Void> c : preCommands) {
-      c.call();
-    }
-
     String[] commands = beeLine.getCommands(qFile.getInputFile());
     execute(qFile.filterCommands(commands), qFile.getRawOutputFile(), qFile.getConverter());
     afterExecute(qFile);

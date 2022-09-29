@@ -53,6 +53,9 @@
   <!-- setting the default severity to warning -->
   <property name="severity" value="warning"/>
 
+  <!-- Checks that a package.html file exists for each package.     -->
+  <module name="JavadocPackage"/>
+
   <!-- Checks whether files end with a new line.                        -->
   <!-- See http://checkstyle.sf.net/config_misc.html#NewlineAtEndOfFile -->
   <module name="NewlineAtEndOfFile"/>
@@ -160,12 +163,8 @@
       <property name="max" value="120"/>
       <property name="ignorePattern" value="^ *\* *[^ ]+$"/>
     </module>
-    <module name="ParameterNumber">
-      <property name="id" value="maxParameterNumber"/>
-      <property name="max" value="20"/>
-      <property name="tokens" value="METHOD_DEF"/>
-    </module>
     <module name="MethodLength"/>
+    <module name="ParameterNumber"/>
     
     
     <!-- Checks for whitespace                               -->

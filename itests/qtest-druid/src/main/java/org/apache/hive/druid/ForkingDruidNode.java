@@ -27,10 +27,13 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URLClassLoader;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 public class ForkingDruidNode extends DruidNode {
   private final static String DEFAULT_JAVA_CMD = "java";
@@ -58,7 +61,7 @@ public class ForkingDruidNode extends DruidNode {
   private final List<String> allowedPrefixes = Lists.newArrayList(
           "com.metamx",
           "druid",
-          "org.apache.druid",
+          "io.druid",
           "java.io.tmpdir",
           "hadoop"
   );
@@ -111,7 +114,7 @@ public class ForkingDruidNode extends DruidNode {
     }
     this.properties
             .forEach((key, value) -> command.add(String.format("-D%s=%s", key, value)));
-    command.addAll(Lists.newArrayList("org.apache.druid.cli.Main", "server", getNodeType()));
+    command.addAll(Lists.newArrayList("io.druid.cli.Main", "server", getNodeType()));
     processBuilder.command(command);
     log.info("Creating forking druid node with " + String.join(" ", processBuilder.command()));
   }

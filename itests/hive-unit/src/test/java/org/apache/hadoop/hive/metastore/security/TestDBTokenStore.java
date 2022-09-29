@@ -21,38 +21,24 @@ package org.apache.hadoop.hive.metastore.security;
 import java.io.IOException;
 import java.util.List;
 
+import junit.framework.TestCase;
 
-
-import org.apache.hadoop.hive.metastore.HMSHandler;
+import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
 import org.apache.hadoop.hive.metastore.api.MetaException;
 import org.apache.hadoop.hive.metastore.api.NoSuchObjectException;
-import org.apache.hadoop.hive.metastore.conf.MetastoreConf;
 import org.apache.hadoop.hive.metastore.security.DBTokenStore;
 import org.apache.hadoop.hive.metastore.security.DelegationTokenStore.TokenStoreException;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.security.token.delegation.AbstractDelegationTokenSecretManager.DelegationTokenInformation;
 import org.apache.hadoop.security.token.delegation.HiveDelegationTokenSupport;
 import org.junit.Assert;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotSame;
-import org.junit.Test;
 
-/**
- * TestDBTokenStore.
- */
-public class TestDBTokenStore {
+public class TestDBTokenStore extends TestCase{
 
-  @Test
   public void testDBTokenStore() throws TokenStoreException, MetaException, IOException {
 
     DelegationTokenStore ts = new DBTokenStore();
-    HMSHandler hms = new HMSHandler("Test handler", MetastoreConf.newMetastoreConf());
-    hms.init();
-    ts.init(hms, HadoopThriftAuthBridge.Server.ServerMode.METASTORE);
+    ts.init(new HMSHandler("Test handler"), HadoopThriftAuthBridge.Server.ServerMode.METASTORE);
     assertEquals(0, ts.getMasterKeys().length);
     assertEquals(false,ts.removeMasterKey(-1));
     try{

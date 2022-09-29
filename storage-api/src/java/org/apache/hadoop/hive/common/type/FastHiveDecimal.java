@@ -23,7 +23,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.nio.charset.StandardCharsets;
 
 /**
  *    FastHiveDecimal is a mutable fast decimal object.  It is the base class for both the
@@ -189,7 +188,7 @@ public class FastHiveDecimal {
   }
 
   protected boolean fastSetFromString(String string, boolean trimBlanks) {
-    byte[] bytes = string.getBytes(StandardCharsets.UTF_8);
+    byte[] bytes = string.getBytes();
     return
         fastSetFromBytes(
             bytes, 0, bytes.length, trimBlanks);

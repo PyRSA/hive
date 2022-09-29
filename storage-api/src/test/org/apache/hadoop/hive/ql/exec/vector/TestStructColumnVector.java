@@ -106,7 +106,6 @@ public class TestStructColumnVector {
     LongColumnVector x1 = new LongColumnVector();
     TimestampColumnVector x2 = new TimestampColumnVector();
     x2.setIsUTC(true);
-    x2.setUsingProlepticCalendar(true);
     StructColumnVector x = new StructColumnVector(1024, x1, x2);
     BytesColumnVector y = new BytesColumnVector();
     batch.cols[0] = x;
@@ -141,7 +140,6 @@ public class TestStructColumnVector {
     LongColumnVector x1 = new LongColumnVector();
     TimestampColumnVector x2 = new TimestampColumnVector();
     x2.setIsUTC(true);
-    x2.setUsingProlepticCalendar(true);
     StructColumnVector x = new StructColumnVector(1024, x1, x2);
     BytesColumnVector y = new BytesColumnVector();
     batch.cols[0] = x;

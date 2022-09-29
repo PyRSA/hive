@@ -46,6 +46,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+@Ignore("Flaky")
 public class TestAutoPurgeTables {
   private static final String driverName = "org.apache.hive.jdbc.HiveDriver";
   private static final String testDbName = "auto_purge_test_db";

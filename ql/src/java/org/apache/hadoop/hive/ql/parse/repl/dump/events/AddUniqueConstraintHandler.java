@@ -18,29 +18,22 @@
 package org.apache.hadoop.hive.ql.parse.repl.dump.events;
 
 import org.apache.hadoop.hive.metastore.api.NotificationEvent;
-import org.apache.hadoop.hive.metastore.messaging.AddUniqueConstraintMessage;
 import org.apache.hadoop.hive.ql.parse.repl.DumpType;
 import org.apache.hadoop.hive.ql.parse.repl.load.DumpMetaData;
 
-public class AddUniqueConstraintHandler
-    extends AbstractConstraintEventHandler<AddUniqueConstraintMessage> {
+public class AddUniqueConstraintHandler extends AbstractConstraintEventHandler {
   AddUniqueConstraintHandler(NotificationEvent event) {
     super(event);
   }
 
   @Override
-  AddUniqueConstraintMessage eventMessage(String stringRepresentation) {
-    return deserializer.getAddUniqueConstraintMessage(stringRepresentation);
-  }
-
-  @Override
   public void handle(Context withinContext) throws Exception {
     LOG.debug("Processing#{} ADD_UNIQUECONSTRAINT_MESSAGE message : {}", fromEventId(),
-        eventMessageAsJSON);
+        event.getMessage());
 
     if (shouldReplicate(withinContext)) {
       DumpMetaData dmd = withinContext.createDmd(this);
-      dmd.setPayload(eventMessageAsJSON);
+      dmd.setPayload(event.getMessage());
       dmd.write();
     }
   }

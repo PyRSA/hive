@@ -17,15 +17,16 @@
  */
 package org.apache.hadoop.hive.cli.control;
 
+import static org.apache.hadoop.hive.cli.control.AbstractCliConfig.HIVE_ROOT;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+
+import java.io.File;
 
 import org.apache.hadoop.hive.hbase.HBaseQTestUtil;
 import org.apache.hadoop.hive.hbase.HBaseTestSetup;
 import org.apache.hadoop.hive.ql.QTestProcessExecResult;
-import org.apache.hadoop.hive.ql.QTestUtil;
-import org.apache.hadoop.hive.ql.QTestMiniClusters.MiniClusterType;
-import org.apache.hadoop.hive.ql.processors.CommandProcessorException;
+import org.apache.hadoop.hive.ql.QTestUtil.MiniClusterType;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -34,6 +35,7 @@ import org.junit.BeforeClass;
 public class CoreHBaseCliDriver extends CliAdapter {
 
   private HBaseQTestUtil qt;
+  private HBaseTestSetup setup = new HBaseTestSetup();
 
   public CoreHBaseCliDriver(AbstractCliConfig testCliConfig) {
     super(testCliConfig);
@@ -41,61 +43,93 @@ public class CoreHBaseCliDriver extends CliAdapter {
 
   @Override
   @BeforeClass
-  public void beforeClass() throws Exception {
-    MiniClusterType miniMR = cliConfig.getClusterType();
-    String initScript = cliConfig.getInitScript();
-    String cleanupScript = cliConfig.getCleanupScript();
+  public void beforeClass() {
+        MiniClusterType miniMR = cliConfig.getClusterType();
+        String initScript = cliConfig.getInitScript();
+        String cleanupScript =cliConfig.getCleanupScript();
 
-    qt = new HBaseQTestUtil(cliConfig.getResultsDir(), cliConfig.getLogDir(), miniMR, new HBaseTestSetup(), initScript,
-        cleanupScript);
+        try {
+          qt = new HBaseQTestUtil(cliConfig.getResultsDir(), cliConfig.getLogDir(), miniMR,
+          setup, initScript, cleanupScript);
+          qt.cleanUp(null);
+          qt.createSources(null);
+
+        } catch (Exception e) {
+          System.err.println("Exception: " + e.getMessage());
+          e.printStackTrace();
+          System.err.flush();
+          fail("Unexpected exception in static initialization: "+e.getMessage());
+        }
+
   }
 
   @Override
   @Before
-  public void setUp() throws Exception {
-    qt.newSession();
+  public void setUp() {
+    try {
+      qt.clearTestSideEffects();
+    } catch (Exception e) {
+      System.err.println("Exception: " + e.getMessage());
+      e.printStackTrace();
+      System.err.flush();
+      fail("Unexpected exception in setup");
+    }
   }
   @Override
   @After
-  public void tearDown() throws Exception {
-    qt.clearPostTestEffects();
-    qt.clearTestSideEffects();
+  public void tearDown() {
+    try {
+      qt.clearPostTestEffects();
+    } catch (Exception e) {
+      System.err.println("Exception: " + e.getMessage());
+      e.printStackTrace();
+      System.err.flush();
+      fail("Unexpected exception in tearDown");
+    }
   }
 
   @Override
   @AfterClass
   public void shutdown() throws Exception {
-    qt.shutdown();
+    try {
+      // FIXME: there were 2 afterclass methods...i guess this is the right order...maybe not
+      qt.shutdown();
+      setup.tearDown();
+    } catch (Exception e) {
+      System.err.println("Exception: " + e.getMessage());
+      e.printStackTrace();
+      System.err.flush();
+      fail("Unexpected exception in shutdown");
+    }
   }
 
   @Override
-  protected QTestUtil getQt() {
-    return qt;
-  }
-
-  @Override
-  public void runTest(String tname, String fname, String fpath) {
+  public void runTest(String tname, String fname, String fpath) throws Exception {
     long startTime = System.currentTimeMillis();
     try {
       System.err.println("Begin query: " + fname);
 
-      qt.setInputFile(fpath);
+      qt.addFile(fpath);
 
-      qt.cliInit();
-
-      try {
-        qt.executeClient();
-      } catch (CommandProcessorException e) {
-        qt.failedQuery(e.getCause(), e.getResponseCode(), fname, null);
+      if (qt.shouldBeSkipped(fname)) {
+        System.err.println("Test " + fname + " skipped");
+        return;
       }
 
-      QTestProcessExecResult result = qt.checkCliDriverResults();
+      qt.cliInit(new File(fpath), false);
+
+      int ecode = qt.executeClient(fname);
+      if (ecode != 0) {
+        qt.failed(ecode, fname, null);
+      }
+
+      QTestProcessExecResult result = qt.checkCliDriverResults(fname);
       if (result.getReturnCode() != 0) {
         qt.failedDiff(result.getReturnCode(), fname, result.getCapturedOutput());
       }
 
     } catch (Exception e) {
-      qt.failedWithException(e, fname, null);
+      qt.failed(e, fname, null);
     }
 
     long elapsedTime = System.currentTimeMillis() - startTime;

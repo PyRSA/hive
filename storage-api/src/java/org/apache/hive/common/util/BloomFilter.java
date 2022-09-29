@@ -19,7 +19,6 @@
 package org.apache.hive.common.util;
 
 import java.io.*;
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
 /**
@@ -92,7 +91,7 @@ public class BloomFilter {
 
   public void add(byte[] val) {
     if (val == null) {
-      addBytes(null, -1, -1);
+      addBytes(val, -1, -1);
     } else {
       addBytes(val, 0, val.length);
     }
@@ -129,7 +128,7 @@ public class BloomFilter {
     if (val == null) {
       add(null);
     } else {
-      add(val.getBytes(StandardCharsets.UTF_8));
+      add(val.getBytes());
     }
   }
 
@@ -143,7 +142,7 @@ public class BloomFilter {
 
   public boolean test(byte[] val) {
     if (val == null) {
-      return testBytes(null, -1, -1);
+      return testBytes(val, -1, -1);
     }
     return testBytes(val, 0, val.length);
   }
@@ -176,7 +175,7 @@ public class BloomFilter {
     if (val == null) {
       return test(null);
     } else {
-      return test(val.getBytes(StandardCharsets.UTF_8));
+      return test(val.getBytes());
     }
   }
 
@@ -328,7 +327,7 @@ public class BloomFilter {
    * Bare metal bit set implementation. For performance reasons, this implementation does not check
    * for index bounds nor expand the bit set size if the specified index is greater than the size.
    */
-  static class BitSet {
+  public class BitSet {
     private final long[] data;
 
     public BitSet(long bits) {

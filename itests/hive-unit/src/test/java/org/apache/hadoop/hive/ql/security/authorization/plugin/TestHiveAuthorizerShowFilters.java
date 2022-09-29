@@ -19,7 +19,7 @@
 package org.apache.hadoop.hive.ql.security.authorization.plugin;
 
 import static org.junit.Assert.assertEquals;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Matchers.any;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -31,6 +31,7 @@ import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.ql.DriverFactory;
 import org.apache.hadoop.hive.ql.IDriver;
+import org.apache.hadoop.hive.ql.processors.CommandProcessorResponse;
 import org.apache.hadoop.hive.ql.security.HiveAuthenticationProvider;
 import org.apache.hadoop.hive.ql.security.SessionStateUserAuthenticator;
 import org.apache.hadoop.hive.ql.security.authorization.plugin.HivePrivilegeObject.HivePrivilegeObjectType;
@@ -61,8 +62,8 @@ public class TestHiveAuthorizerShowFilters {
   static final List<String> AllTables = getSortedList(tableName1, tableName2);
   static final List<String> AllDbs = getSortedList("default", dbName1, dbName2);
 
-  private static List<HivePrivilegeObject> filterArguments = new ArrayList<>();
-  private static List<HivePrivilegeObject> filteredResults = new ArrayList<>();
+  private static List<HivePrivilegeObject> filterArguments = null;
+  private static List<HivePrivilegeObject> filteredResults = new ArrayList<HivePrivilegeObject>();
 
   /**
    * This factory creates a mocked HiveAuthorizer class. The mocked class is
@@ -71,16 +72,13 @@ public class TestHiveAuthorizerShowFilters {
    * HiveAuthorizer.filterListCmdObjects, and stores the list argument in
    * filterArguments
    */
-  public static class MockedHiveAuthorizerFactory implements HiveAuthorizerFactory {
-    /**
-     * Abstracts HiveAuthorizer interface for hive authorization plugins
-     */
-    public abstract class AuthorizerWithFilterCmdImpl implements HiveAuthorizer {
+  protected static class MockedHiveAuthorizerFactory implements HiveAuthorizerFactory {
+    protected abstract class AuthorizerWithFilterCmdImpl implements HiveAuthorizer {
       @Override
       public List<HivePrivilegeObject> filterListCmdObjects(List<HivePrivilegeObject> listObjs,
           HiveAuthzContext context) throws HiveAuthzPluginException, HiveAccessControlException {
         // capture arguments in static
-        filterArguments.addAll(listObjs);
+        filterArguments = listObjs;
         // return static variable with results, if it is set to some set of
         // values
         // otherwise return the arguments
@@ -139,7 +137,7 @@ public class TestHiveAuthorizerShowFilters {
 
   @Before
   public void setup() {
-    filterArguments.clear();
+    filterArguments = null;
     filteredResults.clear();
   }
 
@@ -258,7 +256,8 @@ public class TestHiveAuthorizerShowFilters {
   }
 
   private static void runCmd(String cmd) throws Exception {
-    driver.run(cmd);
+    CommandProcessorResponse resp = driver.run(cmd);
+    assertEquals(0, resp.getResponseCode());
   }
 
   private static List<String> getSortedList(String... strings) {

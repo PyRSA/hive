@@ -25,32 +25,20 @@ import org.junit.BeforeClass;
 import org.junit.Before;
 import org.junit.After;
 import org.apache.hadoop.mapred.InputFormat;
-import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
-import org.junit.Ignore;
 
 /**
  * TestJdbcWithMiniLlap for llap Row format.
  */
-@Ignore("HIVE-23549")
 public class TestJdbcWithMiniLlapRow extends BaseJdbcWithMiniLlap {
 
   @BeforeClass
   public static void beforeTest() throws Exception {
-    HiveConf conf = defaultConf();
-    conf.setBoolVar(ConfVars.LLAP_OUTPUT_FORMAT_ARROW, false);
-    BaseJdbcWithMiniLlap.beforeTest(conf);
+    BaseJdbcWithMiniLlap.beforeTest(false);
   }
 
   @Override
   protected InputFormat<NullWritable, Row> getInputFormat() {
     return new LlapRowInputFormat();
-  }
-
-  @Override
-  @Ignore
-  public void testMultipleBatchesOfComplexTypes() {
-    // ToDo: FixMe
   }
 
 }

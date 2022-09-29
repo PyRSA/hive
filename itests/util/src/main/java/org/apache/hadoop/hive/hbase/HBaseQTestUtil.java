@@ -20,8 +20,7 @@ package org.apache.hadoop.hive.hbase;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.Connection;
-import org.apache.hadoop.hive.ql.QTestArguments;
-import org.apache.hadoop.hive.ql.QTestMiniClusters.MiniClusterType;
+import org.apache.hadoop.hive.metastore.Warehouse;
 import org.apache.hadoop.hive.ql.QTestUtil;
 
 /**
@@ -38,32 +37,45 @@ public class HBaseQTestUtil extends QTestUtil {
   /** A handle to this harness's cluster */
   private final Connection conn;
 
+  private HBaseTestSetup hbaseSetup = null;
+
   public HBaseQTestUtil(
     String outDir, String logDir, MiniClusterType miniMr, HBaseTestSetup setup,
     String initScript, String cleanupScript)
     throws Exception {
 
-    super(
-        QTestArguments.QTestArgumentsBuilder.instance()
-          .withOutDir(outDir)
-          .withLogDir(logDir)
-          .withClusterType(miniMr)
-          .withConfDir(null)
-          .withInitScript(initScript)
-          .withCleanupScript(cleanupScript)
-          .withLlapIo(false)
-          .withQTestSetup(setup)
-          .build());
-
+    super(outDir, logDir, miniMr, null, "0.20", initScript, cleanupScript, false);
+    hbaseSetup = setup;
+    hbaseSetup.preTest(conf);
     this.conn = setup.getConnection();
+    super.init();
   }
 
   @Override
-  public void createSources() throws Exception {
-    super.createSources();
+  public void init() throws Exception {
+    // defer
+  }
+
+  @Override
+  protected void initConfFromSetup() throws Exception {
+    super.initConfFromSetup();
+    hbaseSetup.preTest(conf);
+  }
+
+  @Override
+  public void createSources(String tname) throws Exception {
+    super.createSources(tname);
 
     conf.setBoolean("hive.test.init.phase", true);
-    datasetHandler.initDataset(HBASE_SRC_NAME, getCliDriver());
+
+    // create and load the input data into the hbase table
+    runCreateTableCmd(
+      "CREATE TABLE " + HBASE_SRC_NAME + "(key INT, value STRING)"
+        + "  STORED BY 'org.apache.hadoop.hive.hbase.HBaseStorageHandler'"
+        + "  WITH SERDEPROPERTIES ('hbase.columns.mapping' = ':key,cf:val')"
+        + "  TBLPROPERTIES ('hbase.table.name' = '" + HBASE_SRC_NAME + "')"
+    );
+    runCmd("INSERT OVERWRITE TABLE " + HBASE_SRC_NAME + " SELECT * FROM src");
 
     // create a snapshot
     Admin admin = null;
@@ -71,26 +83,31 @@ public class HBaseQTestUtil extends QTestUtil {
       admin = conn.getAdmin();
       admin.snapshot(HBASE_SRC_SNAPSHOT_NAME, TableName.valueOf(HBASE_SRC_NAME));
     } finally {
-      if (admin != null) {
-        admin.close();
-      }
+      if (admin != null) admin.close();
     }
+
     conf.setBoolean("hive.test.init.phase", false);
   }
 
   @Override
-  public void cleanUp() throws Exception {
-    super.cleanUp();
+  public void cleanUp(String tname) throws Exception {
+    super.cleanUp(tname);
+
+    // drop in case leftover from unsuccessful run
+    db.dropTable(Warehouse.DEFAULT_DATABASE_NAME, HBASE_SRC_NAME);
 
     Admin admin = null;
     try {
       admin = conn.getAdmin();
       admin.deleteSnapshots(HBASE_SRC_SNAPSHOT_NAME);
     } finally {
-      if (admin != null) {
-        admin.close();
-      }
+      if (admin != null) admin.close();
     }
   }
 
+  @Override
+  public void clearTestSideEffects() throws Exception {
+    super.clearTestSideEffects();
+    hbaseSetup.preTest(conf);
+  }
 }

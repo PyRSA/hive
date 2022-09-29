@@ -25,17 +25,14 @@ import java.io.FileOutputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
-import org.apache.hadoop.hive.ql.QTestMiniClusters.FsType;
-import org.apache.hadoop.hive.ql.qoption.QTestReplaceHandler;
+import org.apache.hadoop.hive.ql.QTestUtil.FsType;
 
 /**
  * QOutProcessor: produces the final q.out from original q.out by postprocessing (e.g. masks)
@@ -51,9 +48,10 @@ public class QOutProcessor {
   public static final String HDFS_DATE_MASK = "### HDFS DATE ###";
   public static final String HDFS_USER_MASK = "### USER ###";
   public static final String HDFS_GROUP_MASK = "### GROUP ###";
-
+  
   public static final String MASK_PATTERN = "#### A masked pattern was here ####";
   public static final String PARTIAL_MASK_PATTERN = "#### A PARTIAL masked pattern was here ####";
+
   private static final PatternReplacementPair MASK_STATS = new PatternReplacementPair(
       Pattern.compile(" Num rows: [1-9][0-9]* Data size: [1-9][0-9]*"),
       " Num rows: ###Masked### Data size: ###Masked###");
@@ -64,12 +62,12 @@ public class QOutProcessor {
       Pattern.compile("POSTHOOK: Lineage: .*"),
       "POSTHOOK: Lineage: ###Masked###");
 
-  private FsType fsType = FsType.LOCAL;
+  private FsType fsType = FsType.local;
 
   public static class LineProcessingResult {
     private String line;
     private boolean partialMaskWasMatched = false;
-
+    
     public LineProcessingResult(String line) {
       this.line = line;
     }
@@ -78,91 +76,62 @@ public class QOutProcessor {
       return line;
     }
   }
-
+  
   private final Pattern[] planMask = toPattern(new String[] {
+      ".*file:.*",
+      ".*pfile:.*",
+      ".*/tmp/.*",
+      ".*invalidscheme:.*",
+      ".*lastUpdateTime.*",
+      ".*lastAccessTime.*",
+      ".*lastModifiedTime.*",
+      ".*[Oo]wner.*",
+      ".*CreateTime.*",
+      ".*LastAccessTime.*",
+      ".*Location.*",
+      ".*LOCATION '.*",
+      ".*transient_lastDdlTime.*",
+      ".*last_modified_.*",
+      ".*at org.*",
+      ".*at sun.*",
+      ".*at java.*",
+      ".*at junit.*",
+      ".*Caused by:.*",
+      ".*LOCK_QUERYID:.*",
+      ".*LOCK_TIME:.*",
+      ".*grantTime.*",
       ".*[.][.][.] [0-9]* more.*",
+      ".*job_[0-9_]*.*",
+      ".*job_local[0-9_]*.*",
+      ".*USING 'java -cp.*",
+      "^Deleted.*",
+      ".*DagName:.*",
+      ".*DagId:.*",
+      ".*Input:.*/data/files/.*",
+      ".*Output:.*/data/files/.*",
+      ".*total number of created files now is.*",
+      ".*.hive-staging.*",
       "pk_-?[0-9]*_[0-9]*_[0-9]*",
       "fk_-?[0-9]*_[0-9]*_[0-9]*",
       "uk_-?[0-9]*_[0-9]*_[0-9]*",
       "nn_-?[0-9]*_[0-9]*_[0-9]*", // not null constraint name
       "dc_-?[0-9]*_[0-9]*_[0-9]*", // default constraint name
+      ".*at com\\.sun\\.proxy.*",
+      ".*at com\\.jolbox.*",
+      ".*at com\\.zaxxer.*",
       "org\\.apache\\.hadoop\\.hive\\.metastore\\.model\\.MConstraint@([0-9]|[a-z])*",
+      "^Repair: Added partition to metastore.*",
+      "^Repair: Dropped partition from metastore.*"
   });
 
-  // Using patterns for matching the whole line can take a long time, therefore we should try to avoid it
-  // in case of really long lines trying to match a .*some string.* may take up to 4 seconds each!
-
-  // Using String.startsWith instead of pattern, as it is much faster
-  private final String[] maskIfStartsWith = new String[] {
-      "Deleted",
-      "Repair: Added partition to metastore",
-      "latestOffsets",
-      "minimumLag"
-  };
-
-  // Using String.contains instead of pattern, as it is much faster
-  private final String[] maskIfContains = new String[] {
-      "file:",
-      "pfile:",
-      "/tmp/",
-      "invalidscheme:",
-      "lastUpdateTime",
-      "lastAccessTime",
-      "lastModifiedTim",
-      "Owner",
-      "owner",
-      "CreateTime",
-      "LastAccessTime",
-      "Location",
-      "LOCATION '",
-      "transient_lastDdlTime",
-      "last_modified_",
-      "at org",
-      "at sun",
-      "at java",
-      "at junit",
-      "LOCK_QUERYID:",
-      "LOCK_TIME:",
-      "grantTime",
-      "job_",
-      "USING 'java -cp",
-      "DagName:",
-      "DagId:",
-      "total number of created files now is",
-      "hive-staging",
-      "at com.sun.proxy",
-      "at com.jolbox",
-      "at com.zaxxer",
-      "at com.google"
-  };
-
-  // Using String.contains instead of pattern, as it is much faster
-  private final String[][] maskIfContainsMultiple = new String[][] {
-    {"Input:", "/data/files/"},
-    {"Output:", "/data/files/"}
-  };
-
-  private enum Mask {
-    STATS("-- MASK_STATS"), DATASIZE("-- MASK_DATA_SIZE"), LINEAGE("-- MASK_LINEAGE");
-    private Pattern pattern;
-
-    Mask(String pattern) {
-      this.pattern = Pattern.compile(pattern);
-    }
-
-    boolean existsIn(String query) {
-      return pattern.matcher(query).find();
-    }
-  }
-
-  private final QTestReplaceHandler replaceHandler;
-  private final Set<Mask> queryMasks = new HashSet<>();
-
-  public QOutProcessor(FsType fsType, QTestReplaceHandler replaceHandler) {
+  public QOutProcessor(FsType fsType) {
     this.fsType = fsType;
-    this.replaceHandler = replaceHandler;
   }
 
+  public QOutProcessor() {
+    this.fsType = FsType.hdfs;
+  }
+  
   private Pattern[] toPattern(String[] patternStrs) {
     Pattern[] patterns = new Pattern[patternStrs.length];
     for (int i = 0; i < patternStrs.length; i++) {
@@ -171,8 +140,7 @@ public class QOutProcessor {
     return patterns;
   }
 
-  public void maskPatterns(String fname) throws Exception {
-
+  public void maskPatterns(String fname, boolean maskStats, boolean maskDataSize, boolean maskLineage) throws Exception {
     String line;
     BufferedReader in;
     BufferedWriter out;
@@ -187,7 +155,7 @@ public class QOutProcessor {
     boolean lastWasMasked = false;
 
     while (null != (line = in.readLine())) {
-      LineProcessingResult result = processLine(line);
+      LineProcessingResult result = processLine(line, maskStats, maskDataSize, maskLineage);
 
       if (result.line.equals(MASK_PATTERN)) {
         // We're folding multiple masked lines into one.
@@ -209,14 +177,12 @@ public class QOutProcessor {
     out.close();
   }
 
-  LineProcessingResult processLine(String line) {
+  public LineProcessingResult processLine(String line, boolean maskStats, boolean maskDataSize, boolean maskLineage) {
     LineProcessingResult result = new LineProcessingResult(line);
-
+    
     Matcher matcher = null;
 
-    result.line = replaceHandler.processLine(result.line);
-
-    if (fsType == FsType.ENCRYPTED_HDFS) {
+    if (fsType == FsType.encrypted_hdfs) {
       for (Pattern pattern : partialReservedPlanMask) {
         matcher = pattern.matcher(result.line);
         if (matcher.find()) {
@@ -249,7 +215,7 @@ public class QOutProcessor {
         }
       }
 
-      if (!result.partialMaskWasMatched && queryMasks.contains(Mask.STATS)) {
+      if (!result.partialMaskWasMatched && maskStats) {
         matcher = MASK_STATS.pattern.matcher(result.line);
         if (matcher.find()) {
           result.line = result.line.replaceAll(MASK_STATS.pattern.pattern(), MASK_STATS.replacement);
@@ -257,7 +223,7 @@ public class QOutProcessor {
         }
       }
 
-      if (!result.partialMaskWasMatched && queryMasks.contains(Mask.DATASIZE)) {
+      if (!result.partialMaskWasMatched && maskDataSize) {
         matcher = MASK_DATA_SIZE.pattern.matcher(result.line);
         if (matcher.find()) {
           result.line = result.line.replaceAll(MASK_DATA_SIZE.pattern.pattern(), MASK_DATA_SIZE.replacement);
@@ -265,7 +231,7 @@ public class QOutProcessor {
         }
       }
 
-      if (!result.partialMaskWasMatched && queryMasks.contains(Mask.LINEAGE)) {
+      if (!result.partialMaskWasMatched && maskLineage) {
         matcher = MASK_LINEAGE.pattern.matcher(result.line);
         if (matcher.find()) {
           result.line = result.line.replaceAll(MASK_LINEAGE.pattern.pattern(), MASK_LINEAGE.replacement);
@@ -273,40 +239,11 @@ public class QOutProcessor {
         }
       }
 
-      for (String prefix : maskIfStartsWith) {
-        if (result.line.startsWith(prefix)) {
-          result.line = MASK_PATTERN;
-        }
-      }
-
-      for (String word : maskIfContains) {
-        if (result.line.contains(word)) {
-          result.line = MASK_PATTERN;
-        }
-      }
-
-      for (String[] words : maskIfContainsMultiple) {
-        int pos = 0;
-        boolean containsAllInOrder = true;
-        for (String word : words) {
-          int wordPos = result.line.substring(pos).indexOf(word);
-          if (wordPos == -1) {
-            containsAllInOrder = false;
-            break;
-          } else {
-            pos += wordPos + word.length();
-          }
-        }
-        if (containsAllInOrder) {
-          result.line = MASK_PATTERN;
-        }
-      }
-
       for (Pattern pattern : planMask) {
         result.line = pattern.matcher(result.line).replaceAll(MASK_PATTERN);
       }
     }
-
+    
     return result;
   }
 
@@ -332,38 +269,24 @@ public class QOutProcessor {
     ArrayList<PatternReplacementPair> ppm = new ArrayList<>();
     ppm.add(new PatternReplacementPair(Pattern.compile("\\{\"writeid\":[1-9][0-9]*,\"bucketid\":"),
         "{\"writeid\":### Masked writeid ###,\"bucketid\":"));
-
+    
     ppm.add(new PatternReplacementPair(Pattern.compile("attempt_[0-9_]+"), "attempt_#ID#"));
     ppm.add(new PatternReplacementPair(Pattern.compile("vertex_[0-9_]+"), "vertex_#ID#"));
     ppm.add(new PatternReplacementPair(Pattern.compile("task_[0-9_]+"), "task_#ID#"));
-
-    ppm.add(new PatternReplacementPair(Pattern.compile("rowcount = [0-9]+(\\.[0-9]+(E[0-9]+)?)?, cumulative cost = \\{.*\\}, id = [0-9]*"),
-        "rowcount = ###Masked###, cumulative cost = ###Masked###, id = ###Masked###"));
-
-    // When a vertex is killed due to failure of upstream vertex, logs are in arbitrary order.
-    // We do not want the test to fail because of this.
-    ppm.add(new PatternReplacementPair(
-        Pattern.compile("Vertex killed, vertexName=(.*?),.*\\[\\1\\] killed\\/failed due to:OTHER_VERTEX_FAILURE\\]"),
-        "[Masked Vertex killed due to OTHER_VERTEX_FAILURE]"));
-
     partialPlanMask = ppm.toArray(new PatternReplacementPair[ppm.size()]);
   }
-
-  @SuppressWarnings("serial")
-  private ArrayList<Pair<Pattern, String>> initPatternWithMaskComments() {
-    return new ArrayList<Pair<Pattern, String>>() {
-      {
-        add(toPatternPair("(pblob|s3.?|swift|wasb.?).*hive-staging.*",
-            "### BLOBSTORE_STAGING_PATH ###"));
-        add(toPatternPair(PATH_HDFS_WITH_DATE_USER_GROUP_REGEX, String.format("%s %s$3$4 %s $6%s",
-            HDFS_USER_MASK, HDFS_GROUP_MASK, HDFS_DATE_MASK, HDFS_MASK)));
-        add(toPatternPair(PATH_HDFS_REGEX, String.format("$1%s", HDFS_MASK)));
-      }
-    };
-  }
-
   /* This list may be modified by specific cli drivers to mask strings that change on every test */
-  private List<Pair<Pattern, String>> patternsWithMaskComments = initPatternWithMaskComments();
+  @SuppressWarnings("serial")
+  private final List<Pair<Pattern, String>> patternsWithMaskComments =
+      new ArrayList<Pair<Pattern, String>>() {
+        {
+          add(toPatternPair("(pblob|s3.?|swift|wasb.?).*hive-staging.*",
+              "### BLOBSTORE_STAGING_PATH ###"));
+          add(toPatternPair(PATH_HDFS_WITH_DATE_USER_GROUP_REGEX, String.format("%s %s$3$4 %s $6%s",
+              HDFS_USER_MASK, HDFS_GROUP_MASK, HDFS_DATE_MASK, HDFS_MASK)));
+          add(toPatternPair(PATH_HDFS_REGEX, String.format("$1%s", HDFS_MASK)));
+        }
+      };
 
   private Pair<Pattern, String> toPatternPair(String patternStr, String maskComment) {
     return ImmutablePair.of(Pattern.compile(patternStr), maskComment);
@@ -372,18 +295,5 @@ public class QOutProcessor {
   public void addPatternWithMaskComment(String patternStr, String maskComment) {
     patternsWithMaskComments.add(toPatternPair(patternStr, maskComment));
   }
-
-  public void initMasks(String query) {
-    queryMasks.clear();
-    for (Mask m : Mask.values()) {
-      if (m.existsIn(query)) {
-        queryMasks.add(m);
-      }
-    }
-  }
-
-  public void resetPatternwithMaskComments() {
-    patternsWithMaskComments = initPatternWithMaskComments();
-  }
-
+  
 }

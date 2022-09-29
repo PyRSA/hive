@@ -22,6 +22,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
+import junit.framework.TestCase;
+
 import org.apache.hadoop.hive.cli.CliSessionState;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.HiveMetaStoreClient;
@@ -36,26 +38,21 @@ import org.apache.hadoop.hive.ql.IDriver;
 import org.apache.hadoop.hive.ql.security.DummyHiveMetastoreAuthorizationProvider.AuthCallContext;
 import org.apache.hadoop.hive.ql.security.authorization.AuthorizationPreEventListener;
 import org.apache.hadoop.hive.ql.session.SessionState;
-import org.junit.Assert;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import org.junit.Before;
-import org.junit.After;
-import org.junit.Test;
 
 /**
  * TestAuthorizationPreEventListener. Test case for
  * {@link org.apache.hadoop.hive.ql.security.authorization.AuthorizationPreEventListener} and
  * {@link org.apache.hadoop.hive.metastore.MetaStorePreEventListener}
  */
-public class TestAuthorizationPreEventListener {
+public class TestAuthorizationPreEventListener extends TestCase {
   private HiveConf clientHiveConf;
   private HiveMetaStoreClient msc;
   private IDriver driver;
 
-  @Before
-  public void setUp() throws Exception {
+  @Override
+  protected void setUp() throws Exception {
+
+    super.setUp();
 
     System.setProperty(HiveConf.ConfVars.METASTORE_PRE_EVENT_LISTENERS.varname,
         AuthorizationPreEventListener.class.getName());
@@ -81,8 +78,9 @@ public class TestAuthorizationPreEventListener {
     driver = DriverFactory.newDriver(clientHiveConf);
   }
 
-  @After
-  public void tearDown() throws Exception {
+  @Override
+  protected void tearDown() throws Exception {
+    super.tearDown();
   }
 
   private void validateCreateDb(Database expectedDb, Database actualDb) {
@@ -165,7 +163,6 @@ public class TestAuthorizationPreEventListener {
     assertEquals(expectedDb, actualDb);
   }
 
-  @Test
   public void testListener() throws Exception {
     String dbName = "hive3705";
     String tblName = "tmptbl";
@@ -192,8 +189,6 @@ public class TestAuthorizationPreEventListener {
             DummyHiveMetastoreAuthorizationProvider.AuthCallContextType.TABLE))
             .getTTable();
     Table tbl = msc.getTable(dbName, tblName);
-    Assert.assertTrue(tbl.isSetId());
-    tbl.unsetId();
     validateCreateTable(tbl, tblFromEvent);
 
     driver.run("alter table tmptbl add partition (b='2011')");

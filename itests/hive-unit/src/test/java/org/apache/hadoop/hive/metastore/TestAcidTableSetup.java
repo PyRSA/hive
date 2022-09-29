@@ -26,7 +26,6 @@ import java.util.Map;
 import org.apache.hadoop.hive.metastore.client.builder.TableBuilder;
 import org.apache.hadoop.hive.metastore.conf.MetastoreConf;
 import org.apache.hadoop.hive.metastore.conf.MetastoreConf.ConfVars;
-import org.apache.hadoop.hive.metastore.utils.TestTxnDbUtil;
 import org.junit.Before;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,7 +57,6 @@ public class TestAcidTableSetup {
     MetastoreConf.setClass(conf, ConfVars.EXPRESSION_PROXY_CLASS,
         DefaultPartitionExpressionProxy.class, PartitionExpressionProxy.class);
     client = new HiveMetaStoreClient(conf);
-    TestTxnDbUtil.prepDb(conf);
   }
 
   @Test
@@ -227,7 +225,7 @@ public class TestAcidTableSetup {
         client.dropTable(dbName, tableName);
       }
       client.dropDatabase(dbName);
-    } catch (NoSuchObjectException|InvalidOperationException|MetaException e) {
+    } catch (NoSuchObjectException|InvalidOperationException e) {
       // NOP
     }
   }

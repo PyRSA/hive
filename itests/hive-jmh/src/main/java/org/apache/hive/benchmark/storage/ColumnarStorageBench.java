@@ -158,7 +158,7 @@ public class ColumnarStorageBench {
 
     try {
       lazySimpleSerDe = new LazySimpleSerDe();
-      lazySimpleSerDe.initialize(new Configuration(), recordProperties, null);
+      SerDeUtils.initializeSerDe(lazySimpleSerDe, new Configuration(), recordProperties, null);
       oi = lazySimpleSerDe.getObjectInspector();
 
       for (int i = 0; i < NUMBER_OF_ROWS_TO_TEST; i++) {
@@ -276,7 +276,7 @@ public class ColumnarStorageBench {
       inputFormat = inputFormatImpl;
 
       Configuration conf = new Configuration();
-      serDe.initialize(conf, recordProperties, null);
+      SerDeUtils.initializeSerDe(serDe, conf, recordProperties, null);
     }
 
     public Writable serialize(Object row, ObjectInspector oi) throws SerDeException {

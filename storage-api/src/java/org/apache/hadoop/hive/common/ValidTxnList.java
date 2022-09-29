@@ -31,8 +31,6 @@ public interface ValidTxnList {
    */
   public static final String VALID_TXNS_KEY = "hive.txn.valid.txns";
 
-  void removeException(long txnId);
-
   /**
    * The response to a range query.  NONE means no values in this range match,
    * SOME mean that some do, and ALL means that every value does.

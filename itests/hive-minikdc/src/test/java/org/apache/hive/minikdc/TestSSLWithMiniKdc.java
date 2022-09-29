@@ -50,14 +50,12 @@ public class TestSSLWithMiniKdc {
 
     SSLTestUtils.setMetastoreSslConf(hiveConf);
     hiveConf.setBoolVar(ConfVars.HIVE_SUPPORT_CONCURRENCY, false);
-    hiveConf.setBoolVar(ConfVars.HIVEFETCHTASKCACHING, false);
 
     setHMSSaslConf(miniHiveKdc, hiveConf);
 
     miniHS2 = MiniHiveKdc.getMiniHS2WithKerbWithRemoteHMS(miniHiveKdc, hiveConf);
 
     Map<String, String> confOverlay = new HashMap<>();
-    confOverlay.put(ConfVars.HIVE_SCHEDULED_QUERIES_EXECUTOR_ENABLED.varname, "false");
     SSLTestUtils.setHttpConfOverlay(confOverlay);
     SSLTestUtils.setSslConfOverlay(confOverlay);
 

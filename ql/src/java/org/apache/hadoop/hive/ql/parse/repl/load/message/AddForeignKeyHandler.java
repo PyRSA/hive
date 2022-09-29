@@ -22,23 +22,23 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-import org.apache.hadoop.hive.common.TableName;
 import org.apache.hadoop.hive.metastore.api.SQLForeignKey;
+import org.apache.hadoop.hive.metastore.api.SQLPrimaryKey;
+import org.apache.hadoop.hive.metastore.api.SQLUniqueConstraint;
 import org.apache.hadoop.hive.metastore.messaging.AddForeignKeyMessage;
-import org.apache.hadoop.hive.ql.ddl.DDLWork;
-import org.apache.hadoop.hive.ql.ddl.table.constraint.Constraints;
-import org.apache.hadoop.hive.ql.ddl.table.constraint.add.AlterTableAddConstraintDesc;
 import org.apache.hadoop.hive.ql.exec.Task;
 import org.apache.hadoop.hive.ql.exec.TaskFactory;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
+import org.apache.hadoop.hive.ql.plan.AlterTableDesc;
+import org.apache.hadoop.hive.ql.plan.DDLWork;
 
 public class AddForeignKeyHandler extends AbstractMessageHandler {
   @Override
-  public List<Task<?>> handle(Context context)
+  public List<Task<? extends Serializable>> handle(Context context)
       throws SemanticException {
     AddForeignKeyMessage msg = deserializer.getAddForeignKeyMessage(context.dmd.getPayload());
 
-    List<SQLForeignKey> fks;
+    List<SQLForeignKey> fks = null;
     try {
       fks = msg.getForeignKeys();
     } catch (Exception e) {
@@ -49,14 +49,13 @@ public class AddForeignKeyHandler extends AbstractMessageHandler {
       }
     }
 
-    List<Task<?>> tasks = new ArrayList<Task<?>>();
+    List<Task<? extends Serializable>> tasks = new ArrayList<Task<? extends Serializable>>();
     if (fks.isEmpty()) {
       return tasks;
     }
 
-    final String actualDbName = context.isDbNameEmpty() ? fks.get(0).getFktable_db() : context.dbName;
-    final String actualTblName = fks.get(0).getFktable_name();
-    final TableName tName = TableName.fromString(actualTblName, null, actualDbName);
+    String actualDbName = context.isDbNameEmpty() ? fks.get(0).getFktable_db() : context.dbName;
+    String actualTblName = context.isTableNameEmpty() ? fks.get(0).getFktable_name() : context.tableName;
 
     for (SQLForeignKey fk : fks) {
       // If parent table is in the same database, change it to the actual db on destination
@@ -68,17 +67,13 @@ public class AddForeignKeyHandler extends AbstractMessageHandler {
       fk.setFktable_name(actualTblName);
     }
 
-    Constraints constraints = new Constraints(null, fks, null, null, null, null);
-    AlterTableAddConstraintDesc addConstraintsDesc = new AlterTableAddConstraintDesc(tName,
-        context.eventOnlyReplicationSpec(), constraints);
+    AlterTableDesc addConstraintsDesc = new AlterTableDesc(actualDbName + "." + actualTblName, new ArrayList<SQLPrimaryKey>(), fks,
+        new ArrayList<SQLUniqueConstraint>(), context.eventOnlyReplicationSpec());
     Task<DDLWork> addConstraintsTask = TaskFactory.get(
-            new DDLWork(readEntitySet, writeEntitySet, addConstraintsDesc,
-                    true, context.getDumpDirectory(), context.getMetricCollector()),
-            context.hiveConf
-            );
+            new DDLWork(readEntitySet, writeEntitySet, addConstraintsDesc), context.hiveConf);
     tasks.add(addConstraintsTask);
     context.log.debug("Added add constrains task : {}:{}", addConstraintsTask.getId(), actualTblName);
     updatedMetadata.set(context.dmd.getEventTo().toString(), actualDbName, actualTblName, null);
-    return Collections.singletonList(addConstraintsTask);
+    return Collections.singletonList(addConstraintsTask);    
   }
 }

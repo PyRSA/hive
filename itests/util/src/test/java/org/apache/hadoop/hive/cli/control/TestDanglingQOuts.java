@@ -64,30 +64,30 @@ public class TestDanglingQOuts {
   public TestDanglingQOuts() throws Exception {
 
     for (Class<?> clz : CliConfigs.class.getDeclaredClasses()) {
-      handleCliConfig((AbstractCliConfig) clz.newInstance());
-    }
-  }
-
-  private void handleCliConfig(AbstractCliConfig config) throws Exception {
-    Set<File> qfiles = config.getQueryFiles();
-    for (File file : qfiles) {
-      String baseName = file.getName();
-      String rd = config.getResultsDir();
-      File of = new File(rd, baseName + ".out");
-      if (outsNeeded.containsKey(of)) {
-        System.err.printf("duplicate: [%s;%s] %s\n", config.getClass().getSimpleName(),
-            outsNeeded.get(of).getClass().getSimpleName(), of);
-        // throw new RuntimeException("duplicate?!");
+      if (clz == CliConfigs.DummyConfig.class) {
+        continue;
       }
-      outsNeeded.put(of, config);
-    }
+      AbstractCliConfig config = (AbstractCliConfig) clz.newInstance();
+      Set<File> qfiles = config.getQueryFiles();
+      for (File file : qfiles) {
+        String baseName = file.getName();
+        String rd = config.getResultsDir();
+        File of = new File(rd, baseName + ".out");
+        if (outsNeeded.containsKey(of)) {
+          System.err.printf("duplicate: [%s;%s] %s\n", config.getClass().getSimpleName(), outsNeeded.get(of).getClass().getSimpleName(), of);
+          // throw new RuntimeException("duplicate?!");
+        }
+        outsNeeded.put(of, config);
+      }
 
-    File od = new File(config.getResultsDir());
-    for (File file : od.listFiles(new QOutFilter())) {
-      outsFound.add(file);
+      File od = new File(config.getResultsDir());
+      for (File file : od.listFiles(new QOutFilter())) {
+        outsFound.add(file);
+      }
     }
   }
 
+  @Ignore("Disabling till HIVE-19509 gets solved")
   @Test
   public void checkDanglingQOut() {
     SetView<File> dangling = Sets.difference(outsFound, outsNeeded.keySet());

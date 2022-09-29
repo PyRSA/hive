@@ -14,7 +14,24 @@
 package org.apache.hive.benchmark.vectorization;
 
 import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
-import org.apache.hadoop.hive.ql.exec.vector.expressions.gen.*;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.LongColEqualLongColumn;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.LongColEqualLongScalar;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.LongColGreaterEqualLongColumn;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.LongColGreaterEqualLongScalar;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.LongColGreaterLongColumn;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.LongColGreaterLongScalar;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.LongColLessEqualLongColumn;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.LongColLessEqualLongScalar;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.LongColLessLongColumn;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.LongColLessLongScalar;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.LongColNotEqualLongColumn;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.LongColNotEqualLongScalar;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.LongScalarEqualLongColumn;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.LongScalarGreaterEqualLongColumn;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.LongScalarGreaterLongColumn;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.LongScalarLessEqualLongColumn;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.LongScalarLessLongColumn;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.LongScalarNotEqualLongColumn;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.runner.Runner;
@@ -24,23 +41,23 @@ import org.openjdk.jmh.runner.options.OptionsBuilder;
 
 /**
  * This test measures the performance for vectorization.
- * <p>
+ * <p/>
  * This test uses JMH framework for benchmarking.
  * You may execute this benchmark tool using JMH command line in different ways:
- * <p>
+ * <p/>
  * To use the settings shown in the main() function, use:
  * $ java -cp target/benchmarks.jar org.apache.hive.benchmark.vectorization.VectorizedComparisonBench
- * <p>
+ * <p/>
  * To use the default settings used by JMH, use:
  * $ java -jar target/benchmarks.jar org.apache.hive.benchmark.vectorization.VectorizedComparisonBench
- * <p>
+ * <p/>
  * To specify different parameters, use:
  * - This command will use 10 warm-up iterations, 5 test iterations, and 2 forks. And it will
  * display the Average Time (avgt) in Microseconds (us)
  * - Benchmark mode. Available modes are:
  * [Throughput/thrpt, AverageTime/avgt, SampleTime/sample, SingleShotTime/ss, All/all]
  * - Output time unit. Available time units are: [m, s, ms, us, ns].
- * <p>
+ * <p/>
  * $ java -jar target/benchmarks.jar org.apache.hive.benchmark.vectorization.VectorizedComparisonBench
  * -wi 10 -i 5 -f 2 -bm avgt -tu us
  */

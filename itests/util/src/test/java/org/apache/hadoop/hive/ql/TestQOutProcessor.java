@@ -17,8 +17,7 @@
  */
 package org.apache.hadoop.hive.ql;
 
-import org.apache.hadoop.hive.ql.QTestMiniClusters.FsType;
-import org.apache.hadoop.hive.ql.qoption.QTestReplaceHandler;
+import org.apache.hadoop.hive.ql.QTestUtil.FsType;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -26,7 +25,7 @@ import org.junit.Test;
  * This class contains unit tests for QTestUtil
  */
 public class TestQOutProcessor {
-  QOutProcessor qOutProcessor = new QOutProcessor(FsType.LOCAL, new QTestReplaceHandler());
+  QOutProcessor qOutProcessor = new QOutProcessor(FsType.local);
 
   @Test
   public void testSelectiveHdfsPatternMaskOnlyHdfsPath() {
@@ -69,6 +68,6 @@ public class TestQOutProcessor {
   }
 
   private String processLine(String line) {
-    return qOutProcessor.processLine(line).get();
+    return qOutProcessor.processLine(line, false, false, false).get();
   }
 }

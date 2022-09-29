@@ -19,11 +19,13 @@
 package org.apache.hive.jdbc.authorization;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HashMap;
@@ -69,7 +71,7 @@ public class TestJdbcWithSQLAuthorization {
 
     String tableName1 = "test_jdbc_sql_auth1";
     String tableName2 = "test_jdbc_sql_auth2";
-    // using different code blocks so that jdbc variables are not accidentally re-used
+    // using different code blocks so that jdbc variables are not accidently re-used
     // between the actions. Different connection/statement object should be used for each action.
     {
       // create tables as user1
@@ -133,7 +135,7 @@ public class TestJdbcWithSQLAuthorization {
   @Test
   public void testAllowedCommands() throws Exception {
 
-    // using different code blocks so that jdbc variables are not accidentally re-used
+    // using different code blocks so that jdbc variables are not accidently re-used
     // between the actions. Different connection/statement object should be used for each action.
     {
       // create tables as user1
@@ -160,7 +162,7 @@ public class TestJdbcWithSQLAuthorization {
 
   @Test
   public void testAuthZFailureLlapCachePurge() throws Exception {
-    // using different code blocks so that jdbc variables are not accidentally re-used
+    // using different code blocks so that jdbc variables are not accidently re-used
     // between the actions. Different connection/statement object should be used for each action.
     {
       Connection hs2Conn = getConnection("user1");
@@ -240,4 +242,7 @@ public class TestJdbcWithSQLAuthorization {
     stmt.close();
     hs2Conn.close();
   }
+
+
+
 }

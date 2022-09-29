@@ -17,7 +17,6 @@
 package org.apache.hive.jdbc;
 
 import java.io.File;
-import java.io.FileWriter;
 import java.net.URL;
 import java.util.HashMap;
 import java.util.List;
@@ -36,13 +35,11 @@ import org.apache.hadoop.hive.ql.wm.Trigger;
 import org.apache.hive.jdbc.miniHS2.MiniHS2;
 import org.apache.hive.jdbc.miniHS2.MiniHS2.MiniClusterType;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.rules.TestName;
 
 import com.google.common.collect.Lists;
 
-@Ignore("Disabled in HIVE-20074 temporary as it is unstable, Will re-enable in HIVE-20075.")
 public class TestTriggersWorkloadManager extends TestTriggersTezSessionPoolManager {
   @Rule
   public TestName testName = new TestName();
@@ -58,12 +55,6 @@ public class TestTriggersWorkloadManager extends TestTriggersTezSessionPoolManag
 
     String confDir = "../../data/conf/llap/";
     HiveConf.setHiveSiteLocation(new URL("file://" + new File(confDir).toURI().getPath() + "/hive-site.xml"));
-    conf = new HiveConf();
-    conf.setVar(ConfVars.HIVE_AUTHENTICATOR_MANAGER, "org.apache.hadoop.hive.ql.security.SessionStateUserAuthenticator");
-    java.nio.file.Path confPath = File.createTempFile("hive", "test").toPath();
-    conf.writeXml(new FileWriter(confPath.toFile()));
-    HiveConf.setHiveSiteLocation(new URL("file://" + confPath.toString()));
-
     System.out.println("Setting hive-site: " + HiveConf.getHiveSiteLocation());
 
     conf = new HiveConf();

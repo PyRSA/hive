@@ -29,6 +29,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,6 +50,8 @@ import org.apache.hive.service.server.HiveServer2Instance;
 import org.apache.hive.service.server.TestHS2HttpServerPam;
 import org.apache.hive.service.servlet.HS2Peers;
 import org.apache.http.Header;
+import org.apache.http.HttpException;
+import org.apache.http.HttpHeaders;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpDelete;
 import org.apache.http.client.methods.HttpGet;
@@ -58,6 +61,7 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.StatusLine;
 import org.apache.http.util.EntityUtils;
+import org.codehaus.jackson.map.ObjectMapper;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.util.B64Code;
 import org.eclipse.jetty.util.StringUtil;
@@ -67,11 +71,6 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-import org.junit.Ignore;
-
-@Ignore("HIVE-23548")
 public class TestActivePassiveHA {
   private MiniHS2 miniHS2_1 = null;
   private MiniHS2 miniHS2_2 = null;
@@ -384,7 +383,11 @@ public class TestActivePassiveHA {
       assertEquals("false", sendGet(url2, true, true));
       assertEquals(false, miniHS2_2.isLeader());
     } finally {
-      resetFailoverConfs();
+      // revert configs to not affect other tests
+      unsetPamConfs(hiveConf1);
+      unsetPamConfs(hiveConf2);
+      hiveConf1.unset(ConfVars.HIVE_SERVER2_WEBUI_ENABLE_CORS.varname);
+      hiveConf2.unset(ConfVars.HIVE_SERVER2_WEBUI_ENABLE_CORS.varname);
     }
   }
 
@@ -421,62 +424,6 @@ public class TestActivePassiveHA {
       // revert configs to not affect other tests
       unsetPamConfs(hiveConf1);
     }
-  }
-
-  @Test(timeout = 60000)
-  public void testNoConnectionOnPassive() throws Exception {
-    hiveConf1.setBoolVar(ConfVars.HIVE_SERVER2_WEBUI_ENABLE_CORS, true);
-    hiveConf2.setBoolVar(ConfVars.HIVE_SERVER2_WEBUI_ENABLE_CORS, true);
-    setPamConfs(hiveConf1);
-    setPamConfs(hiveConf2);
-    try {
-      PamAuthenticator pamAuthenticator1 = new TestHS2HttpServerPam.TestPamAuthenticator(hiveConf1);
-      PamAuthenticator pamAuthenticator2 = new TestHS2HttpServerPam.TestPamAuthenticator(hiveConf2);
-      String instanceId1 = UUID.randomUUID().toString();
-      miniHS2_1.setPamAuthenticator(pamAuthenticator1);
-      miniHS2_1.start(getSecureConfOverlay(instanceId1));
-      String instanceId2 = UUID.randomUUID().toString();
-      Map<String, String> confOverlay = getSecureConfOverlay(instanceId2);
-      miniHS2_2.setPamAuthenticator(pamAuthenticator2);
-      miniHS2_2.start(confOverlay);
-      String url1 = "http://localhost:" + hiveConf1.get(ConfVars.HIVE_SERVER2_WEBUI_PORT.varname) + "/leader";
-      assertEquals(true, miniHS2_1.getIsLeaderTestFuture().get());
-      assertEquals(true, miniHS2_1.isLeader());
-
-      // Don't get urls from ZK, it will actually be a service discovery URL that we don't want.
-      String hs1Url = "jdbc:hive2://" + miniHS2_1.getHost() + ":" + miniHS2_1.getBinaryPort();
-      Connection hs2Conn = getConnection(hs1Url, System.getProperty("user.name")); // Should work.
-      hs2Conn.close();
-
-      String resp = sendDelete(url1, true);
-      assertTrue(resp, resp.contains("Failover successful!"));
-      // wait for failover to close sessions
-      while (miniHS2_1.getOpenSessionsCount() != 0) {
-        Thread.sleep(100);
-      }
-
-      assertEquals(true, miniHS2_2.getIsLeaderTestFuture().get());
-      assertEquals(true, miniHS2_2.isLeader());
-
-      try {
-        hs2Conn = getConnection(hs1Url, System.getProperty("user.name"));
-        fail("Should throw");
-      } catch (Exception e) {
-        if (!e.getMessage().contains("Cannot open sessions on an inactive HS2")) {
-          throw e;
-        }
-      }
-    } finally {
-      resetFailoverConfs();
-    }
-  }
-
-  private void resetFailoverConfs() {
-    // revert configs to not affect other tests
-    unsetPamConfs(hiveConf1);
-    unsetPamConfs(hiveConf2);
-    hiveConf1.unset(ConfVars.HIVE_SERVER2_WEBUI_ENABLE_CORS.varname);
-    hiveConf2.unset(ConfVars.HIVE_SERVER2_WEBUI_ENABLE_CORS.varname);
   }
 
   @Test(timeout = 60000)

@@ -19,7 +19,6 @@
 package org.apache.hadoop.hive.ql.exec.vector;
 
 import java.util.Arrays;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * ColumnVector contains the shared structure for the sub-types,
@@ -33,14 +32,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public abstract class ColumnVector {
 
-
-  /** Reference count. */
-  private AtomicInteger refCount = new AtomicInteger(0);
-
-  /**
+  /*
    * The current kinds of column vectors.
    */
-  public enum Type {
+  public static enum Type {
     NONE,    // Useful when the type of column vector has not be determined yet.
     LONG,
     DOUBLE,
@@ -100,7 +95,6 @@ public abstract class ColumnVector {
    *  - sets isRepeating to false
    */
   public void reset() {
-    assert (refCount.get() == 0);
     if (!noNulls) {
       Arrays.fill(isNull, false);
     }
@@ -110,25 +104,10 @@ public abstract class ColumnVector {
     preFlattenIsRepeating = false;
   }
 
-
-  public final void incRef() {
-    refCount.incrementAndGet();
-  }
-
-  public final int getRef() {
-    return refCount.get();
-  }
-
-  public final int decRef() {
-    int i = refCount.decrementAndGet();
-    assert i >= 0;
-    return i;
-  }
-
   /**
    * Sets the isRepeating flag. Recurses over structs and unions so that the
    * flags are set correctly.
-   * @param isRepeating flag for repeating value.
+   * @param isRepeating
    */
   public void setRepeating(boolean isRepeating) {
     this.isRepeating = isRepeating;
@@ -279,6 +258,5 @@ public abstract class ColumnVector {
     otherCv.isRepeating = isRepeating;
     otherCv.preFlattenIsRepeating = preFlattenIsRepeating;
     otherCv.preFlattenNoNulls = preFlattenNoNulls;
-    otherCv.refCount = refCount;
   }
 }

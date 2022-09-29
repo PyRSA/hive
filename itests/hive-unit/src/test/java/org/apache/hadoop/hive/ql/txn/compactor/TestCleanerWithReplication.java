@@ -18,18 +18,23 @@
 package org.apache.hadoop.hive.ql.txn.compactor;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hdfs.MiniDFSCluster;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.metastore.HiveMetaStoreClient;
 import org.apache.hadoop.hive.metastore.api.CompactionRequest;
 import org.apache.hadoop.hive.metastore.api.CompactionType;
 import org.apache.hadoop.hive.metastore.api.Partition;
 import org.apache.hadoop.hive.metastore.api.ShowCompactRequest;
 import org.apache.hadoop.hive.metastore.api.ShowCompactResponse;
 import org.apache.hadoop.hive.metastore.api.Table;
-import static org.apache.hadoop.hive.common.repl.ReplConst.SOURCE_OF_REPLICATION;
+import static org.apache.hadoop.hive.metastore.ReplChangeManager.SOURCE_OF_REPLICATION;
 import org.apache.hadoop.hive.metastore.api.Database;
+import org.apache.hadoop.hive.metastore.txn.CompactionInfo;
+import org.apache.hadoop.hive.metastore.txn.TxnDbUtil;
 import org.apache.hadoop.hive.metastore.txn.TxnStore;
+import org.apache.hadoop.hive.metastore.txn.TxnUtils;
 import org.apache.hadoop.hive.shims.Utils;
 import org.junit.After;
 import org.junit.AfterClass;
@@ -39,25 +44,33 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import javax.security.auth.login.LoginException;
+import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 
 import static org.junit.Assert.assertEquals;
 
 public class TestCleanerWithReplication extends CompactorTest {
   private Path cmRootDirectory;
+  private static FileSystem fs;
   private static MiniDFSCluster miniDFSCluster;
   private final String dbName = "TestCleanerWithReplication";
 
   @Before
   public void setup() throws Exception {
-    HiveConf conf = new HiveConf();
-    conf.set("fs.defaultFS", miniDFSCluster.getFileSystem().getUri().toString());
+    conf = new HiveConf();
+    TxnDbUtil.setConfValues(conf);
+    TxnDbUtil.cleanDb(conf);
+    conf.set("fs.defaultFS", fs.getUri().toString());
     conf.setBoolVar(HiveConf.ConfVars.REPLCMENABLED, true);
-    setup(conf);
+    TxnDbUtil.prepDb(conf);
+    ms = new HiveMetaStoreClient(conf);
+    txnHandler = TxnUtils.getTxnStore(conf);
     cmRootDirectory = new Path(conf.get(HiveConf.ConfVars.REPLCMDIR.varname));
     if (!fs.exists(cmRootDirectory)) {
       fs.mkdirs(cmRootDirectory);
     }
+    tmpdir = new File(Files.createTempDirectory("compactor_test_table_").toString());
     Database db = new Database();
     db.putToParameters(SOURCE_OF_REPLICATION, "1,2,3");
     db.setName(dbName);
@@ -70,7 +83,8 @@ public class TestCleanerWithReplication extends CompactorTest {
     hadoopConf.set("dfs.client.use.datanode.hostname", "true");
     hadoopConf.set("hadoop.proxyuser." + Utils.getUGI().getShortUserName() + ".hosts", "*");
     miniDFSCluster =
-        new MiniDFSCluster.Builder(hadoopConf).numDataNodes(2).format(true).build();
+        new MiniDFSCluster.Builder(hadoopConf).numDataNodes(1).format(true).build();
+    fs = miniDFSCluster.getFileSystem();
   }
 
   @After
@@ -97,7 +111,10 @@ public class TestCleanerWithReplication extends CompactorTest {
     burnThroughTransactions(dbName, "camtc", 25);
 
     CompactionRequest rqst = new CompactionRequest(dbName, "camtc", CompactionType.MAJOR);
-    compactInTxn(rqst);
+    txnHandler.compact(rqst);
+    CompactionInfo ci = txnHandler.findNextToCompact("fred");
+    txnHandler.markCompacted(ci);
+    txnHandler.setRunAs(ci.id, System.getProperty("user.name"));
 
     assertCleanerActions(6);
   }
@@ -116,7 +133,10 @@ public class TestCleanerWithReplication extends CompactorTest {
 
     CompactionRequest rqst = new CompactionRequest(dbName, "campc", CompactionType.MAJOR);
     rqst.setPartitionname("ds=today");
-    compactInTxn(rqst);
+    txnHandler.compact(rqst);
+    CompactionInfo ci = txnHandler.findNextToCompact("fred");
+    txnHandler.markCompacted(ci);
+    txnHandler.setRunAs(ci.id, System.getProperty("user.name"));
 
     assertCleanerActions(6);
   }
@@ -130,10 +150,13 @@ public class TestCleanerWithReplication extends CompactorTest {
     addDeltaFile(t, null, 23L, 24L, 2);
     addDeltaFile(t, null, 21L, 24L, 4);
 
-    burnThroughTransactions(dbName, "camitc", 24);
+    burnThroughTransactions(dbName, "camitc", 25);
 
     CompactionRequest rqst = new CompactionRequest(dbName, "camitc", CompactionType.MINOR);
-    compactInTxn(rqst);
+    txnHandler.compact(rqst);
+    CompactionInfo ci = txnHandler.findNextToCompact("fred");
+    txnHandler.markCompacted(ci);
+    txnHandler.setRunAs(ci.id, System.getProperty("user.name"));
 
     assertCleanerActions(4);
   }
@@ -148,11 +171,14 @@ public class TestCleanerWithReplication extends CompactorTest {
     addDeltaFile(t, p, 23L, 24L, 2);
     addDeltaFile(t, p, 21L, 24L, 4);
 
-    burnThroughTransactions(dbName, "camipc", 24);
+    burnThroughTransactions(dbName, "camipc", 25);
 
     CompactionRequest rqst = new CompactionRequest(dbName, "camipc", CompactionType.MINOR);
     rqst.setPartitionname("ds=today");
-    compactInTxn(rqst);
+    txnHandler.compact(rqst);
+    CompactionInfo ci = txnHandler.findNextToCompact("fred");
+    txnHandler.markCompacted(ci);
+    txnHandler.setRunAs(ci.id, System.getProperty("user.name"));
 
     assertCleanerActions(4);
   }

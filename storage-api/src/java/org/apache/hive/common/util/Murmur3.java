@@ -54,43 +54,6 @@ public class Murmur3 {
 
   public static final int DEFAULT_SEED = 104729;
 
-  public static int hash32(long l0, long l1) {
-    return hash32(l0, l1, DEFAULT_SEED);
-  }
-
-  public static int hash32(long l0) {
-    return hash32(l0, DEFAULT_SEED);
-  }
-
-  /**
-   * Murmur3 32-bit variant.
-   */
-  public static int hash32(long l0, int seed) {
-    int hash = seed;
-    final long r0 = Long.reverseBytes(l0);
-
-    hash = mix32((int) r0, hash);
-    hash = mix32((int) (r0 >>> 32), hash);
-
-    return fmix32(Long.BYTES, hash);
-  }
-
-  /**
-   * Murmur3 32-bit variant.
-   */
-  public static int hash32(long l0, long l1, int seed) {
-    int hash = seed;
-    final long r0 = Long.reverseBytes(l0);
-    final long r1 = Long.reverseBytes(l1);
-
-    hash = mix32((int) r0, hash);
-    hash = mix32((int) (r0 >>> 32), hash);
-    hash = mix32((int) (r1), hash);
-    hash = mix32((int) (r1 >>> 32), hash);
-
-    return fmix32(Long.BYTES * 2, hash);
-  }
-
   /**
    * Murmur3 32-bit variant.
    *
@@ -133,7 +96,6 @@ public class Murmur3 {
    * @param seed   - seed. (default 0)
    * @return - hashcode
    */
-  @SuppressFBWarnings(value = {"SF_SWITCH_FALLTHROUGH", "SF_SWITCH_NO_DEFAULT"}, justification = "Expected")
   public static int hash32(byte[] data, int offset, int length, int seed) {
     int hash = seed;
     final int nblocks = length >> 2;
@@ -146,7 +108,12 @@ public class Murmur3 {
           | ((data[offset + i_4 + 2] & 0xff) << 16)
           | ((data[offset + i_4 + 3] & 0xff) << 24);
 
-      hash = mix32(k, hash);
+      // mix functions
+      k *= C1_32;
+      k = Integer.rotateLeft(k, R1_32);
+      k *= C2_32;
+      hash ^= k;
+      hash = Integer.rotateLeft(hash, R2_32) * M_32 + N_32;
     }
 
     // tail
@@ -167,18 +134,7 @@ public class Murmur3 {
         hash ^= k1;
     }
 
-    return fmix32(length, hash);
-  }
-
-  private static int mix32(int k, int hash) {
-    k *= C1_32;
-    k = Integer.rotateLeft(k, R1_32);
-    k *= C2_32;
-    hash ^= k;
-    return Integer.rotateLeft(hash, R2_32) * M_32 + N_32;
-  }
-
-  private static int fmix32(int length, int hash) {
+    // finalization
     hash ^= length;
     hash ^= (hash >>> 16);
     hash *= 0x85ebca6b;
@@ -257,7 +213,6 @@ public class Murmur3 {
    * @param seed   - seed. (default is 0)
    * @return - hashcode
    */
-  @SuppressFBWarnings(value = "SF_SWITCH_NO_DEFAULT", justification = "Expected")
   public static long hash64(byte[] data, int offset, int length, int seed) {
     long hash = seed;
     final int nblocks = length >> 3;
@@ -332,7 +287,6 @@ public class Murmur3 {
    * @param seed   - seed. (default is 0)
    * @return - hashcode (2 longs)
    */
-  @SuppressFBWarnings(value = "SF_SWITCH_NO_DEFAULT", justification = "Expected")
   public static long[] hash128(byte[] data, int offset, int length, int seed) {
     long h1 = seed;
     long h2 = seed;
@@ -513,7 +467,6 @@ public class Murmur3 {
       System.arraycopy(data, offset + consumed, tail, 0, tailLen);
     }
 
-    @SuppressFBWarnings(value = {"SF_SWITCH_FALLTHROUGH", "SF_SWITCH_NO_DEFAULT"}, justification = "Expected")
     public final int end() {
       int k1 = 0;
       switch (tailLen) {

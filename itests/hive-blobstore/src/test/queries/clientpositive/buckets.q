@@ -1,6 +1,7 @@
 -- Test bucketed table
 
 SET hive.exec.dynamic.partition=true;
+SET hive.exec.dynamic.partition.mode=nonstrict;
 
 DROP TABLE IF EXISTS source;
 CREATE TABLE source (a STRING, b STRING, c DOUBLE)

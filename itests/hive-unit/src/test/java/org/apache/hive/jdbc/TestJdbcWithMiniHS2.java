@@ -21,6 +21,7 @@ package org.apache.hive.jdbc;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -29,7 +30,6 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.DriverManager;
@@ -44,10 +44,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.Base64;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -61,14 +59,13 @@ import java.util.concurrent.TimeoutException;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.metastore.ObjectStore;
-import org.apache.hadoop.hive.metastore.PersistenceManagerProvider;
 import org.apache.hadoop.hive.ql.QueryPlan;
 import org.apache.hadoop.hive.ql.exec.FunctionRegistry;
 import org.apache.hadoop.hive.ql.exec.UDF;
@@ -87,7 +84,7 @@ import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Ignore;
 import org.junit.Test;
-import static org.apache.hadoop.hive.common.repl.ReplConst.SOURCE_OF_REPLICATION;
+import static org.apache.hadoop.hive.metastore.ReplChangeManager.SOURCE_OF_REPLICATION;
 
 public class TestJdbcWithMiniHS2 {
   private static MiniHS2 miniHS2 = null;
@@ -109,7 +106,6 @@ public class TestJdbcWithMiniHS2 {
     HiveConf conf = new HiveConf();
     dataFileDir = conf.get("test.data.files").replace('\\', '/').replace("c:", "");
     kvDataFilePath = new Path(dataFileDir, "kv1.txt");
-
     try {
       startMiniHS2(conf);
     } catch (Exception e) {
@@ -285,75 +281,21 @@ public class TestJdbcWithMiniHS2 {
   }
 
   @Test
-  public void testParallelCompilation3() throws Exception {
-    Statement stmt = conTestDb.createStatement();
-    stmt.execute("set hive.driver.parallel.compilation=true");
-    stmt.execute("set hive.server2.async.exec.async.compile=true");
-    stmt.close();
-    Connection conn = getConnection(testDbName);
-    stmt = conn.createStatement();
-    stmt.execute("set hive.driver.parallel.compilation=true");
-    stmt.execute("set hive.server2.async.exec.async.compile=true");
-    stmt.close();
-    int poolSize = 100;
-    SynchronousQueue<Runnable> executorQueue1 = new SynchronousQueue<Runnable>();
-    ExecutorService workers1 =
-        new ThreadPoolExecutor(1, poolSize, 20, TimeUnit.SECONDS, executorQueue1);
-    SynchronousQueue<Runnable> executorQueue2 = new SynchronousQueue<Runnable>();
-    ExecutorService workers2 =
-        new ThreadPoolExecutor(1, poolSize, 20, TimeUnit.SECONDS, executorQueue2);
-    List<Future<Boolean>> list1 = startTasks(workers1, conTestDb, tableName, 10);
-    List<Future<Boolean>> list2 = startTasks(workers2, conn, tableName, 10);
-    finishTasks(list1, workers1);
-    finishTasks(list2, workers2);
-    conn.close();
-  }
-
-  @Test
-  public void testParallelCompilation4() throws Exception {
-    Statement stmt = conTestDb.createStatement();
-    stmt.execute("set hive.driver.parallel.compilation=true");
-    stmt.execute("set hive.server2.async.exec.async.compile=false");
-    stmt.close();
-    Connection conn = getConnection(testDbName);
-    stmt = conn.createStatement();
-    stmt.execute("set hive.driver.parallel.compilation=true");
-    stmt.execute("set hive.server2.async.exec.async.compile=false");
-    stmt.close();
-    int poolSize = 100;
-    SynchronousQueue<Runnable> executorQueue1 = new SynchronousQueue<Runnable>();
-    ExecutorService workers1 =
-        new ThreadPoolExecutor(1, poolSize, 20, TimeUnit.SECONDS, executorQueue1);
-    SynchronousQueue<Runnable> executorQueue2 = new SynchronousQueue<Runnable>();
-    ExecutorService workers2 =
-        new ThreadPoolExecutor(1, poolSize, 20, TimeUnit.SECONDS, executorQueue2);
-    List<Future<Boolean>> list1 = startTasks(workers1, conTestDb, tableName, 10);
-    List<Future<Boolean>> list2 = startTasks(workers2, conn, tableName, 10);
-    finishTasks(list1, workers1);
-    finishTasks(list2, workers2);
-    conn.close();
-  }
-
-  @Test
   public void testConcurrentStatements() throws Exception {
     startConcurrencyTest(conTestDb, tableName, 50);
   }
 
   private static void startConcurrencyTest(Connection conn, String tableName, int numTasks) {
     // Start concurrent testing
-    int poolSize = 100;
+    int POOL_SIZE = 100;
+    int TASK_COUNT = numTasks;
+
     SynchronousQueue<Runnable> executorQueue = new SynchronousQueue<Runnable>();
     ExecutorService workers =
-        new ThreadPoolExecutor(1, poolSize, 20, TimeUnit.SECONDS, executorQueue);
-    List<Future<Boolean>> list = startTasks(workers, conn, tableName, numTasks);
-    finishTasks(list, workers);
-  }
-
-  private static List<Future<Boolean>> startTasks(ExecutorService workers, Connection conn,
-      String tableName, int numTasks) {
+        new ThreadPoolExecutor(1, POOL_SIZE, 20, TimeUnit.SECONDS, executorQueue);
     List<Future<Boolean>> list = new ArrayList<Future<Boolean>>();
     int i = 0;
-    while (i < numTasks) {
+    while (i < TASK_COUNT) {
       try {
         Future<Boolean> future = workers.submit(new JDBCTask(conn, i, tableName));
         list.add(future);
@@ -366,10 +308,7 @@ public class TestJdbcWithMiniHS2 {
         }
       }
     }
-    return list;
-  }
 
-  private static void finishTasks(List<Future<Boolean>> list, ExecutorService workers) {
     for (Future<Boolean> future : list) {
       try {
         Boolean result = future.get(30, TimeUnit.SECONDS);
@@ -1085,16 +1024,17 @@ public class TestJdbcWithMiniHS2 {
    * Test for jdbc driver retry on NoHttpResponseException
    * @throws Exception
    */
+  @Ignore("Flaky test. Should be re-enabled in HIVE-19706")
   @Test
   public void testHttpRetryOnServerIdleTimeout() throws Exception {
     // Stop HiveServer2
     stopMiniHS2();
     HiveConf conf = new HiveConf();
     // Set server's idle timeout to a very low value
-    conf.setVar(HiveConf.ConfVars.HIVE_SERVER2_THRIFT_HTTP_MAX_IDLE_TIME, "5000");
+    conf.setVar(HiveConf.ConfVars.HIVE_SERVER2_THRIFT_HTTP_MAX_IDLE_TIME, "5");
     startMiniHS2(conf, true);
     String userName = System.getProperty("user.name");
-    Connection conn = getConnection(miniHS2.getJdbcURL(testDbName)+";retries=3", userName, "password");
+    Connection conn = getConnection(miniHS2.getJdbcURL(testDbName), userName, "password");
     Statement stmt = conn.createStatement();
     stmt.execute("select from_unixtime(unix_timestamp())");
     // Sleep for longer than server's idletimeout and execute a query
@@ -1151,7 +1091,7 @@ public class TestJdbcWithMiniHS2 {
     NucleusContext nc = null;
     Map<String, ClassLoaderResolver> cMap;
     try {
-      pmf = PersistenceManagerProvider.class.getDeclaredField("pmf");
+      pmf = ObjectStore.class.getDeclaredField("pmf");
       if (pmf != null) {
         pmf.setAccessible(true);
         jdoPmf = (JDOPersistenceManagerFactory) pmf.get(null);
@@ -1315,19 +1255,6 @@ public class TestJdbcWithMiniHS2 {
     assertEquals(3, res.getInt(1));
     assertFalse("no more results", res.next());
 
-    //try creating same function again which should fail with AlreadyExistsException
-    String createSameFunctionAgain =
-            "CREATE FUNCTION example_add AS '" + testUdfClassName + "' USING JAR '" + jarFilePath + "'";
-    try {
-      stmt.execute(createSameFunctionAgain);
-    }catch (Exception e){
-      assertTrue("recreating same function failed with AlreadyExistsException ", e.getMessage().contains("AlreadyExistsException"));
-    }
-
-    // Call describe to see if function still available in registry
-    res = stmt.executeQuery("DESCRIBE FUNCTION " + testDbName + ".example_add");
-    checkForNotExist(res);
-
     // A new connection should be able to call describe/use function without issue
     Connection conn2 = getConnection(testDbName);
     Statement stmt2 = conn2.createStatement();
@@ -1455,8 +1382,7 @@ public class TestJdbcWithMiniHS2 {
         TestJdbcWithMiniHS2.class.getCanonicalName().toLowerCase().replace('.', '_') + "_"
             + System.currentTimeMillis();
     String testPathName = System.getProperty("test.warehouse.dir", "/tmp") + Path.SEPARATOR + tid;
-    Path testPath = new Path(testPathName + Path.SEPARATOR
-            + Base64.getEncoder().encodeToString(testDbName.toLowerCase().getBytes(StandardCharsets.UTF_8)));
+    Path testPath = new Path(testPathName);
     FileSystem fs = testPath.getFileSystem(new HiveConf());
     Statement stmt = conDefault.createStatement();
     try {
@@ -1494,17 +1420,101 @@ public class TestJdbcWithMiniHS2 {
     }
   }
 
+  /**
+   * Test CLI kill command of a query that is running.
+   * We spawn 2 threads - one running the query and
+   * the other attempting to cancel.
+   * We're using a dummy udf to simulate a query,
+   * that runs for a sufficiently long time.
+   * @throws Exception
+   */
+  @Test
+  public void testKillQuery() throws Exception {
+    Connection con = conTestDb;
+    Connection con2 = getConnection(testDbName);
+
+    String udfName = SleepMsUDF.class.getName();
+    Statement stmt1 = con.createStatement();
+    final Statement stmt2 = con2.createStatement();
+    stmt1.execute("create temporary function sleepMsUDF as '" + udfName + "'");
+    stmt1.close();
+    final Statement stmt = con.createStatement();
+    final ExceptionHolder tExecuteHolder = new ExceptionHolder();
+    final ExceptionHolder tKillHolder = new ExceptionHolder();
+
+    // Thread executing the query
+    Thread tExecute = new Thread(new Runnable() {
+      @Override
+      public void run() {
+        try {
+          System.out.println("Executing query: ");
+          // The test table has 500 rows, so total query time should be ~ 500*500ms
+          stmt.executeQuery("select sleepMsUDF(t1.int_col, 100), t1.int_col, t2.int_col " +
+              "from " + tableName + " t1 join " + tableName + " t2 on t1.int_col = t2.int_col");
+          fail("Expecting SQLException");
+        } catch (SQLException e) {
+          tExecuteHolder.throwable = e;
+        }
+      }
+    });
+    // Thread killing the query
+    Thread tKill = new Thread(new Runnable() {
+      @Override
+      public void run() {
+        try {
+          Thread.sleep(2000);
+          String queryId = ((HiveStatement) stmt).getQueryId();
+          System.out.println("Killing query: " + queryId);
+
+          stmt2.execute("kill query '" + queryId + "'");
+          stmt2.close();
+        } catch (Exception e) {
+          tKillHolder.throwable = e;
+        }
+      }
+    });
+
+    tExecute.start();
+    tKill.start();
+    tExecute.join();
+    tKill.join();
+    stmt.close();
+    con2.close();
+
+    assertNotNull("tExecute", tExecuteHolder.throwable);
+    assertNull("tCancel", tKillHolder.throwable);
+  }
+
   private static class ExceptionHolder {
     Throwable throwable;
   }
 
   @Test
   public void testFetchSize() throws Exception {
+    // Test setting fetch size below max
     Connection fsConn = getConnection(miniHS2.getJdbcURL("default", "fetchSize=50", ""),
       System.getProperty("user.name"), "bar");
     Statement stmt = fsConn.createStatement();
-    stmt.execute("set");
-    assertEquals(50, stmt.getFetchSize());
+    stmt.execute("set hive.server2.thrift.resultset.serialize.in.tasks=true");
+    int fetchSize = stmt.getFetchSize();
+    assertEquals(50, fetchSize);
+    stmt.close();
+    fsConn.close();
+    // Test setting fetch size above max
+    fsConn = getConnection(
+      miniHS2.getJdbcURL(
+        "default",
+        "fetchSize=" + (miniHS2.getHiveConf().getIntVar(
+          HiveConf.ConfVars.HIVE_SERVER2_THRIFT_RESULTSET_MAX_FETCH_SIZE) + 1),
+        ""),
+      System.getProperty("user.name"), "bar");
+    stmt = fsConn.createStatement();
+    stmt.execute("set hive.server2.thrift.resultset.serialize.in.tasks=true");
+    fetchSize = stmt.getFetchSize();
+    assertEquals(
+      miniHS2.getHiveConf().getIntVar(
+        HiveConf.ConfVars.HIVE_SERVER2_THRIFT_RESULTSET_MAX_FETCH_SIZE),
+      fetchSize);
     stmt.close();
     fsConn.close();
   }
@@ -1648,7 +1658,7 @@ public class TestJdbcWithMiniHS2 {
   /**
    * Get Detailed Table Information via jdbc
    */
-  static String getDetailedTableDescription(Statement stmt, String table) throws SQLException {
+  private String getDetailedTableDescription(Statement stmt, String table) throws SQLException {
     String extendedDescription = null;
     try (ResultSet rs = stmt.executeQuery("describe extended " + table)) {
       while (rs.next()) {
@@ -1660,54 +1670,5 @@ public class TestJdbcWithMiniHS2 {
       }
     }
     return extendedDescription;
-  }
-
-  @Test
-  public void testCustomPathsForCTLV() throws Exception {
-    try (Statement stmt = conTestDb.createStatement()) {
-      // Initialize
-      stmt.execute("CREATE TABLE emp_table (id int, name string, salary int)");
-      stmt.execute("insert into emp_table values(1,'aaaaa',20000)");
-      stmt.execute("CREATE VIEW emp_view AS SELECT * FROM emp_table WHERE salary>10000");
-      String customPath = System.getProperty("test.tmp.dir") + "/custom";
-
-      //Test External CTLV
-      String extPath = customPath + "/emp_ext_table";
-      stmt.execute("CREATE EXTERNAL TABLE emp_ext_table like emp_view STORED AS PARQUET LOCATION '" + extPath + "'");
-      assertTrue(getDetailedTableDescription(stmt, "emp_ext_table").contains(extPath));
-
-      //Test Managed CTLV
-      String mndPath = customPath + "/emp_mm_table";
-      stmt.execute("CREATE TABLE emp_mm_table like emp_view STORED AS ORC LOCATION '" + mndPath + "'");
-      assertTrue(getDetailedTableDescription(stmt, "emp_mm_table").contains(mndPath));
-    }
-  }
-
-  @Test
-  public void testInterruptPollingState() throws Exception {
-    ExecutorService pool = Executors.newFixedThreadPool(1);
-    final CountDownLatch latch = new CountDownLatch(1);
-    final Object[] results = new Object[2];
-    results[0] = false;
-    Future future = pool.submit(new Callable<Void>() {
-      @Override
-      public Void call() {
-        try (Statement stmt = conTestDb.createStatement()) {
-          stmt.execute("create temporary function sleepMsUDF as '" + SleepMsUDF.class.getName() + "'");
-          stmt.execute("SELECT sleepMsUDF(1, 10000)");
-          results[0] = true;
-        } catch (Exception e) {
-          results[1] = e;
-        } finally {
-          latch.countDown();
-        }
-        return null;
-      }
-    });
-    Thread.sleep(2000);
-    future.cancel(true);
-    latch.await();
-    assertEquals(false, results[0]);
-    assertEquals("Interrupted while polling on the operation status", ((Exception)results[1]).getMessage());
   }
 }

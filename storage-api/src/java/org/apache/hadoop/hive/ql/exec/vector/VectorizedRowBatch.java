@@ -21,10 +21,8 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 
-import org.apache.hadoop.hive.ql.io.filter.MutableFilterContext;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Writable;
-import org.apache.hive.common.util.SuppressFBWarnings;
 
 /**
  * A VectorizedRowBatch is a set of rows, organized with each column
@@ -33,7 +31,7 @@ import org.apache.hive.common.util.SuppressFBWarnings;
  * The major fields are public by design to allow fast and convenient
  * access by the vectorized query execution code.
  */
-public class VectorizedRowBatch implements Writable, MutableFilterContext {
+public class VectorizedRowBatch implements Writable {
   public int numCols;           // number of columns
   public ColumnVector[] cols;   // a vector for each column
   public int size;              // number of rows that qualify (i.e. haven't been filtered out)
@@ -340,7 +338,6 @@ public class VectorizedRowBatch implements Writable, MutableFilterContext {
    *  - resets each column
    *  - inits each column
    */
-  @Override
   public void reset() {
     selectedInUse = false;
     size = 0;
@@ -358,71 +355,8 @@ public class VectorizedRowBatch implements Writable, MutableFilterContext {
    * Data is not preserved.
    */
   public void ensureSize(int rows) {
-    for (ColumnVector col : cols) {
-      col.ensureSize(rows, false);
+    for(int i=0; i < cols.length; ++i) {
+      cols[i].ensureSize(rows, false);
     }
-    updateSelected(rows);
-  }
-
-  @Override
-  public boolean isSelectedInUse() {
-    return selectedInUse;
-  }
-
-  @Override
-  @SuppressFBWarnings(value = "EI_EXPOSE_REP", justification = "Expose internal rep for efficiency")
-  public int[] getSelected() {
-    return selected;
-  }
-
-  @Override
-  public int getSelectedSize() {
-    return size;
-  }
-
-  @Override
-  @SuppressFBWarnings(value = "EI_EXPOSE_REP2", justification = "Ref external obj for efficiency")
-  public void setFilterContext(boolean isSelectedInUse, int[] selected, int selectedSize) {
-    this.selectedInUse = isSelectedInUse;
-    this.selected = selected;
-    this.size = selectedSize;
-    // Avoid selected.length < selectedSize since we can borrow a larger array for selected
-    // Debug loop for selected array: use without assert when needed (asserts only fail in testing)
-    assert validateSelected() : "Selected array may not contain duplicates or unordered values";
-  }
-
-  @Override
-  public boolean validateSelected() {
-    for (int i = 1; i < size; i++) {
-      if (selected[i-1] >= selected[i]) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  @Override
-  @SuppressFBWarnings(value = "EI_EXPOSE_REP", justification = "Expose internal rep for efficiency")
-  public int[] updateSelected(int minCapacity) {
-    if (selected == null || selected.length < minCapacity) {
-      selected = new int[minCapacity];
-    }
-    return selected;
-  }
-
-  @Override
-  public void setSelectedInUse(boolean selectedInUse) {
-    this.selectedInUse = selectedInUse;
-  }
-
-  @Override
-  @SuppressFBWarnings(value = "EI_EXPOSE_REP2", justification = "Ref external obj for efficiency")
-  public void setSelected(int[] selectedArray) {
-    selected = selectedArray;
-  }
-
-  @Override
-  public void setSelectedSize(int selectedSize) {
-    size = selectedSize;
   }
 }
