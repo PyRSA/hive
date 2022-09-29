@@ -25,7 +25,7 @@ import java.util.List;
 
 import com.google.common.annotations.VisibleForTesting;
 
-import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang.ArrayUtils;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
@@ -38,6 +38,7 @@ import org.apache.hadoop.fs.permission.AclEntryType;
 import org.apache.hadoop.fs.permission.AclStatus;
 import org.apache.hadoop.fs.permission.FsAction;
 import org.apache.hadoop.fs.permission.FsPermission;
+import org.apache.hadoop.hdfs.DistributedFileSystem;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -176,7 +177,7 @@ public class HdfsUtils {
     Iterables.removeIf(entries, new Predicate<AclEntry>() {
       @Override
       public boolean apply(AclEntry input) {
-        if (input != null && input.getName() == null) {
+        if (input.getName() == null) {
           return true;
         }
         return false;

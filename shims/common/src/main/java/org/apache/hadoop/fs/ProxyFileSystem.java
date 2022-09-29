@@ -42,6 +42,7 @@ public class ProxyFileSystem extends FilterFileSystem {
 
   protected String realScheme;
   protected String realAuthority;
+  protected URI realUri;
 
 
 
@@ -102,7 +103,8 @@ public class ProxyFileSystem extends FilterFileSystem {
 
     URI realUri = fs.getUri();
     this.realScheme = realUri.getScheme();
-    this.realAuthority = realUri.getAuthority();
+    this.realAuthority=realUri.getAuthority();
+    this.realUri = realUri;
 
     this.myScheme = myUri.getScheme();
     this.myAuthority=myUri.getAuthority();
@@ -205,25 +207,6 @@ public class ProxyFileSystem extends FilterFileSystem {
     return ret;
   }
 
-  @Override //ref. HADOOP-12502
-  public RemoteIterator<FileStatus> listStatusIterator(Path f) throws IOException {
-    return new RemoteIterator<FileStatus>() {
-      private final RemoteIterator<FileStatus> orig =
-              ProxyFileSystem.super.listStatusIterator(swizzleParamPath(f));
-
-      @Override
-      public boolean hasNext() throws IOException {
-        return orig.hasNext();
-      }
-
-      @Override
-      public FileStatus next() throws IOException {
-        FileStatus ret = orig.next();
-        return swizzleFileStatus(ret, false);
-      }
-    };
-  }
-
   @Override
   public Path getHomeDirectory() {
     return swizzleReturnPath(super.getHomeDirectory());
@@ -242,11 +225,6 @@ public class ProxyFileSystem extends FilterFileSystem {
   @Override
   public boolean mkdirs(Path f, FsPermission permission) throws IOException {
     return super.mkdirs(swizzleParamPath(f), permission);
-  }
-
-  @Override
-  public boolean mkdirs(Path f) throws IOException {
-    return mkdirs(f, FsPermission.getDirDefault());
   }
 
   @Override

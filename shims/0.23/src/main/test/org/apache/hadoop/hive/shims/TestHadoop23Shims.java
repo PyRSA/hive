@@ -19,43 +19,20 @@
 package org.apache.hadoop.hive.shims;
 
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.hdfs.DFSClient;
-import org.apache.hadoop.hdfs.DistributedFileSystem;
 import org.junit.Test;
 
-import java.io.FileNotFoundException;
-import java.io.IOException;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.any;
 
 
 public class TestHadoop23Shims {
 
-  private Path getMockedPath(boolean supportXAttr) throws IOException {
-    FileSystem fs = mock(FileSystem.class);
-    if (supportXAttr) {
-      when(fs.getXAttrs(any())).thenReturn(new HashMap<>());
-    } else {
-      when(fs.getXAttrs(any())).thenThrow(
-              new UnsupportedOperationException("XAttr not supported for file system."));
-    }
-    Path path = mock(Path.class);
-    when(path.getFileSystem(any())).thenReturn(fs);
-    return path;
-  }
-  
   @Test
-  public void testConstructDistCpParams() throws Exception {
+  public void testConstructDistCpParams() {
     Path copySrc = new Path("copySrc");
     Path copyDst = new Path("copyDst");
     Configuration conf = new Configuration();
@@ -63,40 +40,40 @@ public class TestHadoop23Shims {
     Hadoop23Shims shims = new Hadoop23Shims();
     List<String> paramsDefault = shims.constructDistCpParams(Collections.singletonList(copySrc), copyDst, conf);
 
-    assertEquals(5, paramsDefault.size());
+    assertEquals(4, paramsDefault.size());
     assertTrue("Distcp -update set by default", paramsDefault.contains("-update"));
-    assertTrue("Distcp -delete set by default", paramsDefault.contains("-delete"));
-    assertEquals(copySrc.toString(), paramsDefault.get(3));
-    assertEquals(copyDst.toString(), paramsDefault.get(4));
+    assertTrue("Distcp -pbx set by default", paramsDefault.contains("-pbx"));
+    assertEquals(copySrc.toString(), paramsDefault.get(2));
+    assertEquals(copyDst.toString(), paramsDefault.get(3));
 
     conf.set("distcp.options.foo", "bar"); // should set "-foo bar"
     conf.set("distcp.options.blah", ""); // should set "-blah"
-    conf.set("distcp.options.pug", ""); // should set "-pug"
     conf.set("dummy", "option"); // should be ignored.
     List<String> paramsWithCustomParamInjection =
         shims.constructDistCpParams(Collections.singletonList(copySrc), copyDst, conf);
 
-    assertEquals(8, paramsWithCustomParamInjection.size());
+    assertEquals(5, paramsWithCustomParamInjection.size());
 
-    // check that the mandatory ones remain along with user passed ones.
-    assertTrue("Distcp -update set even if not requested",
-        paramsWithCustomParamInjection.contains("-update"));
-    assertTrue("Distcp -delete set even if not requested",
-            paramsWithCustomParamInjection.contains("-delete"));
-    assertTrue("Distcp -foo is set as passes",
-            paramsWithCustomParamInjection.contains("-foo"));
-    assertTrue("Distcp -blah is set as passes",
-            paramsWithCustomParamInjection.contains("-blah"));
-    assertTrue("Distcp -pug is set as passes",
-            paramsWithCustomParamInjection.contains("-pug"));
-    assertTrue("Distcp -pbx not set as overridden",
-            !paramsWithCustomParamInjection.contains("-pbx"));
+    // check that the defaults did not remain.
+    assertTrue("Distcp -update not set if not requested",
+        !paramsWithCustomParamInjection.contains("-update"));
     assertTrue("Distcp -skipcrccheck not set if not requested",
         !paramsWithCustomParamInjection.contains("-skipcrccheck"));
+    assertTrue("Distcp -pbx not set if not requested",
+        !paramsWithCustomParamInjection.contains("-pbx"));
 
-    // the "-foo bar" order is guaranteed
-    int idx = paramsWithCustomParamInjection.indexOf("-foo");
-    assertEquals("bar", paramsWithCustomParamInjection.get(idx+1));
+    // the "-foo bar" and "-blah" params order is not guaranteed
+    String firstParam = paramsWithCustomParamInjection.get(0);
+    if (firstParam.equals("-foo")){
+      // "-foo bar -blah"  form
+      assertEquals("bar", paramsWithCustomParamInjection.get(1));
+      assertEquals("-blah", paramsWithCustomParamInjection.get(2));
+    } else {
+      // "-blah -foo bar" form
+      assertEquals("-blah", paramsWithCustomParamInjection.get(0));
+      assertEquals("-foo", paramsWithCustomParamInjection.get(1));
+      assertEquals("bar", paramsWithCustomParamInjection.get(2));
+    }
 
     // the dummy option should not have made it either - only options
     // beginning with distcp.options. should be honoured
@@ -105,89 +82,9 @@ public class TestHadoop23Shims {
     assertTrue(!paramsWithCustomParamInjection.contains("option"));
     assertTrue(!paramsWithCustomParamInjection.contains("-option"));
 
-    assertEquals(copySrc.toString(), paramsWithCustomParamInjection.get(6));
-    assertEquals(copyDst.toString(), paramsWithCustomParamInjection.get(7));
+    assertEquals(copySrc.toString(), paramsWithCustomParamInjection.get(3));
+    assertEquals(copyDst.toString(), paramsWithCustomParamInjection.get(4));
 
-  }
-
-  @Test
-  public void testXAttrNotPreservedDueToDestFS() throws Exception {
-    Configuration conf = new Configuration();
-    Path copySrc = getMockedPath(true);
-    Path copyDst = getMockedPath(false);
-
-    Hadoop23Shims shims = new Hadoop23Shims();
-    List<String> paramsDefault = shims.constructDistCpParams(Collections.singletonList(copySrc), copyDst, conf);
-
-    assertEquals(5, paramsDefault.size());
-    assertTrue("Distcp -pb set by default", paramsDefault.contains("-pb"));
-    assertTrue("Distcp -update set by default", paramsDefault.contains("-update"));
-    assertTrue("Distcp -delete set by default", paramsDefault.contains("-delete"));
-    assertEquals(copySrc.toString(), paramsDefault.get(3));
-    assertEquals(copyDst.toString(), paramsDefault.get(4));
-  }
-
-  @Test
-  public void testXAttrNotPreservedDueToSrcFS() throws Exception {
-    Configuration conf = new Configuration();
-    Path copySrc = getMockedPath(false);
-    Path copyDst = getMockedPath(true);
-
-    Hadoop23Shims shims = new Hadoop23Shims();
-    List<String> paramsDefault = shims.constructDistCpParams(Collections.singletonList(copySrc), copyDst, conf);
-
-    assertEquals(5, paramsDefault.size());
-    assertTrue("Distcp -pb set by default", paramsDefault.contains("-pb"));
-    assertTrue("Distcp -update set by default", paramsDefault.contains("-update"));
-    assertTrue("Distcp -delete set by default", paramsDefault.contains("-delete"));
-    assertEquals(copySrc.toString(), paramsDefault.get(3));
-    assertEquals(copyDst.toString(), paramsDefault.get(4));
-  }
-
-  @Test
-  public void testXAttrPreserved() throws Exception {
-    Configuration conf = new Configuration();
-    Path copySrc = getMockedPath(true);
-    Path copyDst = getMockedPath(true);
-    Hadoop23Shims shims = new Hadoop23Shims();
-    List<String> paramsDefault = shims.constructDistCpParams(Collections.singletonList(copySrc), copyDst, conf);
-
-    assertEquals(5, paramsDefault.size());
-    assertTrue("Distcp -pbx set by default", paramsDefault.contains("-pbx"));
-    assertTrue("Distcp -update set by default", paramsDefault.contains("-update"));
-    assertTrue("Distcp -delete set by default", paramsDefault.contains("-delete"));
-    assertEquals(copySrc.toString(), paramsDefault.get(3));
-    assertEquals(copyDst.toString(), paramsDefault.get(4));
-  }
-
-  @Test
-  public void testPreserveOptionsOverwritenByUser() throws Exception {
-    Configuration conf = new Configuration();
-    conf.set("distcp.options.pbx", "");
-    Path copySrc = getMockedPath(false);
-    Path copyDst = getMockedPath(false);
-    Hadoop23Shims shims = new Hadoop23Shims();
-    List<String> paramsDefault = shims.constructDistCpParams(Collections.singletonList(copySrc), copyDst, conf);
-
-    assertEquals(5, paramsDefault.size());
-    assertTrue("Distcp -pbx set by default", paramsDefault.contains("-pbx"));
-    assertTrue("Distcp -update set by default", paramsDefault.contains("-update"));
-    assertTrue("Distcp -delete set by default", paramsDefault.contains("-delete"));
-    assertEquals(copySrc.toString(), paramsDefault.get(3));
-    assertEquals(copyDst.toString(), paramsDefault.get(4));
-  }
-
-  @Test(expected = FileNotFoundException.class)
-  public void testGetFileIdForNonexistingPath() throws Exception {
-    Hadoop23Shims shims = new Hadoop23Shims();
-
-    DistributedFileSystem fs = mock(DistributedFileSystem.class);
-    DFSClient dfsClient = mock(DFSClient.class);
-    doAnswer(invocationOnMock -> {
-      return dfsClient;
-    }).when(fs).getClient();
-
-    shims.getFileId(fs, "badpath");
   }
 
 }
