@@ -34,11 +34,6 @@ public class TestHplsqlOffline {
   private final ByteArrayOutputStream out = new ByteArrayOutputStream();
 
   @Test
-  public void testCreateTable() throws Exception {
-    run("create_table");
-  }
-
-  @Test
   public void testCreateTableDb2() throws Exception {
     run("create_table_db2");
   }
@@ -120,7 +115,7 @@ public class TestHplsqlOffline {
     FileUtils.writeStringToFile(new java.io.File("target/tmp/log/" + testFile + ".out.txt"), s);
     String t = FileUtils.readFileToString(new java.io.File("src/test/results/offline/" + testFile + ".out.txt"), "utf-8").trim();
     System.setOut(null);
-    Assert.assertEquals(t, s);
+    Assert.assertEquals(s, t);
   }
 
   /**

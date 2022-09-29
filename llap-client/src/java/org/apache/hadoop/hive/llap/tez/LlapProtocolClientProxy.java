@@ -26,8 +26,6 @@ import org.apache.hadoop.hive.llap.AsyncPbRpcProxy;
 import org.apache.hadoop.hive.llap.LlapNodeId;
 import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.QueryCompleteRequestProto;
 import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.QueryCompleteResponseProto;
-import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.RegisterDagRequestProto;
-import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.RegisterDagResponseProto;
 import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.SourceStateUpdatedRequestProto;
 import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.SourceStateUpdatedResponseProto;
 import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.SubmitWorkRequestProto;
@@ -54,13 +52,7 @@ public class LlapProtocolClientProxy
         HiveConf.getTimeVar(conf, ConfVars.LLAP_TASK_COMMUNICATOR_CONNECTION_TIMEOUT_MS,
             TimeUnit.MILLISECONDS),
         HiveConf.getTimeVar(conf, ConfVars.LLAP_TASK_COMMUNICATOR_CONNECTION_SLEEP_BETWEEN_RETRIES_MS,
-            TimeUnit.MILLISECONDS), -1, HiveConf.getIntVar(conf, ConfVars.LLAP_MAX_CONCURRENT_REQUESTS_PER_NODE));
-  }
-
-  public void registerDag(RegisterDagRequestProto request, String host, int port,
-      final ExecuteRequestCallback<RegisterDagResponseProto> callback) {
-    LlapNodeId nodeId = LlapNodeId.getInstance(host, port);
-    queueRequest(new RegisterDagCallable(nodeId, request, callback));
+            TimeUnit.MILLISECONDS), -1, 1);
   }
 
   public void sendSubmitWork(SubmitWorkRequestProto request, String host, int port,
@@ -94,21 +86,7 @@ public class LlapProtocolClientProxy
     queueRequest(new SendUpdateFragmentCallable(nodeId, request, callback));
   }
 
-  private class RegisterDagCallable extends
-      NodeCallableRequest<RegisterDagRequestProto, RegisterDagResponseProto> {
-    protected RegisterDagCallable(LlapNodeId nodeId,
-        RegisterDagRequestProto registerDagRequestProto,
-        ExecuteRequestCallback<RegisterDagResponseProto> callback) {
-      super(nodeId, registerDagRequestProto, callback);
-    }
-
-    @Override public
-    RegisterDagResponseProto call() throws Exception {
-      return getProxy(nodeId, null).registerDag(null, request);
-    }
-  }
-
-  private class SubmitWorkCallable extends AsyncCallableRequest<SubmitWorkRequestProto, SubmitWorkResponseProto> {
+  private class SubmitWorkCallable extends NodeCallableRequest<SubmitWorkRequestProto, SubmitWorkResponseProto> {
 
     protected SubmitWorkCallable(LlapNodeId nodeId,
                           SubmitWorkRequestProto submitWorkRequestProto,
@@ -117,8 +95,8 @@ public class LlapProtocolClientProxy
     }
 
     @Override
-    public void callInternal() throws Exception {
-      getProxy(nodeId, null).submitWork(null, request);
+    public SubmitWorkResponseProto call() throws Exception {
+      return getProxy(nodeId, null).submitWork(null, request);
     }
   }
 

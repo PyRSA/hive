@@ -20,23 +20,20 @@ package org.apache.hadoop.hive.metastore;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
-import java.util.Properties;
 
 import javax.security.auth.login.LoginException;
 
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.metastore.conf.MetastoreConf;
 import org.apache.hadoop.hive.metastore.utils.MetaStoreUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.api.MetaException;
-import org.apache.hadoop.hive.serde2.AbstractSerDe;
 import org.apache.hadoop.hive.serde2.Deserializer;
 import org.apache.hadoop.hive.serde2.SerDeException;
+import org.apache.hadoop.hive.serde2.SerDeUtils;
 import org.apache.hadoop.hive.serde2.objectinspector.ListObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.MapObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
@@ -71,37 +68,35 @@ public class HiveMetaStoreUtils {
    *
    */
   static public Deserializer getDeserializer(Configuration conf,
-      org.apache.hadoop.hive.metastore.api.Table table, String metaTable, boolean skipConfError) throws
-      MetaException {
+      org.apache.hadoop.hive.metastore.api.Table table, boolean skipConfError) throws
+          MetaException {
     String lib = table.getSd().getSerdeInfo().getSerializationLib();
     if (lib == null) {
       return null;
     }
-    return getDeserializer(conf, table, metaTable, skipConfError, lib);
+    return getDeserializer(conf, table, skipConfError, lib);
   }
 
-  public static Deserializer getDeserializer(Configuration conf, org.apache.hadoop.hive.metastore.api.Table table,
-      String metaTable, boolean skipConfError, String lib) throws MetaException {
-    AbstractSerDe deserializer;
+  public static Deserializer getDeserializer(Configuration conf,
+      org.apache.hadoop.hive.metastore.api.Table table, boolean skipConfError,
+      String lib) throws MetaException {
     try {
-      deserializer = ReflectionUtil.newInstance(conf.getClassByName(lib).asSubclass(AbstractSerDe.class), conf);
-    } catch (Exception e) {
+      Deserializer deserializer = ReflectionUtil.newInstance(conf.getClassByName(lib).
+              asSubclass(Deserializer.class), conf);
+      if (skipConfError) {
+        SerDeUtils.initializeSerDeWithoutErrorCheck(deserializer, conf,
+                MetaStoreUtils.getTableMetadata(table), null);
+      } else {
+        SerDeUtils.initializeSerDe(deserializer, conf, MetaStoreUtils.getTableMetadata(table), null);
+      }
+      return deserializer;
+    } catch (RuntimeException e) {
+      throw e;
+    } catch (Throwable e) {
+      LOG.error("error in initSerDe: " + e.getClass().getName() + " "
+          + e.getMessage(), e);
       throw new MetaException(e.getClass().getName() + " " + e.getMessage());
     }
-
-    try {
-      Properties properties = MetaStoreUtils.getTableMetadata(table);
-      if (metaTable != null) {
-        properties.put("metaTable", metaTable);
-      }
-      deserializer.initialize(conf, properties, null);
-    } catch (SerDeException e) {
-      if (!skipConfError) {
-        LOG.error("error in initSerDe: " + e.getClass().getName() + " " + e.getMessage(), e);
-        throw new MetaException(e.getClass().getName() + " " + e.getMessage());
-      }
-    }
-    return deserializer;
   }
 
   public static Class<? extends Deserializer> getDeserializerClass(
@@ -133,10 +128,10 @@ public class HiveMetaStoreUtils {
       org.apache.hadoop.hive.metastore.api.Table table) throws MetaException {
     String lib = part.getSd().getSerdeInfo().getSerializationLib();
     try {
-      AbstractSerDe deserializer = ReflectionUtil.newInstance(conf.getClassByName(lib).
-        asSubclass(AbstractSerDe.class), conf);
-      deserializer.initialize(conf, MetaStoreUtils.getTableMetadata(table),
-          MetaStoreUtils.getPartitionMetadata(part, table));
+      Deserializer deserializer = ReflectionUtil.newInstance(conf.getClassByName(lib).
+        asSubclass(Deserializer.class), conf);
+      SerDeUtils.initializeSerDe(deserializer, conf, MetaStoreUtils.getTableMetadata(table),
+                                 MetaStoreUtils.getPartitionMetadata(part, table));
       return deserializer;
     } catch (RuntimeException e) {
       throw e;
@@ -150,21 +145,16 @@ public class HiveMetaStoreUtils {
   /**
    * @param tableName name of the table
    * @param deserializer deserializer to use
-   * @param conf the configuration - used to determine if the deserializer needs to generate the 'from deserializer'
-   *             comments
    * @return the list of fields
    * @throws SerDeException if the serde throws an exception
    * @throws MetaException if one of the fields or types in the table is invalid
    */
   public static List<FieldSchema> getFieldsFromDeserializer(String tableName,
-      Deserializer deserializer, Configuration conf) throws SerDeException, MetaException {
-    Collection<String> noCommentSerdes =
-        MetastoreConf.getStringCollection(conf, MetastoreConf.ConfVars.SERDES_WITHOUT_FROM_DESERIALIZER);
-    boolean noCommentFromDeserializer = noCommentSerdes.contains(deserializer.getClass().getName());
+      Deserializer deserializer) throws SerDeException, MetaException {
     ObjectInspector oi = deserializer.getObjectInspector();
     String[] names = tableName.split("\\.");
     String last_name = names[names.length - 1];
-    for (int i = 2; i < names.length; i++) {
+    for (int i = 1; i < names.length; i++) {
 
       if (oi instanceof StructObjectInspector) {
         StructObjectInspector soi = (StructObjectInspector) oi;
@@ -195,7 +185,7 @@ public class HiveMetaStoreUtils {
     // rules on how to recurse the ObjectInspector based on its type
     if (oi.getCategory() != Category.STRUCT) {
       str_fields.add(new FieldSchema(last_name, oi.getTypeName(),
-          determineFieldComment(null, noCommentFromDeserializer)));
+          FROM_SERIALIZER));
     } else {
       List<? extends StructField> fields = ((StructObjectInspector) oi)
           .getAllStructFieldRefs();
@@ -203,7 +193,7 @@ public class HiveMetaStoreUtils {
         StructField structField = fields.get(i);
         String fieldName = structField.getFieldName();
         String fieldTypeName = structField.getFieldObjectInspector().getTypeName();
-        String fieldComment = determineFieldComment(structField.getFieldComment(), noCommentFromDeserializer);
+        String fieldComment = determineFieldComment(structField.getFieldComment());
 
         str_fields.add(new FieldSchema(fieldName, fieldTypeName, fieldComment));
       }
@@ -212,8 +202,8 @@ public class HiveMetaStoreUtils {
   }
 
   private static final String FROM_SERIALIZER = "from deserializer";
-  private static String determineFieldComment(String comment, boolean noCommentFromDeserializer) {
-    return (comment != null || noCommentFromDeserializer) ? comment : FROM_SERIALIZER;
+  private static String determineFieldComment(String comment) {
+    return (comment == null) ? FROM_SERIALIZER : comment;
   }
 
   /**
@@ -235,7 +225,7 @@ public class HiveMetaStoreUtils {
   public static IMetaStoreClient getHiveMetastoreClient(HiveConf hiveConf)
     throws MetaException, IOException {
 
-    if (!HiveConf.getBoolVar(hiveConf, HiveConf.ConfVars.METASTORE_CLIENT_CACHE_ENABLED)){
+    if (HiveConf.getBoolVar(hiveConf, HiveConf.ConfVars.METASTORE_CLIENT_CACHE_ENABLED)){
       // If cache is disabled, don't use it.
       return HiveClientCache.getNonCachedHiveMetastoreClient(hiveConf);
     }

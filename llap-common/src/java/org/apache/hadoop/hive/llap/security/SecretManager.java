@@ -250,7 +250,9 @@ public class SecretManager extends ZKDelegationTokenSecretManager<LlapTokenIdent
         new Text(user), renewer, realUser, clusterId, appId, isSignatureRequired);
     // TODO: note that the token is not renewable right now and will last for 2 weeks by default.
     Token<LlapTokenIdentifier> token = new Token<LlapTokenIdentifier>(llapId, this);
-    LOG.info("Created LLAP token {}", token);
+    if (LOG.isInfoEnabled()) {
+      LOG.info("Created LLAP token {}", token);
+    }
     return token;
   }
 

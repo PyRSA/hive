@@ -18,16 +18,13 @@
 
 package org.apache.hadoop.hive.llap.cache;
 
-import java.util.function.Predicate;
-
-import org.apache.hadoop.hive.common.io.CacheTag;
 import org.apache.hadoop.hive.common.io.DiskRange;
 import org.apache.hadoop.hive.common.io.DiskRangeList;
 import org.apache.hadoop.hive.common.io.DataCache.BooleanRef;
 import org.apache.hadoop.hive.common.io.DataCache.DiskRangeListFactory;
 import org.apache.hadoop.hive.common.io.encoded.MemoryBuffer;
 
-public interface LowLevelCache {
+public interface LowLevelCache extends LlapOomDebugDump {
   public enum Priority {
     NORMAL,
     HIGH
@@ -50,7 +47,7 @@ public interface LowLevelCache {
    *    can be thrown away, the reader will never touch it; but we need code in the reader to
    *    handle such cases to avoid disk reads for these "tails" vs real unmatched ranges.
    *    Some sort of InvalidCacheChunk could be placed to avoid them. TODO
-   * @param baseOffset base offset for the ranges (stripe/stream offset in case of ORC).
+   * @param base base offset for the ranges (stripe/stream offset in case of ORC).
    */
   DiskRangeList getFileData(Object fileKey, DiskRangeList range, long baseOffset,
       DiskRangeListFactory factory, LowLevelCacheCounters qfCounters, BooleanRef gotAllData);
@@ -61,17 +58,8 @@ public interface LowLevelCache {
    *         the replacement chunks from cache are updated directly in the array.
    */
   long[] putFileData(Object fileKey, DiskRange[] ranges, MemoryBuffer[] chunks,
-      long baseOffset, Priority priority, LowLevelCacheCounters qfCounters, CacheTag tag);
+      long baseOffset, Priority priority, LowLevelCacheCounters qfCounters, String tag);
 
   /** Notifies the cache that a particular buffer should be removed due to eviction. */
   void notifyEvicted(MemoryBuffer buffer);
-
-  /**
-   * Iterates through the file entries of this cache and for those that match the given predicate (aka have a matching
-   * CacheTag) will have their buffers marked for (a later) proactive eviction.
-   * @param predicate - matching the predicate indicates eligibility for proactive eviction
-   * @param isInstantDeallocation - whether to ask allocator to deallocate eligible buffers immediately after marking
-   * @return number of bytes marked in the buffers eligible for eviction
-   */
-  long markBuffersForProactiveEviction(Predicate<CacheTag> predicate, boolean isInstantDeallocation);
 }

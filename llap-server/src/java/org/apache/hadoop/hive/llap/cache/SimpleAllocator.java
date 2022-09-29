@@ -17,6 +17,7 @@
  */
 package org.apache.hadoop.hive.llap.cache;
 
+import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 
 import org.apache.hadoop.conf.Configuration;
@@ -24,10 +25,23 @@ import org.apache.hadoop.hive.common.io.Allocator;
 import org.apache.hadoop.hive.common.io.encoded.MemoryBuffer;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.llap.io.api.impl.LlapIoImpl;
-import org.apache.hive.common.util.CleanerUtil;
+
+import sun.misc.Cleaner;
 
 public final class SimpleAllocator implements Allocator, BuddyAllocatorMXBean {
   private final boolean isDirect;
+  private static Field cleanerField;
+  static {
+    try {
+      // TODO: To make it work for JDK9 use CleanerUtil from https://issues.apache.org/jira/browse/HADOOP-12760
+      final Class<?> dbClazz = Class.forName("java.nio.DirectByteBuffer");
+      cleanerField = dbClazz.getDeclaredField("cleaner");
+      cleanerField.setAccessible(true);
+    } catch (Throwable t) {
+      LlapIoImpl.LOG.warn("Cannot initialize DirectByteBuffer cleaner", t);
+      cleanerField = null;
+    }
+  }
 
   public SimpleAllocator(Configuration conf) {
     isDirect = HiveConf.getBoolVar(conf, HiveConf.ConfVars.LLAP_ALLOCATOR_DIRECT);
@@ -65,13 +79,13 @@ public final class SimpleAllocator implements Allocator, BuddyAllocatorMXBean {
     ByteBuffer bb = buf.byteBuffer;
     buf.byteBuffer = null;
     if (!bb.isDirect()) return;
-    if (!CleanerUtil.UNMAP_SUPPORTED) {
-      return;
-    }
+    Field field = cleanerField;
+    if (field == null) return;
     try {
-      CleanerUtil.getCleaner().freeBuffer(bb);
+      ((Cleaner)field.get(bb)).clean();
     } catch (Throwable t) {
-      LlapIoImpl.LOG.warn("Error using DirectByteBuffer cleaner", t);
+      LlapIoImpl.LOG.warn("Error using DirectByteBuffer cleaner; stopping its use", t);
+      cleanerField = null;
     }
   }
 

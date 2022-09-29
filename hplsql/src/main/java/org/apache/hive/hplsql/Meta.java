@@ -18,13 +18,13 @@
 
 package org.apache.hive.hplsql;
 
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.util.ArrayList;
 import java.util.HashMap;
 
 import org.antlr.v4.runtime.ParserRuleContext;
-import org.apache.hive.hplsql.executor.Metadata;
-import org.apache.hive.hplsql.executor.QueryExecutor;
-import org.apache.hive.hplsql.executor.QueryResult;
 
 /**
  * Metadata
@@ -36,13 +36,11 @@ public class Meta {
   Exec exec;
   boolean trace = false;  
   boolean info = false;
-  private QueryExecutor queryExecutor;
   
-  Meta(Exec e, QueryExecutor queryExecutor) {
+  Meta(Exec e) {
     exec = e;  
     trace = exec.getTrace();
     info = exec.getInfo();
-    this.queryExecutor = queryExecutor;
   }
   
   /**
@@ -99,17 +97,20 @@ public class Meta {
     // does not support queries, so we have to execute the query with LIMIT 1
     if (connType == Conn.Type.HIVE) {
       String sql = "SELECT * FROM (" + select + ") t LIMIT 1";
-      QueryResult query = queryExecutor.executeQuery(sql, ctx);
+      Query query = new Query(sql);
+      exec.executeQuery(ctx, query, conn); 
       if (!query.error()) {
+        ResultSet rs = query.getResultSet();
         try {
-          int cols = query.columnCount();
+          ResultSetMetaData rm = rs.getMetaData();
+          int cols = rm.getColumnCount();
           row = new Row();
-          for (int i = 0; i < cols; i++) {
-            String name = query.metadata().columnName(i);
+          for (int i = 1; i <= cols; i++) {
+            String name = rm.getColumnName(i);
             if (name.startsWith("t.")) {
               name = name.substring(2);
             }
-            row.addColumnDefinition(name, query.metadata().columnTypeName(i));
+            row.addColumn(name, rm.getColumnTypeName(i));
           }
         } 
         catch (Exception e) {
@@ -117,30 +118,31 @@ public class Meta {
         }
       }
       else {
-        exec.signal(query.exception());
+        exec.signal(query.getException());
       }
-      query.close();
+      exec.closeQuery(query, conn);
     }
     else {
-      QueryResult query = queryExecutor.executeQuery(select, ctx);
+      Query query = exec.prepareQuery(ctx, select, conn); 
       if (!query.error()) {
         try {
-          Metadata rm = query.metadata();
-          int cols = rm.columnCount();
+          PreparedStatement stmt = query.getPreparedStatement();
+          ResultSetMetaData rm = stmt.getMetaData();
+          int cols = rm.getColumnCount();
           for (int i = 1; i <= cols; i++) {
-            String col = rm.columnName(i);
-            String typ = rm.columnTypeName(i);
+            String col = rm.getColumnName(i);
+            String typ = rm.getColumnTypeName(i);
             if (row == null) {
               row = new Row();
             }
-            row.addColumnDefinition(col.toUpperCase(), typ);
+            row.addColumn(col.toUpperCase(), typ);
           }
         }
         catch (Exception e) {
           exec.signal(e);
         }
       }
-      query.close();
+      exec.closeQuery(query, conn);
     }
     return row;
   }
@@ -153,12 +155,14 @@ public class Meta {
     Conn.Type connType = exec.getConnectionType(conn); 
     if (connType == Conn.Type.HIVE) {
       String sql = "DESCRIBE " + table;
-      QueryResult query = queryExecutor.executeQuery(sql, ctx);
+      Query query = new Query(sql);
+      exec.executeQuery(ctx, query, conn); 
       if (!query.error()) {
+        ResultSet rs = query.getResultSet();
         try {
-          while (query.next()) {
-            String col = query.column(0, String.class);
-            String typ = query.column(1, String.class);
+          while (rs.next()) {
+            String col = rs.getString(1);
+            String typ = rs.getString(2);
             if (row == null) {
               row = new Row();
             }
@@ -166,7 +170,7 @@ public class Meta {
             if (typ == null) {
               break;
             }
-            row.addColumnDefinition(col.toUpperCase(), typ);
+            row.addColumn(col.toUpperCase(), typ);
           } 
           map.put(table, row);
         } 
@@ -175,29 +179,30 @@ public class Meta {
         }
       }
       else {
-        exec.signal(query.exception());
+        exec.signal(query.getException());
       }
-      query.close();
+      exec.closeQuery(query, conn);
     }
     else {
-      QueryResult query = queryExecutor.executeQuery( "SELECT * FROM " + table, ctx);
+      Query query = exec.prepareQuery(ctx, "SELECT * FROM " + table, conn); 
       if (!query.error()) {
         try {
-          Metadata rm = query.metadata();
-          int cols = query.columnCount();
+          PreparedStatement stmt = query.getPreparedStatement();
+          ResultSetMetaData rm = stmt.getMetaData();
+          int cols = rm.getColumnCount();
           for (int i = 1; i <= cols; i++) {
-            String col = rm.columnName(i);
-            String typ = rm.columnTypeName(i);
+            String col = rm.getColumnName(i);
+            String typ = rm.getColumnTypeName(i);
             if (row == null) {
               row = new Row();
             }
-            row.addColumnDefinition(col.toUpperCase(), typ);
+            row.addColumn(col.toUpperCase(), typ);
           }
           map.put(table, row);
         }
         catch (Exception e) {}
       }
-      query.close();
+      exec.closeQuery(query, conn);
     }
     return row;
   }
@@ -254,7 +259,7 @@ public class Meta {
   }
   
   /**
-   * Split qualified object to 2 parts: schema.tab.col -&gt; schema.tab|col; tab.col -&gt; tab|col
+   * Split qualified object to 2 parts: schema.tab.col -> schema.tab|col; tab.col -> tab|col 
    */
   public ArrayList<String> splitIdentifierToTwoParts(String name) {
     ArrayList<String> parts = splitIdentifier(name);    

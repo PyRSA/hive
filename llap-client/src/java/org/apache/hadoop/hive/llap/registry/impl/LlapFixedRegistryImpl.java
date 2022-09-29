@@ -29,13 +29,10 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
-import com.google.common.annotations.VisibleForTesting;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
-import org.apache.hadoop.hive.llap.LlapUtil;
 import org.apache.hadoop.hive.llap.registry.LlapServiceInstance;
 import org.apache.hadoop.hive.llap.registry.LlapServiceInstanceSet;
 import org.apache.hadoop.hive.llap.registry.ServiceRegistry;
@@ -48,7 +45,7 @@ import org.apache.hadoop.yarn.api.records.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class LlapFixedRegistryImpl implements ServiceRegistry<LlapServiceInstance> {
+public class LlapFixedRegistryImpl implements ServiceRegistry {
 
   private static final Logger LOG = LoggerFactory.getLogger(LlapFixedRegistryImpl.class);
 
@@ -60,9 +57,7 @@ public class LlapFixedRegistryImpl implements ServiceRegistry<LlapServiceInstanc
   private final int shuffle;
   private final int mngPort;
   private final int webPort;
-  private Configuration conf;
   private final int outputFormatPort;
-  private final int externalClientsRpcPort;
   private final String webScheme;
   private final String[] hosts;
   private final int memory;
@@ -78,10 +73,9 @@ public class LlapFixedRegistryImpl implements ServiceRegistry<LlapServiceInstanc
     this.resolveHosts = conf.getBoolean(FIXED_REGISTRY_RESOLVE_HOST_NAMES, true);
     this.mngPort = HiveConf.getIntVar(conf, ConfVars.LLAP_MANAGEMENT_RPC_PORT);
     this.outputFormatPort = HiveConf.getIntVar(conf, ConfVars.LLAP_DAEMON_OUTPUT_SERVICE_PORT);
-    this.externalClientsRpcPort = HiveConf.getIntVar(conf, ConfVars.LLAP_EXTERNAL_CLIENT_CLOUD_RPC_PORT);
+
 
     this.webPort = HiveConf.getIntVar(conf, ConfVars.LLAP_DAEMON_WEB_PORT);
-    this.conf = conf;
     boolean isSsl = HiveConf.getBoolVar(conf, ConfVars.LLAP_DAEMON_WEB_SSL);
     this.webScheme = isSsl ? "https" : "http";
 
@@ -118,21 +112,12 @@ public class LlapFixedRegistryImpl implements ServiceRegistry<LlapServiceInstanc
     // nothing to unregister
   }
 
-  @Override
-  public void updateRegistration(Iterable<Map.Entry<String, String>> attributes) throws IOException {
-    throw new UnsupportedOperationException();
-  }
-
   public static String getWorkerIdentity(String host) {
     // trigger clean errors for anyone who mixes up identity with hosts
     return "host-" + host;
   }
 
-  /**
-   * A single instance in an Llap Service.
-   */
-  @VisibleForTesting
-  public final class FixedServiceInstance implements LlapServiceInstance {
+  private final class FixedServiceInstance implements LlapServiceInstance {
 
     private final String host;
     private final String serviceAddress;
@@ -192,18 +177,6 @@ public class LlapFixedRegistryImpl implements ServiceRegistry<LlapServiceInstanc
     @Override
     public int getOutputFormatPort() {
       return LlapFixedRegistryImpl.this.outputFormatPort;
-    }
-
-    @Override
-    public String getExternalHostname() {
-      ensureCloudEnv(LlapFixedRegistryImpl.this.conf);
-      return LlapUtil.getPublicHostname();
-    }
-
-    @Override
-    public int getExternalClientsRpcPort() {
-      ensureCloudEnv(LlapFixedRegistryImpl.this.conf);
-      return LlapFixedRegistryImpl.this.externalClientsRpcPort;
     }
 
     @Override

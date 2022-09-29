@@ -6,9 +6,10 @@ yarnfile = """
   "configuration": {
     "properties": {
       "yarn.service.rolling-log.include-pattern": ".*\\\\.done",
-      "yarn.service.container-health-threshold.percent": "%(health_percent)d",
-      "yarn.service.container-health-threshold.window-secs": "%(health_time_window)d",
-      "yarn.service.container-health-threshold.init-delay-secs": "%(health_init_delay)d"%(service_appconfig_global_append)s
+      "yarn.component.placement.policy" : "%(placement)d",
+      "yarn.container.health.threshold.percent": "%(health_percent)d",
+      "yarn.container.health.threshold.window.secs": "%(health_time_window)d",
+      "yarn.container.health.threshold.init.delay.secs": "%(health_init_delay)d"%(service_appconfig_global_append)s
     }
   },
   "components": [
@@ -17,23 +18,12 @@ yarnfile = """
       "number_of_containers": %(instances)d,
       "launch_command": "$LLAP_DAEMON_BIN_HOME/llapDaemon.sh start &> $LLAP_DAEMON_TMP_DIR/shell.out",
       "artifact": {
-        "id": "%(hdfs_package_dir)s/package/LLAP/%(name)s-%(version)s.tar.gz",
+        "id": ".yarn/package/LLAP/llap-%(version)s.tar.gz",
         "type": "TARBALL"
       },
       "resource": {
         "cpus": 1,
         "memory": "%(container.mb)d"
-      },
-      "placement_policy": {
-        "constraints": [
-          {
-            "type": "ANTI_AFFINITY",
-            "scope": "NODE",
-            "target_tags": [
-              "llap"
-            ]
-          }
-        ]
       },
       "configuration": {
         "env": {
@@ -73,7 +63,7 @@ runner = """
 BASEDIR=$(dirname $0)
 yarn app -stop %(name)s
 yarn app -destroy %(name)s
-hdfs dfs -mkdir -p %(hdfs_package_dir)s/package/LLAP
-hdfs dfs -copyFromLocal -f $BASEDIR/%(name)s-%(version)s.tar.gz %(hdfs_package_dir)s/package/LLAP
+hdfs dfs -mkdir -p .yarn/package/LLAP
+hdfs dfs -copyFromLocal -f $BASEDIR/llap-%(version)s.tar.gz .yarn/package/LLAP
 yarn app -launch %(name)s $BASEDIR/Yarnfile
 """

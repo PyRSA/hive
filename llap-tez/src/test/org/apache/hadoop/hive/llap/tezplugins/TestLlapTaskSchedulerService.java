@@ -18,9 +18,8 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.atLeast;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -102,8 +101,8 @@ public class TestLlapTaskSchedulerService {
       tsWrapper.awaitLocalTaskAllocations(1);
 
       verify(tsWrapper.mockAppCallback).taskAllocated(eq(task1), eq(clientCookie1), any(Container.class));
-      assertEquals(1, tsWrapper.ts.dagStats.getNumLocalAllocations());
-      assertEquals(1, tsWrapper.ts.dagStats.getNumAllocationsPerHost().get(HOST1).get());
+      assertEquals(1, tsWrapper.ts.dagStats.numLocalAllocations);
+      assertEquals(1, tsWrapper.ts.dagStats.numAllocationsPerHost.get(HOST1).get());
     } finally {
       tsWrapper.shutdown();
     }
@@ -595,7 +594,7 @@ public class TestLlapTaskSchedulerService {
       tsWrapper.allocateTask(task1, null, priority1, clientCookie1);
       tsWrapper.awaitTotalTaskAllocations(1);
       verify(tsWrapper.mockAppCallback).taskAllocated(eq(task1), eq(clientCookie1), any(Container.class));
-      assertEquals(1, tsWrapper.ts.dagStats.getNumAllocationsNoLocalityRequest());
+      assertEquals(1, tsWrapper.ts.dagStats.numAllocationsNoLocalityRequest);
     } finally {
       tsWrapper.shutdown();
     }
@@ -603,7 +602,6 @@ public class TestLlapTaskSchedulerService {
 
 
   @Test(timeout = 10000)
-  @org.junit.Ignore("HIVE-25713")
   public void testPreemption() throws InterruptedException, IOException {
 
     Priority priority1 = Priority.newInstance(1);
@@ -628,14 +626,14 @@ public class TestLlapTaskSchedulerService {
       while (true) {
         tsWrapper.signalSchedulerRun();
         tsWrapper.awaitSchedulerRun();
-        if (tsWrapper.ts.dagStats.getNumLocalAllocations() == 2) {
+        if (tsWrapper.ts.dagStats.numLocalAllocations == 2) {
           break;
         }
       }
       verify(tsWrapper.mockAppCallback, times(2)).taskAllocated(any(Object.class),
           any(Object.class), any(Container.class));
-      assertEquals(2, tsWrapper.ts.dagStats.getNumLocalAllocations());
-      assertEquals(0, tsWrapper.ts.dagStats.getNumAllocationsNoLocalityRequest());
+      assertEquals(2, tsWrapper.ts.dagStats.numLocalAllocations);
+      assertEquals(0, tsWrapper.ts.dagStats.numAllocationsNoLocalityRequest);
 
       reset(tsWrapper.mockAppCallback);
 
@@ -643,7 +641,7 @@ public class TestLlapTaskSchedulerService {
       while (true) {
         tsWrapper.signalSchedulerRun();
         tsWrapper.awaitSchedulerRun();
-        if (tsWrapper.ts.dagStats.getNumPreemptedTasks() == 1) {
+        if (tsWrapper.ts.dagStats.numPreemptedTasks == 1) {
           break;
         }
       }
@@ -655,7 +653,7 @@ public class TestLlapTaskSchedulerService {
       while (true) {
         tsWrapper.signalSchedulerRun();
         tsWrapper.awaitSchedulerRun();
-        if (tsWrapper.ts.dagStats.getNumTotalAllocations() == 3) {
+        if (tsWrapper.ts.dagStats.numTotalAllocations == 3) {
           break;
         }
       }
@@ -681,16 +679,16 @@ public class TestLlapTaskSchedulerService {
       while (true) {
         tsWrapper.signalSchedulerRun();
         tsWrapper.awaitSchedulerRun();
-        if (tsWrapper.ts.dagStats.getNumTotalAllocations() == 1) {
+        if (tsWrapper.ts.dagStats.numTotalAllocations == 1) {
           break;
         }
       }
       verify(tsWrapper.mockAppCallback).taskAllocated(eq(task1), eq(clientCookie1),
           any(Container.class));
-      assertEquals(1, tsWrapper.ts.dagStats.getNumLocalAllocations());
-      assertEquals(0, tsWrapper.ts.dagStats.getNumAllocationsNoLocalityRequest());
-      assertEquals(0, tsWrapper.ts.dagStats.getNumNonLocalAllocations());
-      assertEquals(1, tsWrapper.ts.dagStats.getNumTotalAllocations());
+      assertEquals(1, tsWrapper.ts.dagStats.numLocalAllocations);
+      assertEquals(0, tsWrapper.ts.dagStats.numAllocationsNoLocalityRequest);
+      assertEquals(0, tsWrapper.ts.dagStats.numNonLocalAllocations);
+      assertEquals(1, tsWrapper.ts.dagStats.numTotalAllocations);
 
       tsWrapper.resetAppCallback();
 
@@ -698,7 +696,7 @@ public class TestLlapTaskSchedulerService {
       tsWrapper.rejectExecution(task1);
 
       // Verify that the node is blacklisted
-      assertEquals(1, tsWrapper.ts.dagStats.getNumRejectedTasks());
+      assertEquals(1, tsWrapper.ts.dagStats.numRejectedTasks);
       assertEquals(3, tsWrapper.ts.instanceToNodeMap.size());
       LlapTaskSchedulerService.NodeInfo disabledNodeInfo = tsWrapper.ts.disabledNodesQueue.peek();
       assertNotNull(disabledNodeInfo);
@@ -712,15 +710,15 @@ public class TestLlapTaskSchedulerService {
       while (true) {
         tsWrapper.signalSchedulerRun();
         tsWrapper.awaitSchedulerRun();
-        if (tsWrapper.ts.dagStats.getNumTotalAllocations() == 2) {
+        if (tsWrapper.ts.dagStats.numTotalAllocations == 2) {
           break;
         }
       }
       verify(tsWrapper.mockAppCallback).taskAllocated(eq(task2), eq(clientCookie2), any(Container.class));
-      assertEquals(1, tsWrapper.ts.dagStats.getNumLocalAllocations());
-      assertEquals(0, tsWrapper.ts.dagStats.getNumAllocationsNoLocalityRequest());
-      assertEquals(1, tsWrapper.ts.dagStats.getNumNonLocalAllocations());
-      assertEquals(2, tsWrapper.ts.dagStats.getNumTotalAllocations());
+      assertEquals(1, tsWrapper.ts.dagStats.numLocalAllocations);
+      assertEquals(0, tsWrapper.ts.dagStats.numAllocationsNoLocalityRequest);
+      assertEquals(1, tsWrapper.ts.dagStats.numNonLocalAllocations);
+      assertEquals(2, tsWrapper.ts.dagStats.numTotalAllocations);
 
     } finally {
       tsWrapper.shutdown();
@@ -751,14 +749,14 @@ public class TestLlapTaskSchedulerService {
       while (true) {
         tsWrapper.signalSchedulerRun();
         tsWrapper.awaitSchedulerRun();
-        if (tsWrapper.ts.dagStats.getNumTotalAllocations() == 3) {
+        if (tsWrapper.ts.dagStats.numTotalAllocations == 3) {
           break;
         }
       }
       verify(tsWrapper.mockAppCallback, times(3)).taskAllocated(any(Object.class), any(Object.class), any(Container.class));
-      assertEquals(3, tsWrapper.ts.dagStats.getNumLocalAllocations());
-      assertEquals(0, tsWrapper.ts.dagStats.getNumAllocationsNoLocalityRequest());
-      assertEquals(3, tsWrapper.ts.dagStats.getNumTotalAllocations());
+      assertEquals(3, tsWrapper.ts.dagStats.numLocalAllocations);
+      assertEquals(0, tsWrapper.ts.dagStats.numAllocationsNoLocalityRequest);
+      assertEquals(3, tsWrapper.ts.dagStats.numTotalAllocations);
 
       tsWrapper.resetAppCallback();
 
@@ -767,7 +765,7 @@ public class TestLlapTaskSchedulerService {
       tsWrapper.rejectExecution(task3);
 
       // Verify that the node is blacklisted
-      assertEquals(3, tsWrapper.ts.dagStats.getNumRejectedTasks());
+      assertEquals(3, tsWrapper.ts.dagStats.numRejectedTasks);
       assertEquals(3, tsWrapper.ts.instanceToNodeMap.size());
       assertEquals(3, tsWrapper.ts.disabledNodesQueue.size());
 
@@ -784,7 +782,7 @@ public class TestLlapTaskSchedulerService {
       while (true) {
         tsWrapper.signalSchedulerRun();
         tsWrapper.awaitSchedulerRun();
-        if (tsWrapper.ts.dagStats.getNumTotalAllocations() == 6) {
+        if (tsWrapper.ts.dagStats.numTotalAllocations == 6) {
           break;
         }
       }
@@ -793,8 +791,8 @@ public class TestLlapTaskSchedulerService {
       verify(tsWrapper.mockAppCallback, times(3)).taskAllocated(any(Object.class), any(Object.class), argumentCaptor.capture());
 
       // which affects the locality matching
-      assertEquals(0, tsWrapper.ts.dagStats.getNumAllocationsNoLocalityRequest());
-      assertEquals(6, tsWrapper.ts.dagStats.getNumTotalAllocations());
+      assertEquals(0, tsWrapper.ts.dagStats.numAllocationsNoLocalityRequest);
+      assertEquals(6, tsWrapper.ts.dagStats.numTotalAllocations);
 
     } finally {
       tsWrapper.shutdown();
@@ -856,7 +854,7 @@ public class TestLlapTaskSchedulerService {
       while (true) {
         tsWrapper.signalSchedulerRun();
         tsWrapper.awaitSchedulerRun();
-        if (tsWrapper.ts.dagStats.getNumTotalAllocations() == 4) {
+        if (tsWrapper.ts.dagStats.numTotalAllocations == 4) {
           break;
         }
       }
@@ -886,7 +884,7 @@ public class TestLlapTaskSchedulerService {
       while (true) {
         tsWrapper.signalSchedulerRun();
         tsWrapper.awaitSchedulerRun();
-        if (tsWrapper.ts.dagStats.getNumTotalAllocations() == 5) {
+        if (tsWrapper.ts.dagStats.numTotalAllocations == 5) {
           break;
         }
       }
@@ -904,39 +902,6 @@ public class TestLlapTaskSchedulerService {
       tsWrapper.shutdown();
     }
   }
-
-  @Test(timeout = 10000)
-  public void testAdjustLocalityDelay() throws IOException, InterruptedException {
-    Priority priority1 = Priority.newInstance(1);
-    String[] host = new String[]{HOST1};
-
-    TestTaskSchedulerServiceWrapper tsWrapper =
-        new TestTaskSchedulerServiceWrapper(2000, host, 1, 0, 1000l);
-    try {
-      TezTaskAttemptID task1 = TestTaskSchedulerServiceWrapper.generateTaskAttemptId();
-      Object clientCookie1 = "cookie1";
-      TezTaskAttemptID task2 = TestTaskSchedulerServiceWrapper.generateTaskAttemptId();
-      Object clientCookie2 = "cookie2";
-
-      tsWrapper.controlScheduler(true);
-      tsWrapper.allocateTask(task1, host, priority1, clientCookie1);
-      tsWrapper.allocateTask(task2, host, priority1, clientCookie2);
-      // There are enough resources for 1 task, the second one should just adjustLocalityDelay
-      assertFalse(tsWrapper.ts.getTaskInfo(task2).adjustedLocalityDelay);
-      while (true) {
-        tsWrapper.signalSchedulerRun();
-        tsWrapper.awaitSchedulerRun();
-        if (tsWrapper.ts.dagStats.getNumTotalAllocations() == 1) {
-          break;
-        }
-      }
-      // Active node instances do exist so delay should be adjusted
-      assertTrue(tsWrapper.ts.getTaskInfo(task2).adjustedLocalityDelay);
-    } finally {
-      tsWrapper.shutdown();
-    }
-  }
-
 
   @Test(timeout = 10000)
   public void testForcedLocalityUnknownHost() throws IOException, InterruptedException {
@@ -963,7 +928,7 @@ public class TestLlapTaskSchedulerService {
       while (true) {
         tsWrapper.signalSchedulerRun();
         tsWrapper.awaitSchedulerRun();
-        if (tsWrapper.ts.dagStats.getNumTotalAllocations() == 2) {
+        if (tsWrapper.ts.dagStats.numTotalAllocations == 2) {
           break;
         }
       }
@@ -1013,7 +978,7 @@ public class TestLlapTaskSchedulerService {
       while (true) {
         tsWrapper.signalSchedulerRun();
         tsWrapper.awaitSchedulerRun();
-        if (tsWrapper.ts.dagStats.getNumTotalAllocations() == 4) {
+        if (tsWrapper.ts.dagStats.numTotalAllocations == 4) {
           break;
         }
       }
@@ -1036,9 +1001,9 @@ public class TestLlapTaskSchedulerService {
       // 4rd task provided no location preference, got host2 since host1 is full and only host2 is left in random pool
       assertEquals(HOST2, argumentCaptor2.getAllValues().get(3).getNodeId().getHost());
 
-      assertEquals(1, tsWrapper.ts.dagStats.getNumAllocationsNoLocalityRequest());
-      assertEquals(2, tsWrapper.ts.dagStats.getNumLocalAllocations());
-      assertEquals(1, tsWrapper.ts.dagStats.getNumNonLocalAllocations());
+      assertEquals(1, tsWrapper.ts.dagStats.numAllocationsNoLocalityRequest);
+      assertEquals(2, tsWrapper.ts.dagStats.numLocalAllocations);
+      assertEquals(1, tsWrapper.ts.dagStats.numNonLocalAllocations);
     } finally {
       tsWrapper.shutdown();
     }
@@ -1071,7 +1036,7 @@ public class TestLlapTaskSchedulerService {
       while (true) {
         tsWrapper.signalSchedulerRun();
         tsWrapper.awaitSchedulerRun();
-        if (tsWrapper.ts.dagStats.getNumTotalAllocations() == 3) {
+        if (tsWrapper.ts.dagStats.numTotalAllocations == 3) {
           break;
         }
       }
@@ -1091,11 +1056,11 @@ public class TestLlapTaskSchedulerService {
       // 3rd task requested host2, got host1 as host2 and host3 are full
       assertEquals(HOST1, argumentCaptor2.getAllValues().get(2).getNodeId().getHost());
 
-      verify(tsWrapper.mockServiceInstanceSet, atLeast(2)).getAllInstancesOrdered(true);
+      verify(tsWrapper.mockServiceInstanceSet, times(2)).getAllInstancesOrdered(true);
 
-      assertEquals(0, tsWrapper.ts.dagStats.getNumAllocationsNoLocalityRequest());
-      assertEquals(1, tsWrapper.ts.dagStats.getNumLocalAllocations());
-      assertEquals(2, tsWrapper.ts.dagStats.getNumNonLocalAllocations());
+      assertEquals(0, tsWrapper.ts.dagStats.numAllocationsNoLocalityRequest);
+      assertEquals(1, tsWrapper.ts.dagStats.numLocalAllocations);
+      assertEquals(2, tsWrapper.ts.dagStats.numNonLocalAllocations);
     } finally {
       tsWrapper.shutdown();
     }
@@ -1129,7 +1094,7 @@ public class TestLlapTaskSchedulerService {
       while (true) {
         tsWrapper.signalSchedulerRun();
         tsWrapper.awaitSchedulerRun();
-        if (tsWrapper.ts.dagStats.getNumTotalAllocations() == 3) {
+        if (tsWrapper.ts.dagStats.numTotalAllocations == 3) {
           break;
         }
       }
@@ -1150,11 +1115,11 @@ public class TestLlapTaskSchedulerService {
       // 3rd task requested host3, got host1 since host3 is dead and host4 is full
       assertEquals(HOST1, argumentCaptor2.getAllValues().get(2).getNodeId().getHost());
 
-      verify(tsWrapper.mockServiceInstanceSet, atLeast(2)).getAllInstancesOrdered(true);
+      verify(tsWrapper.mockServiceInstanceSet, times(2)).getAllInstancesOrdered(true);
 
-      assertEquals(0, tsWrapper.ts.dagStats.getNumAllocationsNoLocalityRequest());
-      assertEquals(1, tsWrapper.ts.dagStats.getNumLocalAllocations());
-      assertEquals(2, tsWrapper.ts.dagStats.getNumNonLocalAllocations());
+      assertEquals(0, tsWrapper.ts.dagStats.numAllocationsNoLocalityRequest);
+      assertEquals(1, tsWrapper.ts.dagStats.numLocalAllocations);
+      assertEquals(2, tsWrapper.ts.dagStats.numNonLocalAllocations);
     } finally {
       tsWrapper.shutdown();
     }
@@ -1207,7 +1172,7 @@ public class TestLlapTaskSchedulerService {
       while (true) {
         tsWrapper.signalSchedulerRun();
         tsWrapper.awaitSchedulerRun();
-        if (tsWrapper.ts.dagStats.getNumPreemptedTasks() == 1) {
+        if (tsWrapper.ts.dagStats.numPreemptedTasks == 1) {
           break;
         }
       }
@@ -1276,7 +1241,7 @@ public class TestLlapTaskSchedulerService {
       while (true) {
         tsWrapper.signalSchedulerRun();
         tsWrapper.awaitSchedulerRun();
-        if (tsWrapper.ts.dagStats.getNumPreemptedTasks() == 1) {
+        if (tsWrapper.ts.dagStats.numPreemptedTasks == 1) {
           break;
         }
       }
@@ -1292,7 +1257,6 @@ public class TestLlapTaskSchedulerService {
   }
 
   @Test(timeout = 10000)
-  @org.junit.Ignore("HIVE-25248")
   public void testForcedLocalityMultiplePreemptionsSameHost1() throws IOException,
       InterruptedException {
     Priority priority1 = Priority.newInstance(1);
@@ -1345,7 +1309,7 @@ public class TestLlapTaskSchedulerService {
       while (true) {
         tsWrapper.signalSchedulerRun();
         tsWrapper.awaitSchedulerRun();
-        if (tsWrapper.ts.dagStats.getNumPreemptedTasks() == 1) {
+        if (tsWrapper.ts.dagStats.numPreemptedTasks == 1) {
           break;
         }
       }
@@ -1377,7 +1341,7 @@ public class TestLlapTaskSchedulerService {
       while (true) {
         tsWrapper.signalSchedulerRun();
         tsWrapper.awaitSchedulerRun();
-        if (tsWrapper.ts.dagStats.getNumPreemptedTasks() == 2) {
+        if (tsWrapper.ts.dagStats.numPreemptedTasks == 2) {
           break;
         }
       }
@@ -1449,7 +1413,7 @@ public class TestLlapTaskSchedulerService {
       while (true) {
         tsWrapper.signalSchedulerRun();
         tsWrapper.awaitSchedulerRun();
-        if (tsWrapper.ts.dagStats.getNumPreemptedTasks() == 1) {
+        if (tsWrapper.ts.dagStats.numPreemptedTasks == 1) {
           break;
         }
       }
@@ -1479,7 +1443,7 @@ public class TestLlapTaskSchedulerService {
       while (true) {
         tsWrapper.signalSchedulerRun();
         tsWrapper.awaitSchedulerRun(1000l);
-        if (tsWrapper.ts.dagStats.getNumPreemptedTasks() == 2) {
+        if (tsWrapper.ts.dagStats.numPreemptedTasks == 2) {
           break;
         }
       }
@@ -1602,11 +1566,11 @@ public class TestLlapTaskSchedulerService {
       assertEquals(HOST2, assignedContainer.getNodeId().getHost());
 
 
-      assertEquals(2, tsWrapper.ts.dagStats.getNumLocalAllocations());
-      assertEquals(1, tsWrapper.ts.dagStats.getNumNonLocalAllocations());
-      assertEquals(1, tsWrapper.ts.dagStats.getNumDelayedAllocations());
-      assertEquals(2, tsWrapper.ts.dagStats.getNumAllocationsPerHost().get(HOST1).get());
-      assertEquals(1, tsWrapper.ts.dagStats.getNumAllocationsPerHost().get(HOST2).get());
+      assertEquals(2, tsWrapper.ts.dagStats.numLocalAllocations);
+      assertEquals(1, tsWrapper.ts.dagStats.numNonLocalAllocations);
+      assertEquals(1, tsWrapper.ts.dagStats.numDelayedAllocations);
+      assertEquals(2, tsWrapper.ts.dagStats.numAllocationsPerHost.get(HOST1).get());
+      assertEquals(1, tsWrapper.ts.dagStats.numAllocationsPerHost.get(HOST2).get());
 
     } finally {
       tsWrapper.shutdown();
@@ -1679,10 +1643,10 @@ public class TestLlapTaskSchedulerService {
       assertEquals(HOST1, assignedContainer.getNodeId().getHost());
 
 
-      assertEquals(3, tsWrapper.ts.dagStats.getNumLocalAllocations());
-      assertEquals(0, tsWrapper.ts.dagStats.getNumNonLocalAllocations());
-      assertEquals(1, tsWrapper.ts.dagStats.getNumDelayedAllocations());
-      assertEquals(3, tsWrapper.ts.dagStats.getNumAllocationsPerHost().get(HOST1).get());
+      assertEquals(3, tsWrapper.ts.dagStats.numLocalAllocations);
+      assertEquals(0, tsWrapper.ts.dagStats.numNonLocalAllocations);
+      assertEquals(1, tsWrapper.ts.dagStats.numDelayedAllocations);
+      assertEquals(3, tsWrapper.ts.dagStats.numAllocationsPerHost.get(HOST1).get());
 
     } finally {
       tsWrapper.shutdown();
@@ -1858,7 +1822,7 @@ public class TestLlapTaskSchedulerService {
     String [] hostsH1 = new String[] {HOST1};
 
     // Node disable timeout higher than locality delay.
-    TestTaskSchedulerServiceWrapper tsWrapper = new TestTaskSchedulerServiceWrapper(20000, hosts, 1, 1, 9000l);
+    TestTaskSchedulerServiceWrapper tsWrapper = new TestTaskSchedulerServiceWrapper(20000, hosts, 1, 1, 10000l);
 
     // Fill up host1 with tasks. Leave host2 empty.
     try {
@@ -1893,7 +1857,7 @@ public class TestLlapTaskSchedulerService {
       long thirdAllocateTime = tsWrapper.getClock().getTime();
       long diff = thirdAllocateTime - startTime;
       // diffAfterSleep < total sleepTime
-      assertTrue("Task not allocated in expected time window: duration=" + diff, diff < 9000l);
+      assertTrue("Task not allocated in expected time window: duration=" + diff, diff < 10000l);
 
       verify(tsWrapper.mockAppCallback, never()).preemptContainer(any(ContainerId.class));
       argumentCaptor = ArgumentCaptor.forClass(Object.class);
@@ -1906,11 +1870,11 @@ public class TestLlapTaskSchedulerService {
       assertEquals(HOST2, assignedContainer.getNodeId().getHost());
 
 
-      assertEquals(2, tsWrapper.ts.dagStats.getNumLocalAllocations());
-      assertEquals(1, tsWrapper.ts.dagStats.getNumNonLocalAllocations());
-      assertEquals(1, tsWrapper.ts.dagStats.getNumDelayedAllocations());
-      assertEquals(2, tsWrapper.ts.dagStats.getNumAllocationsPerHost().get(HOST1).get());
-      assertEquals(1, tsWrapper.ts.dagStats.getNumAllocationsPerHost().get(HOST2).get());
+      assertEquals(2, tsWrapper.ts.dagStats.numLocalAllocations);
+      assertEquals(1, tsWrapper.ts.dagStats.numNonLocalAllocations);
+      assertEquals(1, tsWrapper.ts.dagStats.numDelayedAllocations);
+      assertEquals(2, tsWrapper.ts.dagStats.numAllocationsPerHost.get(HOST1).get());
+      assertEquals(1, tsWrapper.ts.dagStats.numAllocationsPerHost.get(HOST2).get());
 
     } finally {
       tsWrapper.shutdown();
@@ -1959,33 +1923,6 @@ public class TestLlapTaskSchedulerService {
     } finally {
       tsWrapper.shutdown();
     }
-  }
-
-  @Test
-  public void testInitialGuaranteedInfoIsEncodedInContainerId() {
-    ApplicationAttemptId appAttemptId = ApplicationAttemptId.newInstance(ApplicationId.newInstance(1000, 1), 1);
-    ContainerFactory containerFactory = new ContainerFactory(appAttemptId, 15);
-    Container c1 = createDummyContainer(containerFactory, false);
-    Container c2 = createDummyContainer(containerFactory, true);
-    Container c3 = createDummyContainer(containerFactory, true);
-    Container c4 = createDummyContainer(containerFactory, false);
-    Container c5 = createDummyContainer(containerFactory, true);
-    Container c6 = createDummyContainer(containerFactory, false);
-    Container c7 = createDummyContainer(containerFactory, false);
-    Container c8 = createDummyContainer(containerFactory, true);
-
-    assertFalse(ContainerFactory.isContainerInitializedAsGuaranteed(c1.getId()));
-    assertTrue(ContainerFactory.isContainerInitializedAsGuaranteed(c2.getId()));
-    assertTrue(ContainerFactory.isContainerInitializedAsGuaranteed(c3.getId()));
-    assertFalse(ContainerFactory.isContainerInitializedAsGuaranteed(c4.getId()));
-    assertTrue(ContainerFactory.isContainerInitializedAsGuaranteed(c5.getId()));
-    assertFalse(ContainerFactory.isContainerInitializedAsGuaranteed(c6.getId()));
-    assertFalse(ContainerFactory.isContainerInitializedAsGuaranteed(c7.getId()));
-    assertTrue(ContainerFactory.isContainerInitializedAsGuaranteed(c8.getId()));
-  }
-
-  private Container createDummyContainer(ContainerFactory containerFactory, boolean isGuaranteed) {
-    return containerFactory.createContainer(mock(Resource.class), mock(Priority.class), "hostname", 0, null, isGuaranteed);
   }
 
   private static class TestTaskSchedulerServiceWrapper {
@@ -2050,14 +1987,12 @@ public class TestLlapTaskSchedulerService {
           if (host == null) {
             LlapServiceInstance mockInactive = mock(InactiveServiceInstance.class);
             doReturn(host).when(mockInactive).getHost();
-            doReturn(Resource.newInstance(100, 1)).when(mockInactive).getResource();
             doReturn("inactive-host-" + host).when(mockInactive).getWorkerIdentity();
             doReturn(ImmutableSet.builder().add(mockInactive).build()).when(mockServiceInstanceSet).getByHost(host);
             liveInstances.add(mockInactive);
           } else {
             LlapServiceInstance mockActive = mock(LlapServiceInstance.class);
             doReturn(host).when(mockActive).getHost();
-            doReturn(Resource.newInstance(100, 1)).when(mockActive).getResource();
             doReturn("host-" + host).when(mockActive).getWorkerIdentity();
             doReturn(ImmutableSet.builder().add(mockActive).build()).when(mockServiceInstanceSet).getByHost(host);
             liveInstances.add(mockActive);
@@ -2160,7 +2095,7 @@ public class TestLlapTaskSchedulerService {
       while (true) {
         signalSchedulerRun();
         awaitSchedulerRun();
-        if (ts.dagStats.getNumTotalAllocations() == numTasks) {
+        if (ts.dagStats.numTotalAllocations == numTasks) {
           break;
         }
       }
@@ -2170,7 +2105,7 @@ public class TestLlapTaskSchedulerService {
       while (true) {
         signalSchedulerRun();
         awaitSchedulerRun();
-        if (ts.dagStats.getNumLocalAllocations() == numTasks) {
+        if (ts.dagStats.numLocalAllocations == numTasks) {
           break;
         }
       }
@@ -2180,7 +2115,7 @@ public class TestLlapTaskSchedulerService {
       while (true) {
         signalSchedulerRun();
         awaitSchedulerRun();
-        if (ts.dagStats.getNumTotalAllocations() > previousAllocations) {
+        if (ts.dagStats.numTotalAllocations > previousAllocations) {
           break;
         }
         Thread.sleep(200l);
@@ -2194,8 +2129,8 @@ public class TestLlapTaskSchedulerService {
       while (timeLeft > 0) {
         signalSchedulerRun();
         awaitSchedulerRun(Math.min(200, timeLeft));
-        if (ts.dagStats.getNumTotalAllocations() != previousAllocations) {
-          throw new IllegalStateException("NumTotalAllocations expected to stay at " + previousAllocations + ". Actual=" + ts.dagStats.getNumTotalAllocations());
+        if (ts.dagStats.numTotalAllocations != previousAllocations) {
+          throw new IllegalStateException("NumTotalAllocations expected to stay at " + previousAllocations + ". Actual=" + ts.dagStats.numTotalAllocations);
         }
         timeLeft = (startTime + timeout) - Time.monotonicNow();
       }

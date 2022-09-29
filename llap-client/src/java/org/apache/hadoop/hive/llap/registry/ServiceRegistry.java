@@ -14,7 +14,6 @@
 package org.apache.hadoop.hive.llap.registry;
 
 import java.io.IOException;
-import java.util.Map;
 
 import org.apache.hadoop.hive.registry.ServiceInstance;
 import org.apache.hadoop.hive.registry.ServiceInstanceSet;
@@ -46,11 +45,6 @@ public interface ServiceRegistry<T extends ServiceInstance> {
    * Remove the current registration cleanly (implementation defined cleanup)
    */
   void unregister() throws IOException;
-
-  /**
-   * Update the current registration with the given attributes.
-   */
-  void updateRegistration(Iterable<Map.Entry<String, String>> attributes) throws IOException;
 
   /**
    * Client API to get the list of instances registered via the current registry key.

@@ -22,10 +22,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.apache.hadoop.fs.FileSystem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.tez.runtime.library.common.Constants;
 import org.apache.tez.runtime.library.common.sort.impl.TezIndexRecord;
@@ -43,22 +43,11 @@ class IndexCache {
 
   private final LinkedBlockingQueue<String> queue =
       new LinkedBlockingQueue<String>();
-  private FileSystem fs;
-  public static final String INDEX_CACHE_MB = "llap.shuffle.indexcache.mb";
 
   public IndexCache(Configuration conf) {
     this.conf = conf;
-    totalMemoryAllowed = conf.getInt(INDEX_CACHE_MB, 10) * 1024 * 1024;
+    totalMemoryAllowed = 10 * 1024 * 1024;
     LOG.info("IndexCache created with max memory = " + totalMemoryAllowed);
-    initLocalFs();
-  }
-
-  private void initLocalFs() {
-    try {
-      this.fs = FileSystem.getLocal(conf).getRaw();
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
   }
 
   /**
@@ -130,7 +119,11 @@ class IndexCache {
     LOG.debug("IndexCache MISS: MapId " + mapId + " not found") ;
     TezSpillRecord tmp = null;
     try {
-      tmp = new TezSpillRecord(indexFileName, fs, expectedIndexOwner);
+      // tez 0.9.1 version
+      // tmp = new TezSpillRecord(indexFileName, conf, expectedIndexOwner);
+      // tez 0.10.0 version
+      final FileSystem rfs = FileSystem.getLocal(conf).getRaw();
+      tmp = new TezSpillRecord(indexFileName, rfs, expectedIndexOwner);
     } catch (Throwable e) {
       tmp = new TezSpillRecord(0);
       cache.remove(mapId);

@@ -21,26 +21,20 @@ package org.apache.hadoop.hive.llap.io.api.impl;
 
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedSupport;
 import org.apache.hadoop.hive.ql.io.BatchToRowInputFormat;
-import org.apache.hadoop.hive.common.JavaUtils;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 
 import java.io.IOException;
-import java.nio.channels.ClosedByInterruptException;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.ExecutorService;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.llap.io.decode.ColumnVectorProducer;
 import org.apache.hadoop.hive.ql.exec.ColumnInfo;
-import org.apache.hadoop.hive.ql.exec.LimitOperator;
 import org.apache.hadoop.hive.ql.exec.Operator;
 import org.apache.hadoop.hive.ql.exec.RowSchema;
 import org.apache.hadoop.hive.ql.exec.TableScanOperator;
@@ -50,7 +44,6 @@ import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatchCtx;
 import org.apache.hadoop.hive.ql.io.CombineHiveInputFormat.AvoidSplitCombination;
 import org.apache.hadoop.hive.ql.io.LlapAwareSplit;
-import org.apache.hadoop.hive.ql.io.NullRowsInputFormat.NullRowsRecordReader;
 import org.apache.hadoop.hive.ql.io.SelfDescribingInputFormatInterface;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.metadata.VirtualColumn;
@@ -75,18 +68,12 @@ public class LlapInputFormat implements InputFormat<NullWritable, VectorizedRowB
   private static final String NONVECTOR_SETTING_MESSAGE = "disable "
       + ConfVars.LLAP_IO_NONVECTOR_WRAPPER_ENABLED.varname + " to work around this error";
 
-  private static final Map<String, VirtualColumn> ALLOWED_VIRTUAL_COLUMNS = Collections.unmodifiableMap(
-          new HashMap<String, VirtualColumn>() {{
-    put(VirtualColumn.ROWID.getName(), VirtualColumn.ROWID);
-    put(VirtualColumn.ROWISDELETED.getName(), VirtualColumn.ROWISDELETED);
-  }});
-
   private final InputFormat<NullWritable, VectorizedRowBatch> sourceInputFormat;
   private final AvoidSplitCombination sourceASC;
   private final Deserializer sourceSerDe;
   final ColumnVectorProducer cvp;
   final ExecutorService executor;
-  private static final String hostName = HiveStringUtils.getHostname();
+  private final String hostName;
 
   private final Configuration daemonConf;
 
@@ -100,6 +87,7 @@ public class LlapInputFormat implements InputFormat<NullWritable, VectorizedRowB
     this.sourceASC = (sourceInputFormat instanceof AvoidSplitCombination)
         ? (AvoidSplitCombination)sourceInputFormat : null;
     this.sourceSerDe = sourceSerDe;
+    this.hostName = HiveStringUtils.getHostname();
   }
 
   @Override
@@ -112,7 +100,6 @@ public class LlapInputFormat implements InputFormat<NullWritable, VectorizedRowB
 
     FileSplit fileSplit = (FileSplit) split;
     reporter.setStatus(fileSplit.toString());
-
     try {
       // At this entry point, we are going to assume that these are logical table columns.
       // Perhaps we should go thru the code and clean this up to be more explicit; for now, we
@@ -140,29 +127,9 @@ public class LlapInputFormat implements InputFormat<NullWritable, VectorizedRowB
       // This starts the reader in the background.
       rr.start();
       return result;
-    } catch (IOException ioe) {
-      throw ioe;
     } catch (Exception ex) {
-      Throwable rootCause = JavaUtils.findRootCause(ex);
-      if (checkLimitReached(job)
-          && (rootCause instanceof InterruptedException || rootCause instanceof ClosedByInterruptException)) {
-        LlapIoImpl.LOG.info("Ignoring exception while getting record reader as limit is reached", rootCause);
-        return new NullRowsRecordReader(job, split);
-      } else {
-        throw new IOException(ex);
-      }
+      throw new IOException(ex);
     }
-  }
-
-  private boolean checkLimitReached(JobConf job) {
-    /*
-     * 2 assumptions here when using "tez.mapreduce.vertex.name"
-     *
-     * 1. The execution engine is tez, which is valid in case of LLAP.
-     * 2. The property "tez.mapreduce.vertex.name" is present: it is handled in MRInputBase.initialize.
-     *    On Input codepaths we cannot use properties from TezProcessor.initTezAttributes.
-     */
-    return LimitOperator.checkLimitReachedForVertex(job, job.get("tez.mapreduce.vertex.name"));
   }
 
   private RecordReader<NullWritable, VectorizedRowBatch> wrapLlapReader(
@@ -213,13 +180,13 @@ public class LlapInputFormat implements InputFormat<NullWritable, VectorizedRowB
     RowSchema rowSchema = findTsOp(mapWork).getSchema();
     final List<String> colNames = new ArrayList<String>(rowSchema.getSignature().size());
     final List<TypeInfo> colTypes = new ArrayList<TypeInfo>(rowSchema.getSignature().size());
-    ArrayList<VirtualColumn> virtualColumnList = new ArrayList<>(2);
+    boolean hasRowId = false;
     for (ColumnInfo c : rowSchema.getSignature()) {
       String columnName = c.getInternalName();
-      if (ALLOWED_VIRTUAL_COLUMNS.containsKey(columnName)) {
-        virtualColumnList.add(ALLOWED_VIRTUAL_COLUMNS.get(columnName));
-      } else if (VirtualColumn.VIRTUAL_COLUMN_NAMES.contains(columnName)) {
-        continue;
+      if (VirtualColumn.ROWID.getName().equals(columnName)) {
+        hasRowId = true;
+      } else {
+        if (VirtualColumn.VIRTUAL_COLUMN_NAMES.contains(columnName)) continue;
       }
       colNames.add(columnName);
       colTypes.add(TypeInfoUtils.getTypeInfoFromTypeString(c.getTypeName()));
@@ -238,7 +205,12 @@ public class LlapInputFormat implements InputFormat<NullWritable, VectorizedRowB
         }
       }
     }
-    final VirtualColumn[] virtualColumns = virtualColumnList.toArray(new VirtualColumn[0]);
+    final VirtualColumn[] virtualColumns;
+    if (hasRowId) {
+      virtualColumns = new VirtualColumn[] {VirtualColumn.ROWID};
+    } else {
+      virtualColumns = new VirtualColumn[0];
+    }
     return new VectorizedRowBatchCtx(colNames.toArray(new String[colNames.size()]),
         colTypes.toArray(new TypeInfo[colTypes.size()]), null, null, partitionColumnCount,
         virtualColumns.length, virtualColumns, new String[0], null);

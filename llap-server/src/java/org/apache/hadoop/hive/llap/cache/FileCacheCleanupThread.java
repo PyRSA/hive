@@ -38,7 +38,7 @@ abstract class FileCacheCleanupThread<T> extends Thread {
     this.newEvictions = newEvictions;
     this.approxCleanupIntervalSec = cleanupInterval;
     setDaemon(true);
-    setPriority(Thread.MIN_PRIORITY);
+    setPriority(1);
   }
 
   @Override
@@ -61,8 +61,6 @@ abstract class FileCacheCleanupThread<T> extends Thread {
     while (true) {
       int evictionsSinceLast = newEvictions.getAndSet(0);
       if (evictionsSinceLast > 0) break;
-
-      // will be notified by SerDeLowLevelCacheImpl or timeout eventually
       synchronized (newEvictions) {
         newEvictions.wait(10000);
       }

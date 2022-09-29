@@ -33,7 +33,6 @@ import org.apache.hadoop.hive.llap.io.metadata.ConsumerStripeMetadata;
 import org.apache.hadoop.hive.llap.metrics.LlapDaemonIOMetrics;
 import org.apache.hadoop.hive.ql.exec.vector.BytesColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
-import org.apache.hadoop.hive.ql.exec.vector.DateColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.Decimal64ColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.DecimalColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.DoubleColumnVector;
@@ -45,7 +44,6 @@ import org.apache.hadoop.hive.ql.exec.vector.TimestampColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.UnionColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
 import org.apache.orc.CompressionCodec;
-import org.apache.orc.OrcProto.CalendarKind;
 import org.apache.orc.impl.PositionProvider;
 import org.apache.hadoop.hive.ql.io.orc.encoded.Consumer;
 import org.apache.hadoop.hive.ql.io.orc.encoded.EncodedTreeReaderFactory;
@@ -70,20 +68,22 @@ public class OrcEncodedDataConsumer
   private ConsumerFileMetadata fileMetadata; // We assume one request is only for one file.
   private CompressionCodec codec;
   private List<ConsumerStripeMetadata> stripes;
+  private final boolean skipCorrupt; // TODO: get rid of this
+  private final QueryFragmentCounters counters;
   private SchemaEvolution evolution;
   private IoTrace trace;
   private final Includes includes;
   private TypeDescription[] batchSchemas;
   private boolean useDecimal64ColumnVectors;
 
-  public OrcEncodedDataConsumer(Consumer<ColumnVectorBatch> consumer, Includes includes,
-                                QueryFragmentCounters counters, LlapDaemonIOMetrics ioMetrics) {
-    super(consumer, includes.getPhysicalColumnIds().size(), ioMetrics, counters);
+  public OrcEncodedDataConsumer(
+    Consumer<ColumnVectorBatch> consumer, Includes includes, boolean skipCorrupt,
+    QueryFragmentCounters counters, LlapDaemonIOMetrics ioMetrics) {
+    super(consumer, includes.getPhysicalColumnIds().size(), ioMetrics);
     this.includes = includes;
-    if (includes.isProbeDecodeEnabled()) {
-      LlapIoImpl.LOG.info("OrcEncodedDataConsumer probeDecode is enabled with cacheKey {} colIndex {} and colName {}",
-              this.includes.getProbeCacheKey(), this.includes.getProbeColIdx(), this.includes.getProbeColName());
-    }
+    // TODO: get rid of this
+    this.skipCorrupt = skipCorrupt;
+    this.counters = counters;
   }
 
   public void setUseDecimal64ColumnVectors(final boolean useDecimal64ColumnVectors) {
@@ -152,10 +152,17 @@ public class OrcEncodedDataConsumer
         }
 
         ColumnVectorBatch cvb = cvbPool.take();
-        cvb.filterContext.reset();
         // assert cvb.cols.length == batch.getColumnIxs().length; // Must be constant per split.
         cvb.size = batchSize;
         for (int idx = 0; idx < columnReaders.length; ++idx) {
+          TreeReader reader = columnReaders[idx];
+          if (cvb.cols[idx] == null) {
+            // Orc store rows inside a root struct (hive writes it this way).
+            // When we populate column vectors we skip over the root struct.
+            cvb.cols[idx] = createColumn(batchSchemas[idx], VectorizedRowBatch.DEFAULT_SIZE, useDecimal64ColumnVectors);
+          }
+          trace.logTreeReaderNextVector(idx);
+
           /*
            * Currently, ORC's TreeReaderFactory class does this:
            *
@@ -191,8 +198,9 @@ public class OrcEncodedDataConsumer
            *     it doesn't get confused.
            *
            */
-          TreeReader reader = columnReaders[idx];
-          ColumnVector cv = prepareColumnVector(cvb, idx, batchSize);
+          ColumnVector cv = cvb.cols[idx];
+          cv.reset();
+          cv.ensureSize(batchSize, false);
           reader.nextVector(cv, null, batchSize);
         }
 
@@ -201,7 +209,7 @@ public class OrcEncodedDataConsumer
         counters.incrCounter(LlapIOCounters.ROWS_EMITTED, batchSize);
       }
       LlapIoImpl.ORC_LOGGER.debug("Done with decode");
-      counters.incrWallClockCounter(LlapIOCounters.DECODE_TIME_NS, startTime);
+      counters.incrTimeCounter(LlapIOCounters.DECODE_TIME_NS, startTime);
       counters.incrCounter(LlapIOCounters.NUM_VECTOR_BATCHES, maxBatchesRG);
       counters.incrCounter(LlapIOCounters.NUM_DECODED_BATCHES);
     } catch (IOException e) {
@@ -210,27 +218,13 @@ public class OrcEncodedDataConsumer
     }
   }
 
-  private ColumnVector prepareColumnVector(ColumnVectorBatch cvb, int idx, int batchSize) {
-    if (cvb.cols[idx] == null) {
-      // Orc store rows inside a root struct (hive writes it this way).
-      // When we populate column vectors we skip over the root struct.
-      cvb.cols[idx] = createColumn(batchSchemas[idx], VectorizedRowBatch.DEFAULT_SIZE, useDecimal64ColumnVectors);
-    }
-    trace.logTreeReaderNextVector(idx);
-    ColumnVector cv = cvb.cols[idx];
-    cv.reset();
-    cv.ensureSize(batchSize, false);
-    return cv;
-  }
-
   private void createColumnReaders(OrcEncodedColumnBatch batch,
       ConsumerStripeMetadata stripeMetadata, TypeDescription fileSchema) throws IOException {
     TreeReaderFactory.Context context = new TreeReaderFactory.ReaderContext()
-            .setSchemaEvolution(evolution)
+            .setSchemaEvolution(evolution).skipCorrupt(skipCorrupt)
             .writerTimeZone(stripeMetadata.getWriterTimezone())
             .fileFormat(fileMetadata == null ? null : fileMetadata.getFileVersion())
-            .useUTCTimestamp(true)
-            .setProlepticGregorian(fileMetadata != null && fileMetadata.getCalendar() == CalendarKind.PROLEPTIC_GREGORIAN, true);
+            .useUTCTimestamp(true);
     this.batchSchemas = includes.getBatchReaderTypes(fileSchema);
     StructTreeReader treeReader = EncodedTreeReaderFactory.createRootTreeReader(
         batchSchemas, stripeMetadata.getEncodings(), batch, codec, context, useDecimal64ColumnVectors);
@@ -252,9 +246,8 @@ public class OrcEncodedDataConsumer
       case SHORT:
       case INT:
       case LONG:
-        return new LongColumnVector(batchSize);
       case DATE:
-        return new DateColumnVector(batchSize);
+        return new LongColumnVector(batchSize);
       case FLOAT:
       case DOUBLE:
         return new DoubleColumnVector(batchSize);

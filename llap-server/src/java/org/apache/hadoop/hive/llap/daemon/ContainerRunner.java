@@ -16,7 +16,6 @@ package org.apache.hadoop.hive.llap.daemon;
 
 import java.io.IOException;
 
-import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos;
 import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.QueryCompleteRequestProto;
 import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.QueryCompleteResponseProto;
 import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.SourceStateUpdatedRequestProto;
@@ -27,14 +26,8 @@ import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.Terminate
 import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.TerminateFragmentResponseProto;
 import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.UpdateFragmentRequestProto;
 import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.UpdateFragmentResponseProto;
-import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.SetCapacityRequestProto;
-import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.SetCapacityResponseProto;
 
 public interface ContainerRunner {
-
-  LlapDaemonProtocolProtos.RegisterDagResponseProto registerDag(
-      LlapDaemonProtocolProtos.RegisterDagRequestProto request)
-      throws IOException;
 
   SubmitWorkResponseProto submitWork(SubmitWorkRequestProto request) throws IOException;
 
@@ -49,7 +42,4 @@ public interface ContainerRunner {
 
   UpdateFragmentResponseProto updateFragment(
       UpdateFragmentRequestProto request) throws IOException;
-
-  SetCapacityResponseProto setCapacity(
-      SetCapacityRequestProto request) throws IOException;
 }

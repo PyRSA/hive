@@ -32,7 +32,6 @@ import org.junit.Test;
 public class TestHplsqlLocal {
 
   private final ByteArrayOutputStream out = new ByteArrayOutputStream();
-  private final ByteArrayOutputStream err = new ByteArrayOutputStream();
 
   @Test
   public void testAdd() throws Exception {
@@ -130,30 +129,20 @@ public class TestHplsqlLocal {
   }
 
   @Test
-  public void testDropPackage() throws Exception {
-    run("drop_package");
-  }
-
-  @Test
-  public void testDropProcedure() throws Exception {
-    run("drop_proc");
-  }
-
-  @Test
   public void testCreateProcedure() throws Exception {
     run("create_procedure");
   }
-
+  
   @Test
   public void testCreateProcedure2() throws Exception {
     run("create_procedure2");
   }
-
+  
   @Test
   public void testCreateProcedure3() throws Exception {
     run("create_procedure3");
   }
-
+  
   @Test
   public void testCreateProcedure4() throws Exception {
     run("create_procedure4");
@@ -168,12 +157,7 @@ public class TestHplsqlLocal {
   public void testDatatypes() throws Exception {
     run("datatypes");
   }
-
-  @Test
-  public void testTableType() throws Exception {
-    run("table_type");
-  }
-
+  
   @Test
   public void testDate() throws Exception {
     run("date");
@@ -197,11 +181,6 @@ public class TestHplsqlLocal {
   @Test
   public void testDeclare3() throws Exception {
     run("declare3");
-  }
-
-  @Test
-  public void testDeclare4() throws Exception {
-    run("declare4");
   }
   
   @Test
@@ -413,72 +392,19 @@ public class TestHplsqlLocal {
     run("while");
   }
 
-  @Test
-  public void testArity() throws Exception {
-    run("arity");
-  }
-
-  @Test
-  public void testArity2() throws Exception {
-    run("arity2");
-  }
-
-  @Test
-  public void testTypeCheck() throws Exception {
-    run("type_check");
-  }
-
-  @Test
-  public void testUndefFunc() throws Exception {
-    run("undef_func");
-  }
-
-  @Test
-  public void testUndefVar() throws Exception {
-    run("undef_var");
-  }
-
-  @Test
-  public void testNull() throws Exception {
-    run("null");
-  }
-
-  @Test
-  public void testFuncNoReturn() throws Exception {
-    run("func_no_return");
-  }
-
-  @Test
-  public void testInvalidSyntax() throws Exception {
-    run("invalid_syntax");
-  }
-
-  @Test
-  public void testPrecedence() throws Exception {
-    run("preced");
-  }
-
-  @Test
-  public void testConversion() throws Exception {
-    run("conversion");
-  }
-
   /**
    * Run a test file
    */
   void run(String testFile) throws Exception {
     System.setOut(new PrintStream(out));
-    System.setErr(new PrintStream(err));
     Exec exec = new Exec();
     String[] args = { "-f", "src/test/queries/local/" + testFile + ".sql", "-trace" };
     exec.run(args);
-    String sout = getTestOutput(out.toString());
-    String serr = getTestOutput(err.toString());
-    String output = (sout + (serr.isEmpty() ? "" : serr));
-    FileUtils.writeStringToFile(new java.io.File("target/tmp/log/" + testFile + ".out.txt"), output);
-    String t = FileUtils.readFileToString(new java.io.File("src/test/results/local/" + testFile + ".out.txt"), "utf-8");
+    String s = getTestOutput(out.toString()).trim();
+    FileUtils.writeStringToFile(new java.io.File("target/tmp/log/" + testFile + ".out.txt"), s);
+    String t = FileUtils.readFileToString(new java.io.File("src/test/results/local/" + testFile + ".out.txt"), "utf-8").trim();
     System.setOut(null);
-    Assert.assertEquals(t, output);
+    Assert.assertEquals(s, t);
   }
 
   /**
@@ -489,12 +415,7 @@ public class TestHplsqlLocal {
     BufferedReader reader = new BufferedReader(new StringReader(s));
     String line = null;
     while ((line = reader.readLine()) != null) {
-      if (!line.startsWith("log4j:")
-              && !line.contains("INFO Log4j")
-              && !line.startsWith("SLF4J")
-              && !line.contains(" StatusLogger ")
-              && !line.contains("Configuration file: ")
-              && !line.contains("Parser tree: ")) {
+      if (!line.startsWith("log4j:") && !line.contains("INFO Log4j")) {
         sb.append(line);
         sb.append("\n");
       }

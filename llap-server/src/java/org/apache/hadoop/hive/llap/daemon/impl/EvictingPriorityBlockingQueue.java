@@ -19,7 +19,6 @@ package org.apache.hadoop.hive.llap.daemon.impl;
 
 import java.util.Comparator;
 
-import com.google.common.annotations.VisibleForTesting;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,8 +38,7 @@ public class EvictingPriorityBlockingQueue<E> {
 
   private final PriorityBlockingDeque<E> deque;
   private final Comparator<E> comparator;
-  @VisibleForTesting
-  int waitQueueSize;
+  private final int waitQueueSize;
 
   private int currentSize = 0;
 
@@ -121,10 +119,6 @@ public class EvictingPriorityBlockingQueue<E> {
 
   public synchronized int size() {
     return currentSize;
-  }
-
-  public synchronized void setWaitQueueSize(int waitQueueSize) {
-    this.waitQueueSize = waitQueueSize;
   }
 
   @Override

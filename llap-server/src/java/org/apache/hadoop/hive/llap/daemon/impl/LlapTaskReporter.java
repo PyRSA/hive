@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
-import org.apache.commons.lang3.exception.ExceptionUtils;
+import org.apache.commons.lang.exception.ExceptionUtils;
 import org.apache.hadoop.hive.llap.counters.FragmentCountersMap;
 import org.apache.hadoop.hive.llap.counters.WmFragmentCounters;
 import org.apache.hadoop.hive.llap.daemon.SchedulerFragmentCompletingListener;
@@ -128,6 +128,7 @@ public class LlapTaskReporter implements TaskReporterInterface {
         sendCounterInterval, maxEventsToGet, requestCounter, containerIdStr, initialEvent,
         fragmentRequestId, wmCounters);
     ListenableFuture<Boolean> future = heartbeatExecutor.submit(currentCallable);
+    // Futures.addCallback(future, new HeartbeatCallback(errorReporter));
     Futures.addCallback(future, new HeartbeatCallback(errorReporter), MoreExecutors.directExecutor());
   }
 
@@ -291,13 +292,17 @@ public class LlapTaskReporter implements TaskReporterInterface {
       int fromPreRoutedEventId = task.getNextPreRoutedEventId();
       int maxEvents = Math.min(maxEventsToGet, task.getMaxEventsToHandle());
       TezHeartbeatRequest request = new TezHeartbeatRequest(requestId, events, fromPreRoutedEventId,
-          containerIdStr, task.getTaskAttemptID(), fromEventId, maxEvents, 0);
-      LOG.debug("Sending heartbeat to AM, request={}", request);
+          containerIdStr, task.getTaskAttemptID(), fromEventId, maxEvents);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Sending heartbeat to AM, request=" + request);
+      }
 
       maybeLogCounters();
 
       TezHeartbeatResponse response = umbilical.heartbeat(request);
-      LOG.debug("Received heartbeat response from AM, response={}", response);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Received heartbeat response from AM, response=" + response);
+      }
 
       if (response.shouldDie()) {
         LOG.info("Received should die response from AM: {}", task.getTaskAttemptID());

@@ -86,7 +86,6 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Supplier;
 
 /**
  *
@@ -94,7 +93,7 @@ import java.util.function.Supplier;
 public class TaskRunnerCallable extends CallableWithNdc<TaskRunner2Result> {
   private static final Logger LOG = LoggerFactory.getLogger(TaskRunnerCallable.class);
   private final SubmitWorkRequestProto request;
-  private final Supplier<Configuration> conf;
+  private final Configuration conf;
   private final Map<String, String> envMap;
   private final String pid = null;
   private final ObjectRegistryImpl objectRegistry;
@@ -136,9 +135,8 @@ public class TaskRunnerCallable extends CallableWithNdc<TaskRunner2Result> {
 
   @VisibleForTesting
   public TaskRunnerCallable(SubmitWorkRequestProto request, QueryFragmentInfo fragmentInfo,
-                            Supplier<Configuration> conf, ExecutionContext executionContext,
-                            Map<String, String> envMap, Credentials credentials, long memoryAvailable,
-                            AMReporter amReporter, ConfParams confParams,
+                            Configuration conf, ExecutionContext executionContext, Map<String, String> envMap,
+                            Credentials credentials, long memoryAvailable, AMReporter amReporter, ConfParams confParams,
                             LlapDaemonExecutorMetrics metrics, KilledTaskHandler killedTaskHandler,
                             FragmentCompletionHandler fragmentCompleteHandler, HadoopShim tezHadoopShim,
                             TezTaskAttemptID attemptId, SignableVertexSpec vertex, TezEvent initialEvent,
@@ -160,7 +158,7 @@ public class TaskRunnerCallable extends CallableWithNdc<TaskRunner2Result> {
     this.amReporter = amReporter;
     // Register with the AMReporter when the callable is setup. Unregister once it starts running.
     if (amReporter != null && jobToken != null) {
-      this.amNodeInfo = amReporter.registerTask(request.getIsExternalClientRequest(), request.getAmHost(), request.getAmPort(),
+      this.amNodeInfo = amReporter.registerTask(request.getAmHost(), request.getAmPort(),
           vertex.getTokenIdentifier(), jobToken, fragmentInfo.getQueryInfo().getQueryIdentifier(),
           attemptId, isGuaranteed);
     } else {
@@ -194,7 +192,6 @@ public class TaskRunnerCallable extends CallableWithNdc<TaskRunner2Result> {
     setMDCFromNDC();
 
     try {
-      final Configuration config = conf.get();
       isStarted.set(true);
       this.startTime = System.currentTimeMillis();
       threadName = Thread.currentThread().getName();
@@ -257,7 +254,7 @@ public class TaskRunnerCallable extends CallableWithNdc<TaskRunner2Result> {
         @Override
         public LlapTaskUmbilicalProtocol run() throws Exception {
           return RPC.getProxy(LlapTaskUmbilicalProtocol.class,
-              LlapTaskUmbilicalProtocol.versionID, address, taskOwner, config, socketFactory);
+              LlapTaskUmbilicalProtocol.versionID, address, taskOwner, conf, socketFactory);
         }
       });
 
@@ -280,7 +277,7 @@ public class TaskRunnerCallable extends CallableWithNdc<TaskRunner2Result> {
       try {
         synchronized (this) {
           if (shouldRunTask) {
-            taskRunner = new TezTaskRunner2(config, fsTaskUgi, fragmentInfo.getLocalDirs(),
+            taskRunner = new TezTaskRunner2(conf, fsTaskUgi, fragmentInfo.getLocalDirs(),
                 taskSpec, vertex.getQueryIdentifier().getAppAttemptNumber(),
                 serviceConsumerMetadata, envMap, startedInputsMap, taskReporter, executor,
                 objectRegistry, pid, executionContext, memoryAvailable, false, tezHadoopShim);
@@ -330,7 +327,7 @@ public class TaskRunnerCallable extends CallableWithNdc<TaskRunner2Result> {
     StringBuilder sb = new StringBuilder();
     TezTaskID taskId = taskAttemptId.getTaskID();
     TezVertexID vertexId = taskId.getVertexID();
-    TezDAGID dagId = vertexId.getDAGID();
+    TezDAGID dagId = vertexId.getDAGId();
     ApplicationId appId = dagId.getApplicationId();
     long clusterTs = appId.getClusterTimestamp();
     long clusterTsShort = clusterTs % 1_000_000L;
@@ -347,7 +344,7 @@ public class TaskRunnerCallable extends CallableWithNdc<TaskRunner2Result> {
   /**
    * Attempt to kill a running task. If the task has not started running, it will not start.
    * If it's already running, a kill request will be sent to it.
-   * <br>
+   * <p/>
    * The AM will be informed about the task kill.
    */
   public void killTask() {
@@ -383,16 +380,9 @@ public class TaskRunnerCallable extends CallableWithNdc<TaskRunner2Result> {
             // If the task hasn't started - inform about fragment completion immediately. It's possible for
             // the callable to never run.
             fragmentCompletionHanler.fragmentComplete(fragmentInfo);
-
-            try {
-              this.amReporter
-                  .unregisterTask(request.getAmHost(), request.getAmPort(),
-                      fragmentInfo.getQueryInfo().getQueryIdentifier(), ta);
-            } catch (Throwable thr) {
-              // unregisterTask can throw a RuntimeException (i.e. if task attempt not found)
-              // this brings down LLAP daemon if exception is not caught here
-              LOG.error("Unregistering task from AMReporter failed", thr);
-            }
+            this.amReporter
+                .unregisterTask(request.getAmHost(), request.getAmPort(),
+                    fragmentInfo.getQueryInfo().getQueryIdentifier(), ta);
           }
         }
       } else {
@@ -651,19 +641,5 @@ public class TaskRunnerCallable extends CallableWithNdc<TaskRunner2Result> {
     if (wmCounters != null) {
       wmCounters.changeStateRunning(isGuaranteed);
     }
-  }
-
-  public long getQueueTime() {
-    if (wmCounters != null) {
-      return wmCounters.getQueueTime();
-    }
-    return 0;
-  }
-
-  public long getRunningTime() {
-    if (wmCounters != null) {
-      return wmCounters.getRunningTime();
-    }
-    return 0;
   }
 }

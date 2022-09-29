@@ -27,20 +27,16 @@ import java.io.InputStream;
 import org.apache.hadoop.hive.common.io.encoded.MemoryBufferOrBuffers;
 
 import java.nio.ByteBuffer;
-import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Predicate;
 
 import org.apache.hadoop.hive.common.io.DiskRange;
 import org.apache.hadoop.hive.common.io.DiskRangeList;
 import org.apache.hadoop.hive.common.io.DataCache.BooleanRef;
 import org.apache.hadoop.hive.common.io.encoded.MemoryBuffer;
-import org.apache.hadoop.hive.common.io.CacheTag;
-import org.apache.hadoop.hive.llap.cache.BuddyAllocator;
+import org.apache.hadoop.hive.llap.cache.EvictionAwareAllocator;
 import org.apache.hadoop.hive.llap.cache.EvictionDispatcher;
 import org.apache.hadoop.hive.llap.cache.LlapAllocatorBuffer;
-import org.apache.hadoop.hive.llap.cache.LlapIoDebugDump;
+import org.apache.hadoop.hive.llap.cache.LlapOomDebugDump;
 import org.apache.hadoop.hive.llap.cache.LowLevelCachePolicy;
 import org.apache.hadoop.hive.llap.cache.MemoryManager;
 import org.apache.hadoop.hive.llap.cache.LowLevelCache.Priority;
@@ -48,27 +44,27 @@ import org.apache.hadoop.hive.llap.io.api.impl.LlapIoImpl;
 import org.apache.hadoop.hive.llap.metrics.LlapDaemonCacheMetrics;
 import org.apache.hadoop.hive.ql.io.orc.encoded.OrcBatchKey;
 
-public class MetadataCache implements LlapIoDebugDump, FileMetadataCache {
+public class MetadataCache implements LlapOomDebugDump, FileMetadataCache {
   private final ConcurrentHashMap<Object, LlapBufferOrBuffers> metadata =
       new ConcurrentHashMap<>();
 
   private final ConcurrentHashMap<Object, OrcFileEstimateErrors> estimateErrors;
   private final MemoryManager memoryManager;
   private final LowLevelCachePolicy policy;
-  private final BuddyAllocator allocator;
+  private final EvictionAwareAllocator allocator;
   private final LlapDaemonCacheMetrics metrics;
 
-  public MetadataCache(BuddyAllocator allocator, MemoryManager memoryManager,
+  public MetadataCache(EvictionAwareAllocator allocator, MemoryManager memoryManager,
       LowLevelCachePolicy policy, boolean useEstimateCache, LlapDaemonCacheMetrics metrics) {
     this.memoryManager = memoryManager;
     this.allocator = allocator;
     this.policy = policy;
     this.metrics = metrics;
     this.estimateErrors = useEstimateCache
-        ? new ConcurrentHashMap<>() : null;
+        ? new ConcurrentHashMap<Object, OrcFileEstimateErrors>() : null;
   }
 
-  public void putIncompleteCbs(Object fileKey, DiskRange[] ranges, long baseOffset, AtomicBoolean isStopped) {
+  public void putIncompleteCbs(Object fileKey, DiskRange[] ranges, long baseOffset) {
     if (estimateErrors == null) return;
     OrcFileEstimateErrors errorData = estimateErrors.get(fileKey);
     boolean isNew = false;
@@ -80,7 +76,7 @@ public class MetadataCache implements LlapIoDebugDump, FileMetadataCache {
         errorData.addError(range.getOffset(), range.getLength(), baseOffset);
       }
       long memUsage = errorData.estimateMemoryUsage();
-      memoryManager.reserveMemory(memUsage, isStopped);
+      memoryManager.reserveMemory(memUsage);
       OrcFileEstimateErrors old = estimateErrors.putIfAbsent(fileKey, errorData);
       if (old != null) {
         errorData = old;
@@ -126,53 +122,17 @@ public class MetadataCache implements LlapIoDebugDump, FileMetadataCache {
   }
 
   @Override
-  public long markBuffersForProactiveEviction(Predicate<CacheTag> predicate, boolean isInstantDeallocation) {
-    long markedBytes = 0;
-
-    Collection<LlapBufferOrBuffers> metadataBufferGroups = metadata.values();
-    for (LlapBufferOrBuffers bufferOrBuffers : metadataBufferGroups) {
-      LlapAllocatorBuffer singleBuffer = bufferOrBuffers.getSingleLlapBuffer();
-      if (singleBuffer != null) {
-        if (predicate.test(singleBuffer.getTag())) {
-          markedBytes += singleBuffer.markForEviction();
-          if (isInstantDeallocation) {
-            allocator.deallocate(singleBuffer);
-          }
-        }
-        continue;
-      }
-      LlapAllocatorBuffer[] buffers = bufferOrBuffers.getMultipleLlapBuffers();
-      assert buffers != null && buffers.length > 1 : "Should have multiple buffers if NULL is set as single buffer";
-      if (predicate.test(buffers[0].getTag())) {
-        for (LlapAllocatorBuffer buffer : buffers) {
-          markedBytes += buffer.markForEviction();
-          if (isInstantDeallocation) {
-            allocator.deallocate(buffer);
-          }
-        }
-      }
-    }
-    return markedBytes;
+  public String debugDumpForOom() {
+    StringBuilder sb = new StringBuilder();
+    debugDumpShort(sb);
+    return sb.toString();
   }
 
   @Override
   public void debugDumpShort(StringBuilder sb) {
-    sb.append("\nMetadata cache state: ")
-        .append(metadata.size())
-        .append(" files and stripes, ")
-        .append(metadata.values().parallelStream().mapToLong(value -> {
-          if (value.getSingleLlapBuffer() != null) {
-            return value.getSingleLlapBuffer().allocSize;
-          }
-          long sum = 0;
-          for (LlapAllocatorBuffer llapMetadataBuffer : value.getMultipleLlapBuffers()) {
-            sum += llapMetadataBuffer.allocSize;
-          }
-          return sum;
-        }).sum())
-        .append(" total used bytes, ")
-        .append(estimateErrors.size())
-        .append(" files w/ORC estimate");
+    // TODO: perhaps add counters for separate things and multiple buffer cases.
+    sb.append("\nMetadata cache state: ").append(metadata.size()).append(
+        " files and stripes, ").append(estimateErrors.size()).append(" files w/ORC estimate");
   }
 
   @Override
@@ -196,49 +156,34 @@ public class MetadataCache implements LlapIoDebugDump, FileMetadataCache {
   }
 
   @Override
-  public MemoryBufferOrBuffers putFileMetadata(Object fileKey,
-      ByteBuffer tailBuffer) {
-    return putInternal(fileKey, tailBuffer, null, null);
+  public LlapBufferOrBuffers putFileMetadata(Object fileKey, ByteBuffer tailBuffer) {
+    return putInternal(fileKey, tailBuffer, null);
   }
 
   @Override
-  public MemoryBufferOrBuffers putFileMetadata(Object fileKey,
-      ByteBuffer tailBuffer, CacheTag tag) {
-    return putInternal(fileKey, tailBuffer, tag, null);
-  }
-
-  @Override
-  public MemoryBufferOrBuffers putFileMetadata(Object fileKey, int length,
-      InputStream is) throws IOException {
-    return putFileMetadata(fileKey, length, is, null, null);
+  public LlapBufferOrBuffers putFileMetadata(Object fileKey, ByteBuffer tailBuffer, String tag) {
+    return putInternal(fileKey, tailBuffer, tag);
   }
 
   public LlapBufferOrBuffers putStripeTail(
-      OrcBatchKey stripeKey, ByteBuffer tailBuffer, CacheTag tag, AtomicBoolean isStopped) {
-    return putInternal(new StripeKey(stripeKey.fileKey, stripeKey.stripeIx), tailBuffer, tag, isStopped);
+      OrcBatchKey stripeKey, ByteBuffer tailBuffer, String tag) {
+    return putInternal(new StripeKey(stripeKey.fileKey, stripeKey.stripeIx), tailBuffer, tag);
   }
 
   @Override
-  public MemoryBufferOrBuffers putFileMetadata(Object fileKey, int length,
-      InputStream is, CacheTag tag) throws IOException {
-    return putFileMetadata(fileKey, length, is, tag, null);
-  }
-
-
-  @Override
-  public LlapBufferOrBuffers putFileMetadata(Object fileKey,
-      ByteBuffer tailBuffer, CacheTag tag, AtomicBoolean isStopped) {
-    return putInternal(fileKey, tailBuffer, tag, isStopped);
+  public LlapBufferOrBuffers putFileMetadata(
+      Object fileKey, int length, InputStream is) throws IOException {
+    return putFileMetadata(fileKey, length, is, null);
   }
 
   @Override
-  public LlapBufferOrBuffers putFileMetadata(Object fileKey, int length, InputStream is,
-      CacheTag tag, AtomicBoolean isStopped) throws IOException {
+  public LlapBufferOrBuffers putFileMetadata(
+      Object fileKey, int length, InputStream is, String tag) throws IOException {
     LlapBufferOrBuffers result = null;
     while (true) { // Overwhelmingly executes once, or maybe twice (replacing stale value).
       LlapBufferOrBuffers oldVal = metadata.get(fileKey);
       if (oldVal == null) {
-        result = wrapBbForFile(result, fileKey, length, is, tag, isStopped);
+        result = wrapBbForFile(result, fileKey, length, is, tag);
         if (!lockBuffer(result, false)) {
           throw new AssertionError("Cannot lock a newly created value " + result);
         }
@@ -259,16 +204,16 @@ public class MetadataCache implements LlapIoDebugDump, FileMetadataCache {
 
   @SuppressWarnings({ "rawtypes", "unchecked" })
   private LlapBufferOrBuffers wrapBbForFile(LlapBufferOrBuffers result,
-      Object fileKey, int length, InputStream stream, CacheTag tag, AtomicBoolean isStopped) throws IOException {
+      Object fileKey, int length, InputStream stream, String tag) throws IOException {
     if (result != null) return result;
     int maxAlloc = allocator.getMaxAllocation();
     LlapMetadataBuffer<Object>[] largeBuffers = null;
     if (maxAlloc < length) {
       largeBuffers = new LlapMetadataBuffer[length / maxAlloc];
       for (int i = 0; i < largeBuffers.length; ++i) {
-        largeBuffers[i] = new LlapMetadataBuffer<>(fileKey, tag);
+        largeBuffers[i] = new LlapMetadataBuffer<Object>(fileKey, tag);
       }
-      allocator.allocateMultiple(largeBuffers, maxAlloc, null, isStopped);
+      allocator.allocateMultiple(largeBuffers, maxAlloc, null);
       for (int i = 0; i < largeBuffers.length; ++i) {
         readIntoCacheBuffer(stream, maxAlloc, largeBuffers[i]);
       }
@@ -279,7 +224,7 @@ public class MetadataCache implements LlapIoDebugDump, FileMetadataCache {
     } else {
       LlapMetadataBuffer<Object>[] smallBuffer = new LlapMetadataBuffer[1];
       smallBuffer[0] = new LlapMetadataBuffer(fileKey, tag);
-      allocator.allocateMultiple(smallBuffer, length, null, isStopped);
+      allocator.allocateMultiple(smallBuffer, length, null);
       readIntoCacheBuffer(stream, smallSize, smallBuffer[0]);
       if (largeBuffers == null) {
         return smallBuffer[0]; // This is the overwhelmingly common case.
@@ -287,7 +232,7 @@ public class MetadataCache implements LlapIoDebugDump, FileMetadataCache {
         LlapMetadataBuffer<Object>[] cacheData = new LlapMetadataBuffer[largeBuffers.length + 1];
         System.arraycopy(largeBuffers, 0, cacheData, 0, largeBuffers.length);
         cacheData[largeBuffers.length] = smallBuffer[0];
-        return new LlapMetadataBuffers<>(cacheData);
+        return new LlapMetadataBuffers<Object>(cacheData);
       }
     }
   }
@@ -304,12 +249,12 @@ public class MetadataCache implements LlapIoDebugDump, FileMetadataCache {
     bb.position(pos);
   }
 
-  private <T> LlapBufferOrBuffers putInternal(T key, ByteBuffer tailBuffer, CacheTag tag, AtomicBoolean isStopped) {
+  private <T> LlapBufferOrBuffers putInternal(T key, ByteBuffer tailBuffer, String tag) {
     LlapBufferOrBuffers result = null;
     while (true) { // Overwhelmingly executes once, or maybe twice (replacing stale value).
       LlapBufferOrBuffers oldVal = metadata.get(key);
       if (oldVal == null) {
-        result = wrapBb(result, key, tailBuffer, tag, isStopped);
+        result = wrapBb(result, key, tailBuffer, tag);
         oldVal = metadata.putIfAbsent(key, result);
         if (oldVal == null) {
           cacheInPolicy(result); // Cached successfully, add to policy.
@@ -367,36 +312,34 @@ public class MetadataCache implements LlapIoDebugDump, FileMetadataCache {
   }
 
   private <T> LlapBufferOrBuffers wrapBb(
-      LlapBufferOrBuffers result, T key, ByteBuffer tailBuffer, CacheTag tag, AtomicBoolean isStopped) {
+      LlapBufferOrBuffers result, T key, ByteBuffer tailBuffer, String tag) {
     if (result != null) return result;
     if (tailBuffer.remaining() <= allocator.getMaxAllocation()) {
       // The common case by far.
-      return wrapSmallBb(new LlapMetadataBuffer<>(key, tag), tailBuffer, isStopped);
+      return wrapSmallBb(new LlapMetadataBuffer<T>(key, tag), tailBuffer);
     } else {
       int allocCount = determineAllocCount(tailBuffer);
       @SuppressWarnings("unchecked")
       LlapMetadataBuffer<T>[] results = new LlapMetadataBuffer[allocCount];
       for (int i = 0; i < allocCount; ++i) {
-        results[i] = new LlapMetadataBuffer<>(key, tag);
+        results[i] = new LlapMetadataBuffer<T>(key, tag);
       }
-      wrapLargeBb(results, tailBuffer, isStopped);
-      return new LlapMetadataBuffers<>(results);
+      wrapLargeBb(results, tailBuffer);
+      return new LlapMetadataBuffers<T>(results);
     }
   }
 
-  private <T extends LlapAllocatorBuffer> T wrapSmallBb(T result, ByteBuffer tailBuffer,
-      AtomicBoolean isStopped) {
+  private <T extends LlapAllocatorBuffer> T wrapSmallBb(T result, ByteBuffer tailBuffer) {
     // Note: we pass in null factory because we allocate objects here. We could also pass a
     //       per-call factory that would set fileKey; or set it after put.
-    allocator.allocateMultiple(new MemoryBuffer[] { result }, tailBuffer.remaining(), null, isStopped);
+    allocator.allocateMultiple(new MemoryBuffer[] { result }, tailBuffer.remaining(), null);
     return putBufferToDest(tailBuffer.duplicate(), result);
   }
 
-  private <T extends LlapAllocatorBuffer> void wrapLargeBb(T[] results, ByteBuffer tailBuffer,
-      AtomicBoolean isStopped) {
+  private <T extends LlapAllocatorBuffer> void wrapLargeBb(T[] results, ByteBuffer tailBuffer) {
     // Note: we pass in null factory because we allocate objects here. We could also pass a
     //       per-call factory that would set fileKey; or set it after put.
-    allocator.allocateMultiple(results, allocator.getMaxAllocation(), null, isStopped);
+    allocator.allocateMultiple(results, allocator.getMaxAllocation(), null);
     ByteBuffer src = tailBuffer.duplicate();
     int pos = src.position(), remaining = src.remaining();
     for (int i = 0; i < results.length; ++i) {
@@ -437,7 +380,7 @@ public class MetadataCache implements LlapIoDebugDump, FileMetadataCache {
     for (int i = 0; i < bufferArray.length; ++i) {
       if (lockOneBuffer(bufferArray[i], doNotifyPolicy)) continue;
       for (int j = 0; j < i; ++j) {
-        unlockSingleBuffer(bufferArray[j], true);
+        unlockSingleBuffer(buffer, true);
       }
       discardMultiBuffer(buffers);
       return false;
@@ -528,7 +471,7 @@ public class MetadataCache implements LlapIoDebugDump, FileMetadataCache {
     }
   }
 
-  public interface LlapBufferOrBuffers extends MemoryBufferOrBuffers {
+  public static interface LlapBufferOrBuffers extends MemoryBufferOrBuffers {
     LlapAllocatorBuffer getSingleLlapBuffer();
     LlapAllocatorBuffer[] getMultipleLlapBuffers();
   }
@@ -537,16 +480,16 @@ public class MetadataCache implements LlapIoDebugDump, FileMetadataCache {
   public final static class LlapMetadataBuffer<T>
       extends LlapAllocatorBuffer implements LlapBufferOrBuffers {
     private final T key;
-    private CacheTag tag;
+    private String tag;
 
-    public LlapMetadataBuffer(T key, CacheTag tag) {
+    public LlapMetadataBuffer(T key, String tag) {
       this.key = key;
       this.tag = tag;
     }
 
     @Override
-    public void notifyEvicted(EvictionDispatcher evictionDispatcher, boolean isProactiveEviction) {
-      evictionDispatcher.notifyEvicted(this, isProactiveEviction);
+    public void notifyEvicted(EvictionDispatcher evictionDispatcher) {
+      evictionDispatcher.notifyEvicted(this);
     }
 
     public T getKey() {
@@ -575,7 +518,7 @@ public class MetadataCache implements LlapIoDebugDump, FileMetadataCache {
     }
 
     @Override
-    public CacheTag getTag() {
+    public String getTag() {
       return tag;
     }
   }
