@@ -20,6 +20,9 @@ package org.apache.hadoop.hive.cli.control;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import com.google.common.base.Strings;
+
+import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Map;
@@ -27,11 +30,9 @@ import java.util.Map;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveVariableSource;
 import org.apache.hadoop.hive.conf.VariableSubstitution;
-import org.apache.hadoop.hive.ql.QTestArguments;
 import org.apache.hadoop.hive.ql.QTestProcessExecResult;
 import org.apache.hadoop.hive.ql.QTestUtil;
-import org.apache.hadoop.hive.ql.QTestMiniClusters.MiniClusterType;
-import org.apache.hadoop.hive.ql.processors.CommandProcessorException;
+import org.apache.hadoop.hive.ql.QTestUtil.MiniClusterType;
 import org.apache.hive.testutils.HiveTestEnvSetup;
 import org.junit.After;
 import org.junit.AfterClass;
@@ -53,82 +54,96 @@ public abstract class AbstractCoreBlobstoreCliDriver extends CliAdapter {
 
   @Override
   @BeforeClass
-  public void beforeClass() throws Exception {
+  public void beforeClass() {
     MiniClusterType miniMR = cliConfig.getClusterType();
     String hiveConfDir = cliConfig.getHiveConfDir();
     String initScript = cliConfig.getInitScript();
     String cleanupScript = cliConfig.getCleanupScript();
+    try {
+      String hadoopVer = cliConfig.getHadoopVersion();
+      qt = new QTestUtil((cliConfig.getResultsDir()), (cliConfig.getLogDir()), miniMR,
+          hiveConfDir, hadoopVer, initScript, cleanupScript, true);
 
-    qt = new QTestUtil(
-        QTestArguments.QTestArgumentsBuilder.instance()
-          .withOutDir(cliConfig.getResultsDir())
-          .withLogDir(cliConfig.getLogDir())
-          .withClusterType(miniMR)
-          .withConfDir(hiveConfDir)
-          .withInitScript(initScript)
-          .withCleanupScript(cleanupScript)
-          .withLlapIo(true)
-          .build());
+      if (Strings.isNullOrEmpty(qt.getConf().get(HCONF_TEST_BLOBSTORE_PATH))) {
+        fail(String.format("%s must be set. Try setting in blobstore-conf.xml", HCONF_TEST_BLOBSTORE_PATH));
+      }
 
-    if (Strings.isNullOrEmpty(qt.getConf().get(HCONF_TEST_BLOBSTORE_PATH))) {
-      fail(String.format("%s must be set. Try setting in blobstore-conf.xml", HCONF_TEST_BLOBSTORE_PATH));
+      // do a one time initialization
+      setupUniqueTestPath();
+      qt.cleanUp();
+      qt.createSources();
+    } catch (Exception e) {
+      System.err.println("Exception: " + e.getMessage());
+      e.printStackTrace();
+      System.err.flush();
+      throw new RuntimeException("Unexpected exception in static initialization",e);
     }
-
-    // do a one time initialization
-    setupUniqueTestPath();
   }
 
   @Override
   @Before
-  public void setUp() throws Exception {
-    qt.newSession();
+  public void setUp() {
+    try {
+      qt.clearTestSideEffects();
+    } catch (Exception e) {
+      System.err.println("Exception: " + e.getMessage());
+      e.printStackTrace();
+      System.err.flush();
+      fail("Unexpected exception in setup");
+    }
   }
 
   @Override
   @After
-  public void tearDown() throws Exception {
-    qt.clearTestSideEffects();
-    qt.clearPostTestEffects();
+  public void tearDown() {
+    try {
+      qt.clearPostTestEffects();
+    } catch (Exception e) {
+      System.err.println("Exception: " + e.getMessage());
+      e.printStackTrace();
+      System.err.flush();
+      fail("Unexpected exception in tearDown");
+    }
   }
 
   @Override
   @AfterClass
   public void shutdown() throws Exception {
-    qt.shutdown();
-    if (System.getenv(QTestUtil.QTEST_LEAVE_FILES) == null) {
-      qt.executeAdHocCommand("dfs -rmdir " + testBlobstorePathUnique);
+    try {
+      qt.shutdown();
+      if (System.getenv(QTestUtil.QTEST_LEAVE_FILES) == null) {
+        String rmUniquePathCommand = String.format("dfs -rmdir ${hiveconf:%s};", HCONF_TEST_BLOBSTORE_PATH_UNIQUE);
+        qt.executeAdhocCommand(rmUniquePathCommand);
+      }
+    } catch (Exception e) {
+      System.err.println("Exception: " + e.getMessage());
+      e.printStackTrace();
+      System.err.flush();
+      fail("Unexpected exception in shutdown");
     }
   }
 
-  @Override
-  protected QTestUtil getQt() {
-    return qt;
-  }
-
-  private static String debugHint = "\nSee ./itests/hive-blobstore/target/tmp/log/hive.log, "
+  static String debugHint = "\nSee ./itests/hive-blobstore/target/tmp/log/hive.log, "
       + "or check ./itests/hive-blobstore/target/surefire-reports/ for specific test cases logs.";
 
-  protected void runTestHelper(String tname, String fname, String fpath, boolean expectSuccess) {
+  protected void runTestHelper(String tname, String fname, String fpath, boolean expectSuccess) throws Exception {
     long startTime = System.currentTimeMillis();
     qt.getConf().set(HCONF_TEST_BLOBSTORE_PATH_UNIQUE, testBlobstorePathUnique);
     try {
       System.err.println("Begin query: " + fname);
 
-      qt.setInputFile(fpath);
-      qt.cliInit();
+      qt.addFile(fpath);
 
-      try {
-        qt.executeClient();
-        if (!expectSuccess) {
-          qt.failedQuery(null, 0, fname, debugHint);
-        }
-      } catch (CommandProcessorException e) {
-        if (expectSuccess) {
-          qt.failedQuery(e.getCause(), e.getResponseCode(), fname, debugHint);
-        }
+      if (qt.shouldBeSkipped(fname)) {
+        System.err.println("Test " + fname + " skipped");
+        return;
       }
-
-      QTestProcessExecResult result = qt.checkCliDriverResults();
+      qt.cliInit(new File(fpath), false);
+      int ecode = qt.executeClient(fname);
+      if ((ecode == 0) ^ expectSuccess) {
+        qt.failed(ecode, fname, debugHint);
+      }
+      QTestProcessExecResult result = qt.checkCliDriverResults(fname);
       if (result.getReturnCode() != 0) {
         String message = Strings.isNullOrEmpty(result.getCapturedOutput()) ?
             debugHint : "\r\n" + result.getCapturedOutput();
@@ -136,7 +151,7 @@ public abstract class AbstractCoreBlobstoreCliDriver extends CliAdapter {
       }
     }
     catch (Exception e) {
-      qt.failedWithException(e, fname, debugHint);
+      qt.failed(e, fname, debugHint);
     }
 
     long elapsedTime = System.currentTimeMillis() - startTime;

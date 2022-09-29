@@ -35,10 +35,11 @@ import java.util.List;
 
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.hive.ql.processors.CommandProcessorException;
+import org.apache.hadoop.hive.ql.processors.CommandProcessorResponse;
 import org.apache.hive.hcatalog.HcatTestUtils;
 import org.apache.hive.hcatalog.mapreduce.HCatBaseTest;
 import org.apache.pig.EvalFunc;
+import org.apache.pig.ExecType;
 import org.apache.pig.PigException;
 import org.apache.pig.PigServer;
 import org.apache.pig.data.DataByteArray;
@@ -54,7 +55,7 @@ import org.slf4j.LoggerFactory;
 public abstract class AbstractHCatStorerTest extends HCatBaseTest {
   static Logger LOG = LoggerFactory.getLogger(AbstractHCatStorerTest.class);
   static final String INPUT_FILE_NAME = TEST_DATA_DIR + "/input.data";
-  protected String storageFormat;
+  String storageFormat;
 
   public AbstractHCatStorerTest() {
     storageFormat = getStorageFormat();
@@ -178,6 +179,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
   @Test
   public void testWriteDate3() throws Exception {
     DateTime d = new DateTime(1991, 10, 11, 23, 10, DateTimeZone.forOffsetHours(-11));
+    FrontendException fe = null;
     // expect to fail since the time component is not 0
     pigValueRangeTestOverflow("junitTypeTest4", "date", "datetime",
         HCatBaseStorer.OOR_VALUE_OPT_VALUES.Throw, d.toString(), FORMAT_4_DATE);
@@ -264,8 +266,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
       String format) throws Exception {
     AbstractHCatLoaderTest.dropTable(tblName, driver);
     final String field = "f1";
-    AbstractHCatLoaderTest.createTableDefaultDB(tblName, field + " " + hiveType, null, driver,
-            storageFormat);
+    AbstractHCatLoaderTest.createTable(tblName, field + " " + hiveType, null, driver, storageFormat);
     HcatTestUtils.createTestDataFile(INPUT_FILE_NAME, new String[] { inputValue });
     LOG.debug("File=" + INPUT_FILE_NAME);
     dumpFile(INPUT_FILE_NAME);
@@ -273,6 +274,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
     int queryNumber = 1;
     logAndRegister(server,
         "A = load '" + INPUT_FILE_NAME + "' as (" + field + ":" + pigType + ");", queryNumber++);
+    Iterator<Tuple> firstLoad = server.openIterator("A");
     if (goal == null) {
       logAndRegister(server, "store A into '" + tblName + "' using " + HCatStorer.class.getName()
           + "();", queryNumber++);
@@ -299,11 +301,9 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
     }
     logAndRegister(server,
         "B = load '" + tblName + "' using " + HCatLoader.class.getName() + "();", queryNumber);
-    try {
-      driver.run("select * from " + tblName);
-    } catch (CommandProcessorException e) {
-      LOG.debug("cpr.respCode=" + e.getResponseCode() + " cpr.errMsg=" + e.getMessage() + " for table " + tblName);
-    }
+    CommandProcessorResponse cpr = driver.run("select * from " + tblName);
+    LOG.debug("cpr.respCode=" + cpr.getResponseCode() + " cpr.errMsg=" + cpr.getErrorMessage()
+        + " for table " + tblName);
     List l = new ArrayList();
     driver.getResults(l);
     LOG.debug("Dumping rows via SQL from " + tblName);
@@ -345,7 +345,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
   public void testDateCharTypes() throws Exception {
     final String tblName = "junit_date_char";
     AbstractHCatLoaderTest.dropTable(tblName, driver);
-    AbstractHCatLoaderTest.createTableDefaultDB(tblName,
+    AbstractHCatLoaderTest.createTable(tblName,
         "id int, char5 char(5), varchar10 varchar(10), dec52 decimal(5,2)", null, driver,
         storageFormat);
     int NUM_ROWS = 5;
@@ -367,11 +367,8 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
         + "();", queryNumber++);
     logAndRegister(server,
         "B = load '" + tblName + "' using " + HCatLoader.class.getName() + "();", queryNumber);
-    try {
-      driver.run("select * from " + tblName);
-    } catch (CommandProcessorException e) {
-      LOG.debug("cpr.respCode=" + e.getResponseCode() + " cpr.errMsg=" + e.getMessage());
-    }
+    CommandProcessorResponse cpr = driver.run("select * from " + tblName);
+    LOG.debug("cpr.respCode=" + cpr.getResponseCode() + " cpr.errMsg=" + cpr.getErrorMessage());
     List l = new ArrayList();
     driver.getResults(l);
     LOG.debug("Dumping rows via SQL from " + tblName);
@@ -414,8 +411,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
   @Test
   public void testPartColsInData() throws Exception {
     AbstractHCatLoaderTest.dropTable("junit_unparted", driver);
-    AbstractHCatLoaderTest.createTableDefaultDB("junit_unparted", "a int", "b string", driver,
-            storageFormat);
+    AbstractHCatLoaderTest.createTable("junit_unparted","a int", "b string", driver, storageFormat);
 
     int LOOP_SIZE = 11;
     String[] input = new String[LOOP_SIZE];
@@ -423,7 +419,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
       input[i] = i + "\t1";
     }
     HcatTestUtils.createTestDataFile(INPUT_FILE_NAME, input);
-    PigServer server = createPigServer(false);
+    PigServer server = new PigServer(ExecType.LOCAL);
     server.registerQuery("A = load '" + INPUT_FILE_NAME + "' as (a:int, b:chararray);");
     server.registerQuery("store A into 'default.junit_unparted' using "
         + HCatStorer.class.getName() + "('b=1');");
@@ -449,7 +445,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
   public void testMultiPartColsInData() throws Exception {
 
     AbstractHCatLoaderTest.dropTable("employee", driver);
-    AbstractHCatLoaderTest.createTableDefaultDB("employee",
+    AbstractHCatLoaderTest.createTable("employee",
         "emp_id INT, emp_name STRING, emp_start_date STRING , emp_gender STRING",
         "emp_country STRING , emp_state STRING", driver, storageFormat);
 
@@ -458,7 +454,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
             "111239\tSatya\t01/01/2001\tM\tIN\tKL", "111240\tKavya\t01/01/2002\tF\tIN\tAP" };
 
     HcatTestUtils.createTestDataFile(INPUT_FILE_NAME, inputData);
-    PigServer pig = createPigServer(false);
+    PigServer pig = new PigServer(ExecType.LOCAL);
     pig.setBatchOn();
     pig.registerQuery("A = LOAD '" + INPUT_FILE_NAME
         + "' USING PigStorage() AS (emp_id:int,emp_name:chararray,emp_start_date:chararray,"
@@ -500,7 +496,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
   public void testStoreInPartiitonedTbl() throws Exception {
 
     AbstractHCatLoaderTest.dropTable("junit_unparted", driver);
-    AbstractHCatLoaderTest.createTableDefaultDB("junit_unparted", "a int", "b string",
+    AbstractHCatLoaderTest.createTable("junit_unparted","a int", "b string",
         driver, storageFormat);
 
     int LOOP_SIZE = 11;
@@ -509,7 +505,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
       input[i] = i + "";
     }
     HcatTestUtils.createTestDataFile(INPUT_FILE_NAME, input);
-    PigServer server = createPigServer(false);
+    PigServer server = new PigServer(ExecType.LOCAL);
     server.registerQuery("A = load '" + INPUT_FILE_NAME + "' as (a:int);");
     server.registerQuery("store A into 'default.junit_unparted' using "
         + HCatStorer.class.getName() + "('b=1');");
@@ -538,9 +534,8 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
   @Test
   public void testNoAlias() throws Exception {
     AbstractHCatLoaderTest.dropTable("junit_parted", driver);
-    AbstractHCatLoaderTest.createTableDefaultDB("junit_parted", "a int, b string", "ds " +
-            "string", driver, storageFormat);
-    PigServer server = createPigServer(false);
+    AbstractHCatLoaderTest.createTable("junit_parted","a int, b string", "ds string", driver, storageFormat);
+    PigServer server = new PigServer(ExecType.LOCAL);
     boolean errCaught = false;
     try {
       server.setBatchOn();
@@ -583,11 +578,11 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
   @Test
   public void testStoreMultiTables() throws Exception {
     AbstractHCatLoaderTest.dropTable("junit_unparted", driver);
-    AbstractHCatLoaderTest.createTableDefaultDB("junit_unparted", "a int, b string", null,
+    AbstractHCatLoaderTest.createTable("junit_unparted","a int, b string", null,
         driver, storageFormat);
 
     AbstractHCatLoaderTest.dropTable("junit_unparted2", driver);
-    AbstractHCatLoaderTest.createTableDefaultDB("junit_unparted2", "a int, b string", null,
+    AbstractHCatLoaderTest.createTable("junit_unparted2","a int, b string", null,
         driver, "RCFILE");
 
     int LOOP_SIZE = 3;
@@ -600,7 +595,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
       }
     }
     HcatTestUtils.createTestDataFile(INPUT_FILE_NAME, input);
-    PigServer server = createPigServer(false);
+    PigServer server = new PigServer(ExecType.LOCAL);
     server.setBatchOn();
     server.registerQuery("A = load '" + INPUT_FILE_NAME + "' as (a:int, b:chararray);");
     server.registerQuery("B = filter A by a < 2;");
@@ -634,7 +629,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
   @Test
   public void testStoreWithNoSchema() throws Exception {
     AbstractHCatLoaderTest.dropTable("junit_unparted", driver);
-    AbstractHCatLoaderTest.createTableDefaultDB("junit_unparted", "a int, b string", null,
+    AbstractHCatLoaderTest.createTable("junit_unparted","a int, b string", null,
         driver, storageFormat);
 
     int LOOP_SIZE = 3;
@@ -647,7 +642,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
       }
     }
     HcatTestUtils.createTestDataFile(INPUT_FILE_NAME, input);
-    PigServer server = createPigServer(false);
+    PigServer server = new PigServer(ExecType.LOCAL);
     server.setBatchOn();
     server.registerQuery("A = load '" + INPUT_FILE_NAME + "' as (a:int, b:chararray);");
     server.registerQuery("store A into 'default.junit_unparted' using "
@@ -670,7 +665,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
   @Test
   public void testStoreWithNoCtorArgs() throws Exception {
     AbstractHCatLoaderTest.dropTable("junit_unparted", driver);
-    AbstractHCatLoaderTest.createTableDefaultDB("junit_unparted", "a int, b string", null,
+    AbstractHCatLoaderTest.createTable("junit_unparted","a int, b string", null,
         driver, storageFormat);
 
     int LOOP_SIZE = 3;
@@ -683,7 +678,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
       }
     }
     HcatTestUtils.createTestDataFile(INPUT_FILE_NAME, input);
-    PigServer server = createPigServer(false);
+    PigServer server = new PigServer(ExecType.LOCAL);
     server.setBatchOn();
     server.registerQuery("A = load '" + INPUT_FILE_NAME + "' as (a:int, b:chararray);");
     server.registerQuery("store A into 'junit_unparted' using " + HCatStorer.class.getName()
@@ -707,8 +702,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
   public void testEmptyStore() throws Exception {
 
     AbstractHCatLoaderTest.dropTable("junit_unparted", driver);
-    AbstractHCatLoaderTest.createTableDefaultDB("junit_unparted", "a int, b string", null,
-            driver, storageFormat);
+    AbstractHCatLoaderTest.createTable("junit_unparted","a int, b string", null, driver, storageFormat);
 
     int LOOP_SIZE = 3;
     String[] input = new String[LOOP_SIZE * LOOP_SIZE];
@@ -720,7 +714,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
       }
     }
     HcatTestUtils.createTestDataFile(INPUT_FILE_NAME, input);
-    PigServer server = createPigServer(false);
+    PigServer server = new PigServer(ExecType.LOCAL);
     server.setBatchOn();
     server.registerQuery("A = load '" + INPUT_FILE_NAME + "' as (a:int, b:chararray);");
     server.registerQuery("B = filter A by a > 100;");
@@ -740,7 +734,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
   @Test
   public void testBagNStruct() throws Exception {
     AbstractHCatLoaderTest.dropTable("junit_unparted", driver);
-    AbstractHCatLoaderTest.createTableDefaultDB("junit_unparted",
+    AbstractHCatLoaderTest.createTable("junit_unparted",
         "b string,a struct<a1:int>,  arr_of_struct array<string>, " +
             "arr_of_struct2 array<struct<s1:string,s2:string>>,  arr_of_struct3 array<struct<s3:string>>",
         null, driver, storageFormat);
@@ -751,7 +745,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
 
     HcatTestUtils.createTestDataFile(INPUT_FILE_NAME, inputData);
 
-    PigServer server = createPigServer(false);
+    PigServer server = new PigServer(ExecType.LOCAL);
     server.setBatchOn();
     server
         .registerQuery("A = load '"
@@ -782,7 +776,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
   @Test
   public void testStoreFuncAllSimpleTypes() throws Exception {
     AbstractHCatLoaderTest.dropTable("junit_unparted", driver);
-    AbstractHCatLoaderTest.createTableDefaultDB("junit_unparted",
+    AbstractHCatLoaderTest.createTable("junit_unparted",
         "a int, b float, c double, d bigint, e string, h boolean, f binary, g binary", null,
         driver, storageFormat);
 
@@ -797,7 +791,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
             + "\tbinary-data";
 
     HcatTestUtils.createTestDataFile(INPUT_FILE_NAME, input);
-    PigServer server = createPigServer(false);
+    PigServer server = new PigServer(ExecType.LOCAL);
     server.setBatchOn();
     server.registerQuery("A = load '" + INPUT_FILE_NAME
         + "' as (a:int, b:float, c:double, d:long, e:chararray, h:boolean, f:bytearray);");
@@ -841,7 +835,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
   @Test
   public void testStoreFuncSimple() throws Exception {
     AbstractHCatLoaderTest.dropTable("junit_unparted", driver);
-    AbstractHCatLoaderTest.createTableDefaultDB("junit_unparted", "a int, b string", null,
+    AbstractHCatLoaderTest.createTable("junit_unparted","a int, b string", null,
         driver, storageFormat);
 
     int LOOP_SIZE = 3;
@@ -854,7 +848,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
       }
     }
     HcatTestUtils.createTestDataFile(INPUT_FILE_NAME, inputData);
-    PigServer server = createPigServer(false);
+    PigServer server = new PigServer(ExecType.LOCAL);
     server.setBatchOn();
     server.registerQuery("A = load '" + INPUT_FILE_NAME + "' as (a:int, b:chararray);");
     server.registerQuery("store A into 'default.junit_unparted' using "
@@ -879,7 +873,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
   @Test
   public void testDynamicPartitioningMultiPartColsInDataPartialSpec() throws Exception {
     AbstractHCatLoaderTest.dropTable("employee", driver);
-    AbstractHCatLoaderTest.createTableDefaultDB("employee",
+    AbstractHCatLoaderTest.createTable("employee",
         "emp_id INT, emp_name STRING, emp_start_date STRING , emp_gender STRING",
         "emp_country STRING , emp_state STRING", driver, storageFormat);
 
@@ -888,7 +882,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
             "111239\tSatya\t01/01/2001\tM\tIN\tKL", "111240\tKavya\t01/01/2002\tF\tIN\tAP" };
 
     HcatTestUtils.createTestDataFile(INPUT_FILE_NAME, inputData);
-    PigServer pig = createPigServer(false);
+    PigServer pig = new PigServer(ExecType.LOCAL);
     pig.setBatchOn();
     pig.registerQuery("A = LOAD '" + INPUT_FILE_NAME
         + "' USING PigStorage() AS (emp_id:int,emp_name:chararray,emp_start_date:chararray,"
@@ -912,7 +906,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
   @Test
   public void testDynamicPartitioningMultiPartColsInDataNoSpec() throws Exception {
     AbstractHCatLoaderTest.dropTable("employee", driver);
-    AbstractHCatLoaderTest.createTableDefaultDB("employee",
+    AbstractHCatLoaderTest.createTable("employee",
         "emp_id INT, emp_name STRING, emp_start_date STRING , emp_gender STRING",
         "emp_country STRING , emp_state STRING", driver, storageFormat);
 
@@ -921,7 +915,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
             "111239\tSatya\t01/01/2001\tM\tIN\tKL", "111240\tKavya\t01/01/2002\tF\tIN\tAP" };
 
     HcatTestUtils.createTestDataFile(INPUT_FILE_NAME, inputData);
-    PigServer pig = createPigServer(false);
+    PigServer pig = new PigServer(ExecType.LOCAL);
     pig.setBatchOn();
     pig.registerQuery("A = LOAD '" + INPUT_FILE_NAME
         + "' USING PigStorage() AS (emp_id:int,emp_name:chararray,emp_start_date:chararray,"
@@ -944,7 +938,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
   @Test
   public void testDynamicPartitioningMultiPartColsNoDataInDataNoSpec() throws Exception {
     AbstractHCatLoaderTest.dropTable("employee", driver);
-    AbstractHCatLoaderTest.createTableDefaultDB("employee",
+    AbstractHCatLoaderTest.createTable("employee",
         "emp_id INT, emp_name STRING, emp_start_date STRING , emp_gender STRING",
         "emp_country STRING , emp_state STRING", driver, storageFormat);
 
@@ -952,7 +946,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
     String[] inputData = {};
     HcatTestUtils.createTestDataFile(INPUT_FILE_NAME, inputData);
 
-    PigServer pig = createPigServer(false);
+    PigServer pig = new PigServer(ExecType.LOCAL);
     pig.setBatchOn();
     pig.registerQuery("A = LOAD '" + INPUT_FILE_NAME
         + "' USING PigStorage() AS (emp_id:int,emp_name:chararray,emp_start_date:chararray,"
@@ -968,68 +962,9 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
   }
 
   @Test
-  public void testStaticPartitioningMultiPartCols() throws Exception {
-    AbstractHCatLoaderTest.dropTable("employee", driver);
-    AbstractHCatLoaderTest.createTableDefaultDB("employee",
-        "emp_id INT, emp_name STRING, emp_start_date STRING , emp_gender STRING",
-        "emp_country STRING , emp_state STRING", driver, storageFormat);
-
-    String[] inputData =
-        {"111237\tKrishna\t01/01/1990\tM\tIN\tKA", "111238\tKalpana\t01/01/2000\tF\tIN\tKA",
-            "111239\tSatya\t01/01/2001\tM\tIN\tKA", "111240\tKavya\t01/01/2002\tF\tIN\tKA"};
-
-    HcatTestUtils.createTestDataFile(INPUT_FILE_NAME, inputData);
-    PigServer pig = createPigServer(false);
-    pig.setBatchOn();
-    pig.registerQuery("A = LOAD '" + INPUT_FILE_NAME
-        + "' USING PigStorage() AS (emp_id:int,emp_name:chararray,emp_start_date:chararray,"
-        + "emp_gender:chararray,emp_country:chararray,emp_state:chararray);");
-    pig.registerQuery("IN = FILTER A BY emp_country == 'IN' AND emp_state== 'KA';");
-    pig.registerQuery("STORE IN INTO 'employee' USING " + HCatStorer.class.getName()
-        + "('emp_country=IN, emp_state=KA');");
-    pig.executeBatch();
-    driver.run("select * from employee");
-    ArrayList<String> results = new ArrayList<String>();
-    driver.getResults(results);
-    assertEquals(4, results.size());
-    Collections.sort(results);
-    assertEquals(inputData[0], results.get(0));
-    assertEquals(inputData[1], results.get(1));
-    assertEquals(inputData[2], results.get(2));
-    assertEquals(inputData[3], results.get(3));
-    driver.run("drop table employee");
-  }
-
-  @Test
-  public void testStaticPartitioningMultiPartColsNoData() throws Exception {
-    AbstractHCatLoaderTest.dropTable("employee", driver);
-    AbstractHCatLoaderTest.createTableDefaultDB("employee",
-        "emp_id INT, emp_name STRING, emp_start_date STRING , emp_gender STRING",
-        "emp_country STRING , emp_state STRING", driver, storageFormat);
-
-    String[] inputData = {};
-
-    HcatTestUtils.createTestDataFile(INPUT_FILE_NAME, inputData);
-    PigServer pig = createPigServer(false);
-    pig.setBatchOn();
-    pig.registerQuery("A = LOAD '" + INPUT_FILE_NAME
-        + "' USING PigStorage() AS (emp_id:int,emp_name:chararray,emp_start_date:chararray,"
-        + "emp_gender:chararray,emp_country:chararray,emp_state:chararray);");
-    pig.registerQuery("IN = FILTER A BY emp_country == 'IN' AND emp_state== 'KA';");
-    pig.registerQuery("STORE IN INTO 'employee' USING " + HCatStorer.class.getName()
-        + "('emp_country=IN, emp_state=KA');");
-    pig.executeBatch();
-    driver.run("select * from employee");
-    ArrayList<String> results = new ArrayList<String>();
-    driver.getResults(results);
-    assertEquals(0, results.size());
-    driver.run("drop table employee");
-  }
-
-  @Test
   public void testPartitionPublish() throws Exception {
     AbstractHCatLoaderTest.dropTable("ptn_fail", driver);
-    AbstractHCatLoaderTest.createTableDefaultDB("ptn_fail", "a int, c string", "b string",
+    AbstractHCatLoaderTest.createTable("ptn_fail","a int, c string", "b string",
         driver, storageFormat);
 
     int LOOP_SIZE = 11;
@@ -1039,7 +974,7 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
       input[i] = i + "\tmath";
     }
     HcatTestUtils.createTestDataFile(INPUT_FILE_NAME, input);
-    PigServer server = createPigServer(false);
+    PigServer server = new PigServer(ExecType.LOCAL);
     server.setBatchOn();
     server.registerQuery("A = load '" + INPUT_FILE_NAME + "' as (a:int, c:chararray);");
     server.registerQuery("B = filter A by " + FailEvalFunc.class.getName() + "($0);");
@@ -1048,7 +983,11 @@ public abstract class AbstractHCatStorerTest extends HCatBaseTest {
     server.executeBatch();
 
     String query = "show partitions ptn_fail";
-    driver.run(query);
+    int retCode = driver.run(query).getResponseCode();
+
+    if (retCode != 0) {
+      throw new IOException("Error " + retCode + " running query " + query);
+    }
 
     ArrayList<String> res = new ArrayList<String>();
     driver.getResults(res);

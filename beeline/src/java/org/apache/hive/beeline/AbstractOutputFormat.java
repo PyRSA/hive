@@ -28,7 +28,6 @@ package org.apache.hive.beeline;
  */
 abstract class AbstractOutputFormat implements OutputFormat {
 
-  @Override
   public int print(Rows rows) {
     int count = 0;
     Rows.Row header = (Rows.Row) rows.next();

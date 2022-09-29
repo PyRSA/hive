@@ -117,26 +117,6 @@ public abstract class AbstractService implements Service {
    *           this action
    */
   @Override
-  public synchronized void decommission() {
-    if (state == STATE.STOPPED ||
-        state == STATE.INITED ||
-        state == STATE.NOTINITED ||
-        state == STATE.DECOMMISSIONING) {
-      return;
-    }
-    ensureCurrentState(STATE.STARTED);
-    changeState(STATE.DECOMMISSIONING);
-    LOG.info("Service:" + getName() + " is decommissioning.");
-  }
-
-  /**
-   * {@inheritDoc}
-   *
-   * @throws IllegalStateException
-   *           if the current service state does not permit
-   *           this action
-   */
-  @Override
   public synchronized void stop() {
     if (state == STATE.STOPPED ||
         state == STATE.INITED ||
@@ -145,10 +125,7 @@ public abstract class AbstractService implements Service {
       // started (eg another service failing canceled startup)
       return;
     }
-    if (state != STATE.DECOMMISSIONING && state != STATE.STARTED) {
-      throw new IllegalStateException("For stop operation, the current service state must be " +
-          STATE.DECOMMISSIONING + " or " + STATE.STARTED + " instead of " + state);
-    }
+    ensureCurrentState(STATE.STARTED);
     changeState(STATE.STOPPED);
     LOG.info("Service:" + getName() + " is stopped.");
   }
