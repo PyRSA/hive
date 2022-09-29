@@ -1,7 +1,7 @@
 
 CREATE DATABASE hbaseDB;
 
--- EXCLUDE_HADOOP_MAJOR_VERSIONS(0.20, 0.20S)
+-- INCLUDE_HADOOP_MAJOR_VERSIONS(0.20, 0.20S)
 -- Hadoop 0.23 changes the behavior FsShell on Exit Codes
 -- In Hadoop 0.20
 -- Exit Code == 0 on success
@@ -20,7 +20,7 @@ dfs -ls target/tmp/hbase/data/default/hbase_table_0;
 
 DROP DATABASE IF EXISTS hbaseDB CASCADE;
 
-dfs -ls target/tmp/hbase/data/default/hbase_table_0;
+dfs -ls target/tmp/hbase/data/hbase/default/hbase_table_0;
 
 
 

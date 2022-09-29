@@ -18,7 +18,6 @@
 
 package org.apache.hadoop.hive.hbase;
 
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.util.Collections;
@@ -28,7 +27,7 @@ import java.util.Properties;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
-import org.apache.commons.lang3.NotImplementedException;
+import org.apache.commons.lang.NotImplementedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -164,14 +163,8 @@ public class HiveHFileOutputFormat extends
           FileSystem fs = outputdir.getFileSystem(jc);
           fs.mkdirs(columnFamilyPath);
           Path srcDir = taskAttemptOutputdir;
-          FileStatus[] files = null;
-          for (; ; ) {
-            try {
-              files = fs.listStatus(srcDir, FileUtils.STAGING_DIR_PATH_FILTER);
-            } catch (FileNotFoundException fnf) {
-              LOG.debug("File doesn't exist {} ",srcDir, fnf);
-              break;
-            }
+          for (;;) {
+            FileStatus [] files = fs.listStatus(srcDir, FileUtils.STAGING_DIR_PATH_FILTER);
             if ((files == null) || (files.length == 0)) {
               throw new IOException("No family directories found in " + srcDir);
             }
@@ -188,16 +181,15 @@ public class HiveHFileOutputFormat extends
                   + columnFamilyName);
             }
           }
-          if (files != null) {
-            for (FileStatus regionFile : fs.listStatus(srcDir, FileUtils.STAGING_DIR_PATH_FILTER)) {
-              fs.rename(regionFile.getPath(), new Path(columnFamilyPath, regionFile.getPath().getName()));
-            }
+          for (FileStatus regionFile : fs.listStatus(srcDir, FileUtils.STAGING_DIR_PATH_FILTER)) {
+            fs.rename(
+              regionFile.getPath(),
+              new Path(
+                columnFamilyPath,
+                regionFile.getPath().getName()));
           }
         } catch (InterruptedException ex) {
           throw new IOException(ex);
-        } catch (FileNotFoundException fnf) {
-          // Ignore....
-          LOG.debug("File doesn't exist.", fnf);
         }
       }
 

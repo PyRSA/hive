@@ -116,7 +116,9 @@ public class HBaseSerDeHelper {
     // trim off the ending ",", if any
     trim(sb);
 
-    LOG.debug("Generated columns: [{}]", sb);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Generated columns: [" + sb.toString() + "]");
+    }
   }
 
   /**
@@ -348,7 +350,9 @@ public class HBaseSerDeHelper {
     // trim off ending ",", if any
     trim(sb);
 
-    LOG.debug("Generated column types: [{}]", sb);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Generated column types: [" + sb.toString() + "]");
+    }
   }
 
   /**

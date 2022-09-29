@@ -6,9 +6,9 @@
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
- * <p>
- * http://www.apache.org/licenses/LICENSE-2.0
- * <p>
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -18,36 +18,34 @@
 package org.apache.hadoop.hive.druid.serde;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.Collections;
 import java.util.Iterator;
-import java.util.List;
 
 import com.fasterxml.jackson.databind.JavaType;
 import org.apache.hadoop.hive.druid.DruidStorageHandlerUtils;
 import org.apache.hadoop.io.NullWritable;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.google.common.collect.Iterators;
 
 import io.druid.query.Result;
-import io.druid.query.topn.DimensionAndMetricValueExtractor;
-import io.druid.query.topn.TopNQuery;
-import io.druid.query.topn.TopNResultValue;
+import io.druid.query.select.EventHolder;
+import io.druid.query.select.SelectQuery;
+import io.druid.query.select.SelectResultValue;
 
 /**
- * Record reader for results for Druid TopNQuery.
+ * Record reader for results for Druid SelectQuery.
  */
-public class DruidTopNQueryRecordReader
-        extends DruidQueryRecordReader<TopNQuery, Result<TopNResultValue>> {
+public class DruidSelectQueryRecordReader
+        extends DruidQueryRecordReader<SelectQuery, Result<SelectResultValue>> {
 
-  private static final TypeReference<Result<TopNResultValue>> TYPE_REFERENCE =
-          new TypeReference<Result<TopNResultValue>>() {
+  private static final TypeReference<Result<SelectResultValue>> TYPE_REFERENCE =
+          new TypeReference<Result<SelectResultValue>>()
+          {
           };
 
-  private Result<TopNResultValue> current;
+  private Result<SelectResultValue> current;
 
-  private Iterator<DimensionAndMetricValueExtractor> values = Collections.emptyIterator();
+  private Iterator<EventHolder> values = Collections.emptyIterator();
 
   @Override
   protected JavaType getResultTypeDef() {
@@ -55,13 +53,13 @@ public class DruidTopNQueryRecordReader
   }
 
   @Override
-  public boolean nextKeyValue() {
+  public boolean nextKeyValue() throws IOException {
     if (values.hasNext()) {
       return true;
     }
     if (queryResultsIterator.hasNext()) {
       current = queryResultsIterator.next();
-      values = current.getValue().getValue().iterator();
+      values = current.getValue().getEvents().iterator();
       return nextKeyValue();
     }
     return false;
@@ -76,27 +74,20 @@ public class DruidTopNQueryRecordReader
   public DruidWritable getCurrentValue() throws IOException, InterruptedException {
     // Create new value
     DruidWritable value = new DruidWritable();
-    value.getValue().put("timestamp",
-            current.getTimestamp().getMillis()
-    );
-    if (values.hasNext()) {
-      value.getValue().putAll(values.next().getBaseObject());
-      return value;
-    }
+    EventHolder e = values.next();
+    value.getValue().put(DruidStorageHandlerUtils.DEFAULT_TIMESTAMP_COLUMN, e.getTimestamp().getMillis());
+    value.getValue().putAll(e.getEvent());
     return value;
   }
 
   @Override
-  public boolean next(NullWritable key, DruidWritable value) {
+  public boolean next(NullWritable key, DruidWritable value) throws IOException {
     if (nextKeyValue()) {
       // Update value
       value.getValue().clear();
-      value.getValue().put("timestamp",
-              current.getTimestamp().getMillis()
-      );
-      if (values.hasNext()) {
-        value.getValue().putAll(values.next().getBaseObject());
-      }
+      EventHolder e = values.next();
+      value.getValue().put(DruidStorageHandlerUtils.DEFAULT_TIMESTAMP_COLUMN, e.getTimestamp().getMillis());
+      value.getValue().putAll(e.getEvent());
       return true;
     }
     return false;

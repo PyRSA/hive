@@ -24,7 +24,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.TableName;
@@ -83,18 +82,12 @@ public class HiveHBaseTableInputFormat extends TableInputFormatBase
     Job job = new Job(jobConf);
     TaskAttemptContext tac = ShimLoader.getHadoopShims().newTaskAttemptContext(job.getConfiguration(), reporter);
 
-    final Configuration hbaseConf = HBaseConfiguration.create(jobConf);
-    final Scan scan = HiveHBaseInputFormatUtil.getScan(jobConf);
-
-    LOG.debug("HBase configurations: {}", hbaseConf);
-    LOG.info("Using global scan configuration (ignore per-split scan configs): {}", scan);
-
     final Connection conn;
 
     synchronized (HBASE_TABLE_MONITOR) {
-      conn = ConnectionFactory.createConnection(hbaseConf);
+      conn = ConnectionFactory.createConnection(HBaseConfiguration.create(jobConf));
       initializeTable(conn, tableSplit.getTable());
-      setScan(scan);
+      setScan(HiveHBaseInputFormatUtil.getScan(jobConf));
       recordReader = createRecordReader(tableSplit, tac);
       try {
         recordReader.initialize(tableSplit, tac);
