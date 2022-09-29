@@ -21,7 +21,7 @@ package org.apache.hive.hcatalog.messaging.json;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hive.hcatalog.common.HCatConstants;
 import org.apache.hive.hcatalog.messaging.AlterTableMessage;
-import com.fasterxml.jackson.annotation.JsonProperty;
+import org.codehaus.jackson.annotate.JsonProperty;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -35,7 +35,7 @@ public class JSONAlterTableMessage extends AlterTableMessage {
   String server, servicePrincipal, db, table, tableType;
 
   @JsonProperty
-  Long timestamp, writeId;
+  Long timestamp;
 
   /**
    * Default constructor, needed for Jackson.
@@ -46,9 +46,8 @@ public class JSONAlterTableMessage extends AlterTableMessage {
                                String servicePrincipal,
                                String db,
                                String table,
-                               Long writeId,
                                Long timestamp) {
-    this(server, servicePrincipal, db, table, null, writeId, timestamp);
+    this(server, servicePrincipal, db, table, null, timestamp);
   }
 
   public JSONAlterTableMessage(String server,
@@ -56,7 +55,6 @@ public class JSONAlterTableMessage extends AlterTableMessage {
                                String db,
                                String table,
                                String tableType,
-                               Long writeId,
                                Long timestamp) {
     this.server = server;
     this.servicePrincipal = servicePrincipal;
@@ -64,7 +62,6 @@ public class JSONAlterTableMessage extends AlterTableMessage {
     this.table = table;
     this.tableType = tableType;
     this.timestamp = timestamp;
-    this.writeId = writeId;
     checkValid();
   }
 
@@ -96,11 +93,6 @@ public class JSONAlterTableMessage extends AlterTableMessage {
   @Override
   public String getTableType() {
     if (tableType != null) return tableType; else return "";
-  }
-
-  @Override
-  public Long getWriteId() {
-    return writeId == null ? 0 : writeId;
   }
 
   @Override

@@ -37,7 +37,8 @@ import org.apache.hadoop.hive.ql.session.SessionState;
 
 import org.apache.hive.hcatalog.common.HCatUtil;
 import org.apache.hive.hcatalog.data.Pair;
-import org.apache.hive.hcatalog.mapreduce.HCatBaseTest;
+
+import org.apache.pig.ExecType;
 import org.apache.pig.PigServer;
 
 import org.junit.After;
@@ -82,7 +83,7 @@ public class TestHCatStorerMulti {
   }
 
   private void createTable(String tablename, String schema, String partitionedBy) throws Exception {
-    AbstractHCatLoaderTest.createTableDefaultDB(tablename, schema, partitionedBy, driver, storageFormat);
+    AbstractHCatLoaderTest.createTable(tablename, schema, partitionedBy, driver, storageFormat);
   }
 
   private void createTable(String tablename, String schema) throws Exception {
@@ -122,7 +123,7 @@ public class TestHCatStorerMulti {
 
     populateBasicFile();
 
-    PigServer server = HCatBaseTest.createPigServer(false);
+    PigServer server = new PigServer(ExecType.LOCAL);
     server.setBatchOn();
     server.registerQuery("A = load '" + INPUT_FILE_NAME + "' as (a:int, b:chararray);");
     server.registerQuery("store A into '" + BASIC_TABLE + "' using org.apache.hive.hcatalog.pig.HCatStorer();");
@@ -142,7 +143,7 @@ public class TestHCatStorerMulti {
 
     populateBasicFile();
 
-    PigServer server = HCatBaseTest.createPigServer(false);
+    PigServer server = new PigServer(ExecType.LOCAL);
     server.setBatchOn();
     server.registerQuery("A = load '" + INPUT_FILE_NAME + "' as (a:int, b:chararray);");
 
@@ -167,7 +168,7 @@ public class TestHCatStorerMulti {
 
     populateBasicFile();
 
-    PigServer server = HCatBaseTest.createPigServer(false);
+    PigServer server = new PigServer(ExecType.LOCAL);
     server.setBatchOn();
     server.registerQuery("A = load '" + INPUT_FILE_NAME + "' as (a:int, b:chararray);");
     server.registerQuery("store A into '" + BASIC_TABLE + "' using org.apache.hive.hcatalog.pig.HCatStorer();");

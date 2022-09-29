@@ -43,15 +43,14 @@ import org.apache.hadoop.fs.FileUtil;
 import org.apache.hadoop.fs.LocalFileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.cli.CliSessionState;
-import org.apache.hadoop.hive.common.io.SessionStream;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.Warehouse;
 import org.apache.hadoop.hive.ql.DriverFactory;
 import org.apache.hadoop.hive.ql.IDriver;
 import org.apache.hadoop.hive.ql.io.StorageFormats;
 import org.apache.hadoop.hive.ql.processors.CommandProcessor;
-import org.apache.hadoop.hive.ql.processors.CommandProcessorException;
 import org.apache.hadoop.hive.ql.processors.CommandProcessorFactory;
+import org.apache.hadoop.hive.ql.processors.CommandProcessorResponse;
 import org.apache.hadoop.hive.ql.processors.HiveCommand;
 import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hadoop.hive.shims.HadoopShims;
@@ -66,8 +65,8 @@ import org.apache.hive.hcatalog.HcatTestUtils;
 import org.apache.hive.hcatalog.common.HCatUtil;
 import org.apache.hive.hcatalog.data.HCatRecord;
 import org.apache.hive.hcatalog.data.Pair;
-import org.apache.hive.hcatalog.mapreduce.HCatBaseTest;
 import org.apache.hive.hcatalog.mapreduce.HCatInputFormat;
+import org.apache.pig.ExecType;
 import org.apache.pig.PigServer;
 import org.apache.pig.data.Tuple;
 import org.junit.After;
@@ -93,6 +92,7 @@ public class TestHCatLoaderEncryption {
   private static final String SECURITY_KEY_PROVIDER_URI_NAME = "dfs.encryption.key.provider.uri";
 
   private HadoopShims.MiniDFSShim dfs = null;
+  private HadoopShims.HdfsEncryptionShim hes = null;
   private final String[] testOnlyCommands = new String[]{"crypto"};
   private IDriver driver;
   private Map<Integer, Pair<Integer, String>> basicInputData;
@@ -145,7 +145,10 @@ public class TestHCatLoaderEncryption {
    */
   static void executeStatementOnDriver(String cmd, IDriver driver) throws Exception {
     LOG.debug("Executing: " + cmd);
-    driver.run(cmd);
+    CommandProcessorResponse cpr = driver.run(cmd);
+    if(cpr.getResponseCode() != 0) {
+      throw new IOException("Failed to execute \"" + cmd + "\". Driver returned " + cpr.getResponseCode() + " Error: " + cpr.getErrorMessage());
+    }
   }
 
   @Before
@@ -181,7 +184,7 @@ public class TestHCatLoaderEncryption {
 
     driver = DriverFactory.newDriver(hiveConf);
 
-    SessionState.get().out = new SessionStream(System.out);
+    SessionState.get().out = System.out;
 
     createTable(BASIC_TABLE, "a int, b string");
     createTableInSpecifiedPath(ENCRYPTED_TABLE, "a int, b string",
@@ -203,7 +206,7 @@ public class TestHCatLoaderEncryption {
       }
     }
     HcatTestUtils.createTestDataFile(BASIC_FILE_NAME, input);
-    PigServer server = HCatBaseTest.createPigServer(false);
+    PigServer server = new PigServer(ExecType.LOCAL);
     server.setBatchOn();
     int i = 0;
     server.registerQuery("A = load '" + BASIC_FILE_NAME + "' as (a:int, b:chararray);", ++i);
@@ -220,7 +223,7 @@ public class TestHCatLoaderEncryption {
     fs = dfs.getFileSystem();
 
     // set up a java key provider for encrypted hdfs cluster
-    shims.createHdfsEncryptionShim(fs, conf);
+    hes = shims.createHdfsEncryptionShim(fs, conf);
   }
 
   public static String ensurePathEndsInSlash(String path) {
@@ -242,17 +245,16 @@ public class TestHCatLoaderEncryption {
     if (crypto == null) {
       return;
     }
-    checkExecutionResponse(crypto, "CREATE_KEY --keyName key_128 --bitLength 128");
-    checkExecutionResponse(crypto, "CREATE_ZONE --keyName key_128 --path " + path);
+    checkExecutionResponse(crypto.run("CREATE_KEY --keyName key_128 --bitLength 128"));
+    checkExecutionResponse(crypto.run("CREATE_ZONE --keyName key_128 --path " + path));
   }
 
-  private void checkExecutionResponse(CommandProcessor processor, String command) {
-    try {
-      processor.run(command);
-    } catch (CommandProcessorException e) {
-      SessionState.get().out.println(e);
-      assertTrue("Crypto command failed with the exit code " + e.getResponseCode(), false);
+  private void checkExecutionResponse(CommandProcessorResponse response) {
+    int rc = response.getResponseCode();
+    if (rc != 0) {
+      SessionState.get().out.println(response);
     }
+    assertEquals("Crypto command failed with the exit code" + rc, 0, rc);
   }
 
   private void removeEncryptionZone() throws Exception {
@@ -262,7 +264,7 @@ public class TestHCatLoaderEncryption {
     if (crypto == null) {
       return;
     }
-    checkExecutionResponse(crypto, "DELETE_KEY --keyName key_128");
+    checkExecutionResponse(crypto.run("DELETE_KEY --keyName key_128"));
   }
 
   private CommandProcessor getTestCommand(final String commandName) throws SQLException {
@@ -298,7 +300,7 @@ public class TestHCatLoaderEncryption {
   @Test
   public void testReadDataFromEncryptedHiveTableByPig() throws IOException {
     assumeTrue(!TestUtil.shouldSkip(storageFormat, DISABLED_STORAGE_FORMATS));
-    PigServer server = HCatBaseTest.createPigServer(false);
+    PigServer server = new PigServer(ExecType.LOCAL);
 
     server.registerQuery("X = load '" + ENCRYPTED_TABLE + "' using org.apache.hive.hcatalog.pig.HCatLoader();");
     Iterator<Tuple> XIter = server.openIterator("X");

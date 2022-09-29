@@ -40,6 +40,4 @@ public abstract class AlterTableMessage extends HCatEventMessage {
     if (getTable() == null) throw new IllegalStateException("Table name unset.");
     return super.checkValid();
   }
-
-  public abstract Long getWriteId();
 }

@@ -20,10 +20,9 @@
 package org.apache.hive.hcatalog.messaging.json;
 
 import org.apache.hadoop.hive.metastore.api.Function;
-import org.apache.hadoop.hive.metastore.messaging.MessageBuilder;
 import org.apache.hive.hcatalog.messaging.CreateFunctionMessage;
 import org.apache.thrift.TException;
-import com.fasterxml.jackson.annotation.JsonProperty;
+import org.codehaus.jackson.annotate.JsonProperty;
 
 /**
  * JSON Implementation of CreateFunctionMessage.
@@ -47,7 +46,7 @@ public class JSONCreateFunctionMessage extends CreateFunctionMessage {
     this.db = fn.getDbName();
     this.timestamp = timestamp;
     try {
-      this.functionObjJson = MessageBuilder.createFunctionObjJson(fn);
+      this.functionObjJson = JSONMessageFactory.createFunctionObjJson(fn);
     } catch (TException ex) {
       throw new IllegalArgumentException("Could not serialize Function object", ex);
     }

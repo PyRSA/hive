@@ -41,7 +41,7 @@ import org.apache.hadoop.hive.ql.IDriver;
 import org.apache.hadoop.hive.ql.io.IOConstants;
 import org.apache.hadoop.hive.ql.io.StorageFormats;
 import org.apache.hadoop.hive.ql.session.SessionState;
-import org.apache.hive.hcatalog.mapreduce.HCatBaseTest;
+import org.apache.pig.ExecType;
 import org.apache.pig.PigServer;
 import org.apache.pig.backend.executionengine.ExecException;
 import org.apache.pig.backend.executionengine.ExecJob;
@@ -75,9 +75,6 @@ public class TestHCatLoaderComplexSchema {
         put(IOConstants.PARQUETFILE, new HashSet<String>() {{
           add("testMapNullKey");
         }});
-        put(IOConstants.JSONFILE, new HashSet<String>() {{
-          add("testMapNullKey");
-        }});
       }};
 
   private String storageFormat;
@@ -96,7 +93,7 @@ public class TestHCatLoaderComplexSchema {
   }
 
   private void createTable(String tablename, String schema, String partitionedBy) throws Exception {
-    AbstractHCatLoaderTest.createTableDefaultDB(tablename, schema, partitionedBy, driver, storageFormat);
+    AbstractHCatLoaderTest.createTable(tablename, schema, partitionedBy, driver, storageFormat);
   }
 
   private void createTable(String tablename, String schema) throws Exception {
@@ -227,7 +224,7 @@ public class TestHCatLoaderComplexSchema {
     MockLoader.setData(tablename + "Input", data);
     try {
       createTable(tablename, tableSchema);
-      PigServer server = HCatBaseTest.createPigServer(false);
+      PigServer server = new PigServer(ExecType.LOCAL);
       server.setBatchOn();
       server.registerQuery("A = load '" + tablename + "Input' using org.apache.hive.hcatalog.pig.MockLoader() AS (" + pigSchema + ");");
       Schema dumpedASchema = server.dumpSchema("A");

@@ -47,12 +47,12 @@ import org.apache.hive.hcatalog.common.HCatConstants;
 import org.apache.hive.hcatalog.common.HCatContext;
 import org.apache.hive.hcatalog.data.HCatRecord;
 import org.apache.hive.hcatalog.data.schema.HCatSchema;
-import org.apache.hive.hcatalog.mapreduce.HCatBaseTest;
 import org.apache.hive.hcatalog.mapreduce.HCatInputFormat;
 import org.apache.hive.hcatalog.mapreduce.HCatOutputFormat;
 import org.apache.hive.hcatalog.mapreduce.OutputJobInfo;
 import org.apache.hive.hcatalog.mapreduce.HCatMapRedUtil;
 
+import org.apache.pig.ExecType;
 import org.apache.pig.PigServer;
 import org.apache.pig.data.Tuple;
 
@@ -113,16 +113,19 @@ public class TestE2EScenarios {
 
   private void createTable(String tablename, String schema, String partitionedBy, String storageFormat)
       throws Exception {
-    AbstractHCatLoaderTest.createTableDefaultDB(tablename, schema, partitionedBy, driver,
-            storageFormat);
+   AbstractHCatLoaderTest.createTable(tablename, schema, partitionedBy, driver, storageFormat);
   }
 
   private void driverRun(String cmd) throws Exception {
-    driver.run(cmd);
+    int retCode = driver.run(cmd).getResponseCode();
+    if (retCode != 0) {
+      throw new IOException("Failed to run ["
+        + cmd + "], return code from hive driver : [" + retCode + "]");
+    }
   }
 
   private void pigDump(String tableName) throws IOException {
-    PigServer server = HCatBaseTest.createPigServer(false);
+    PigServer server = new PigServer(ExecType.LOCAL);
 
     System.err.println("===");
     System.err.println(tableName+":");

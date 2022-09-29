@@ -19,6 +19,7 @@
 package org.apache.hive.hcatalog.pig;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.UUID;
@@ -26,6 +27,7 @@ import java.util.UUID;
 import org.apache.hive.hcatalog.HcatTestUtils;
 
 import org.apache.hive.hcatalog.mapreduce.HCatBaseTest;
+import org.apache.pig.ExecType;
 import org.apache.pig.PigServer;
 
 import org.junit.Assert;
@@ -52,7 +54,7 @@ public class TestHCatStorerWrapper extends HCatBaseTest {
 
     driver.run("drop table junit_external");
     String createTable = "create external table junit_external(a int, b string) partitioned by (c string) stored as RCFILE";
-    driver.run(createTable);
+    Assert.assertEquals(0, driver.run(createTable).getResponseCode());
 
     int LOOP_SIZE = 3;
     String[] inputData = new String[LOOP_SIZE*LOOP_SIZE];
@@ -64,7 +66,7 @@ public class TestHCatStorerWrapper extends HCatBaseTest {
       }
     }
     HcatTestUtils.createTestDataFile(INPUT_FILE_NAME, inputData);
-    PigServer server = HCatBaseTest.createPigServer(false);
+    PigServer server = new PigServer(ExecType.LOCAL);
     server.setBatchOn();
     logAndRegister(server, "A = load '"+INPUT_FILE_NAME+"' as (a:int, b:chararray);");
     logAndRegister(server, "store A into 'default.junit_external' using " + HCatStorerWrapper.class.getName()
