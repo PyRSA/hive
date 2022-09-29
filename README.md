@@ -1,52 +1,110 @@
-## HIVE 3.1.2 源码编译支持Spark 3.x
+Apache Hive (TM)
+================
+[![Master Build Status](https://travis-ci.org/apache/hive.svg?branch=master)](https://travis-ci.org/apache/hive/branches)
+[![Maven Central](https://maven-badges.herokuapp.com/maven-central/org.apache.hive/hive/badge.svg)](http://search.maven.org/#search%7Cga%7C1%7Cg%3A%22org.apache.hive%22)
 
-#### 参考博客：https://blog.csdn.net/weixin_52918377/article/details/117123969
+The Apache Hive (TM) data warehouse software facilitates reading,
+writing, and managing large datasets residing in distributed storage
+using SQL. Built on top of Apache Hadoop (TM), it provides:
 
-#### 源码修改与bug修复指南；https://github.com/gitlbo/hive/commits/3.1.2
+* Tools to enable easy access to data via SQL, thus enabling data
+  warehousing tasks such as extract/transform/load (ETL), reporting,
+  and data analysis
 
-#### 已修改的hive源码：https://github.com/gitlbo/hive/tree/3.1.2
+* A mechanism to impose structure on a variety of data formats
 
-#### 其它依赖版本修改项目
-##### 项目地址：https://github.com/forsre/hive.git
-##### 修改指南：https://github.com/forsre/hive/commits/3.1.2
+* Access to files stored either directly in Apache HDFS (TM) or in other
+  data storage systems such as Apache HBase (TM)
 
-```shell
-git clone https://github.com/gitlbo/hive.git
-OR
-git clone https://github.com/PyRSA/hive.git
-````
+* Query execution using Apache Hadoop MapReduce, Apache Tez
+  or Apache Spark frameworks.
 
-#### 此次编译组件版本选择
-| 组件      | 版本     |
-| --------- | -------- |
-| hadoop    | 3.2.3    |
-| spark     | 3.2.1    |
-| hive      | 3.1.2    |
-| zookeeper | 3.6.3    |
-| hbase     | 2.3.6    |
-| scala     | 2.12.15  |
-| java      | 1.8      |
-| maven     | 3.6.3    |
-| snappy    | 1.1.8    |
-| tez       | 0.10.0   |
-| protobuf  | 2.5.0    |
-| kryo      | 3.0.3    |
-| guava     | 27.0-jre |
+Hive provides standard SQL functionality, including many of the later
+2003 and 2011 features for analytics.  These include OLAP functions,
+subqueries, common table expressions, and more.  Hive's SQL can also be
+extended with user code via user defined functions (UDFs), user defined
+aggregates (UDAFs), and user defined table functions (UDTFs).
+
+Hive users have a choice of 3 runtimes when executing SQL queries.
+Users can choose between Apache Hadoop MapReduce, Apache Tez or
+Apache Spark frameworks as their execution backend. MapReduce is a
+mature framework that is proven at large scales. However, MapReduce
+is a purely batch framework, and queries using it may experience
+higher latencies (tens of seconds), even over small datasets. Apache
+Tez is designed for interactive query, and has substantially reduced
+overheads versus MapReduce. Apache Spark is a cluster computing
+framework that's built outside of MapReduce, but on top of HDFS,
+with a notion of composable and transformable distributed collection
+of items called Resilient Distributed Dataset (RDD) which allows
+processing and analysis without traditional intermediate stages that
+MapReduce introduces.
+
+Users are free to switch back and forth between these frameworks
+at any time. In each case, Hive is best suited for use cases
+where the amount of data processed is large enough to require a
+distributed system.
+
+Hive is not designed for online transaction processing. It is best used
+for traditional data warehousing tasks.  Hive is designed to maximize
+scalability (scale out with more machines added dynamically to the Hadoop
+cluster), performance, extensibility, fault-tolerance, and
+loose-coupling with its input formats.
 
 
+General Info
+============
 
-#### 编译命令： **`mvn clean package -Pdist -DskipTests -Dmaven.javadoc.skip=true`**
+For the latest information about Hive, please visit out website at:
 
-### 当出现以下错误时，根据提示在执行一次编译命令即可
+http://hive.apache.org/
 
-编译命令：**`mvn clean package -Pdist -DskipTests -Dmaven.javadoc.skip=true -rf :hive-webhcat`**
-```shell
-[ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.6.1:compile (default-compile) on project hive-webhcat: Compilation failure
-[ERROR] /Users/tuso/Desktop/apache-hive-3.1.2-src/hcatalog/webhcat/svr/src/main/java/org/apache/hive/hcatalog/templeton/Main.java:[259,31] 对于FilterHolder(java.langlass<org.apache.hadoop.hdfs.web.AuthFilter>), 找不到合适的构造器
-[ERROR]     构造器 org.eclipse.jetty.servlet.FilterHolder.FilterHolder(org.eclipse.jetty.servlet.BaseHolder.Source)不适用
-[ERROR]       (参数不匹配; java.lang.Class<org.apache.hadoop.hdfs.web.AuthFilter>无法转换为org.eclipse.jetty.servlet.BaseHolder.Source)
-[ERROR]     构造器 org.eclipse.jetty.servlet.FilterHolder.FilterHolder(java.lang.Class<? extends javax.servlet.Filter>)不适用
-[ERROR]       (参数不匹配; java.lang.Class<org.apache.hadoop.hdfs.web.AuthFilter>无法转换为java.lang.Class<? extends javax.servlet.Filter>)
-[ERROR]     构造器 org.eclipse.jetty.servlet.FilterHolder.FilterHolder(javax.servlet.Filter)不适用
-[ERROR]       (参数不匹配; java.lang.Class<org.apache.hadoop.hdfs.web.AuthFilter>无法转换为javax.servlet.Filter)
-```
+
+Getting Started
+===============
+
+- Installation Instructions and a quick tutorial:
+  https://cwiki.apache.org/confluence/display/Hive/GettingStarted
+
+- A longer tutorial that covers more features of HiveQL:
+  https://cwiki.apache.org/confluence/display/Hive/Tutorial
+
+- The HiveQL Language Manual:
+  https://cwiki.apache.org/confluence/display/Hive/LanguageManual
+
+
+Requirements
+============
+
+- Java 1.8
+
+- Hadoop 3.x
+
+
+Upgrading from older versions of Hive
+=====================================
+
+- Hive includes changes to the MetaStore schema. If
+  you are upgrading from an earlier version of Hive it is imperative
+  that you upgrade the MetaStore schema by running the appropriate
+  schema upgrade scripts located in the scripts/metastore/upgrade
+  directory.
+
+- We have provided upgrade scripts for MySQL, PostgreSQL, Oracle,
+  Microsoft SQL Server, and Derby databases. If you are using a
+  different database for your MetaStore you will need to provide
+  your own upgrade script.
+
+Useful mailing lists
+====================
+
+1. user@hive.apache.org - To discuss and ask usage questions. Send an
+   empty email to user-subscribe@hive.apache.org in order to subscribe
+   to this mailing list.
+
+2. dev@hive.apache.org - For discussions about code, design and features.
+   Send an empty email to dev-subscribe@hive.apache.org in order to
+   subscribe to this mailing list.
+
+3. commits@hive.apache.org - In order to monitor commits to the source
+   repository. Send an empty email to commits-subscribe@hive.apache.org
+   in order to subscribe to this mailing list.
