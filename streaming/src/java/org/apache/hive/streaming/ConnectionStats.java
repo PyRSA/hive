@@ -31,16 +31,6 @@ public class ConnectionStats {
   private LongAdder autoFlushCount = new LongAdder();
   private LongAdder metastoreCalls = new LongAdder();
 
-  /**
-   * Total partitions that have been affected.
-   */
-  private LongAdder totalPartitions = new LongAdder();
-
-  /**
-   * Number of partitions that where created.
-   */
-  private LongAdder createdPartitions = new LongAdder();
-
   public void incrementRecordsWritten() {
     recordsWritten.increment();
   }
@@ -63,22 +53,6 @@ public class ConnectionStats {
 
   public void incrementRecordsSize(long delta) {
     recordsSize.add(delta);
-  }
-
-  /**
-   * Increment by delta the number of created partitions.
-   * @param delta to increment by.
-   */
-  public void incrementCreatedPartitions(long delta) {
-    createdPartitions.add(delta);
-  }
-
-  /**
-   * Increment by delta the total partitions.
-   * @param delta to increment by.
-   */
-  public void incrementTotalPartitions(long delta) {
-    totalPartitions.add(delta);
   }
 
   public long getRecordsWritten() {
@@ -105,20 +79,10 @@ public class ConnectionStats {
     return metastoreCalls.longValue();
   }
 
-  public LongAdder getTotalPartitions() {
-    return totalPartitions;
-  }
-
-  public LongAdder getCreatedPartitions() {
-    return createdPartitions;
-  }
-
   @Override
   public String toString() {
     return "{records-written: " + recordsWritten + ", records-size: "+ recordsSize + ", committed-transactions: " +
       committedTransactions + ", aborted-transactions: " + abortedTransactions + ", auto-flushes: " + autoFlushCount +
-      ", metastore-calls: " + metastoreCalls
-        + ", created-partitions: " + createdPartitions
-        + ", total-partitions: " + totalPartitions + " }";
+      ", metastore-calls: " + metastoreCalls + " }";
   }
 }

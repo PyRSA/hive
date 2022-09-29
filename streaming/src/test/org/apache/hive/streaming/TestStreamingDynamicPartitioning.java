@@ -39,11 +39,10 @@ import org.apache.hadoop.hive.cli.CliSessionState;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.HiveMetaStoreClient;
 import org.apache.hadoop.hive.metastore.IMetaStoreClient;
-import org.apache.hadoop.hive.metastore.conf.MetastoreConf;
-import org.apache.hadoop.hive.metastore.utils.TestTxnDbUtil;
+import org.apache.hadoop.hive.metastore.txn.TxnDbUtil;
 import org.apache.hadoop.hive.ql.DriverFactory;
 import org.apache.hadoop.hive.ql.IDriver;
-import org.apache.hadoop.hive.ql.processors.CommandProcessorException;
+import org.apache.hadoop.hive.ql.processors.CommandProcessorResponse;
 import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hadoop.hive.serde.serdeConstants;
 import org.apache.thrift.TException;
@@ -131,16 +130,16 @@ public class TestStreamingDynamicPartitioning {
     conf
       .setVar(HiveConf.ConfVars.HIVE_AUTHORIZATION_MANAGER,
         "org.apache.hadoop.hive.ql.security.authorization.plugin.sqlstd.SQLStdHiveAuthorizerFactory");
-    TestTxnDbUtil.setConfValues(conf);
+    TxnDbUtil.setConfValues(conf);
     conf.setBoolVar(HiveConf.ConfVars.METASTORE_EXECUTE_SET_UGI, true);
     conf.setBoolVar(HiveConf.ConfVars.HIVE_SUPPORT_CONCURRENCY, true);
+    conf.setVar(HiveConf.ConfVars.DYNAMICPARTITIONINGMODE, "nonstrict");
     dbFolder.create();
-    MetastoreConf.setVar(conf, MetastoreConf.ConfVars.WAREHOUSE, "raw://" + dbFolder.newFolder("warehouse"));
     loc1 = dbFolder.newFolder(dbName + ".db").toString();
 
     //1) Start from a clean slate (metastore)
-    TestTxnDbUtil.cleanDb(conf);
-    TestTxnDbUtil.prepDb(conf);
+    TxnDbUtil.cleanDb(conf);
+    TxnDbUtil.prepDb(conf);
 
     //2) obtain metastore clients
     msClient = new HiveMetaStoreClient(conf);
@@ -827,21 +826,19 @@ public class TestStreamingDynamicPartitioning {
   private static boolean runDDL(IDriver driver, String sql) {
     LOG.debug(sql);
     System.out.println(sql);
-    try {
-      driver.run(sql);
+    CommandProcessorResponse cpr = driver.run(sql);
+    if (cpr.getResponseCode() == 0) {
       return true;
-    } catch (CommandProcessorException e) {
-      LOG.error("Statement: " + sql + " failed: " + e);
-      return false;
     }
+    LOG.error("Statement: " + sql + " failed: " + cpr);
+    return false;
   }
 
 
   private static ArrayList<String> queryTable(IDriver driver, String query) throws IOException {
-    try {
-      driver.run(query);
-    } catch (CommandProcessorException e) {
-      throw new RuntimeException(query + " failed: " + e);
+    CommandProcessorResponse cpr = driver.run(query);
+    if (cpr.getResponseCode() != 0) {
+      throw new RuntimeException(query + " failed: " + cpr);
     }
     ArrayList<String> res = new ArrayList<String>();
     driver.getResults(res);

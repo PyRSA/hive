@@ -23,13 +23,14 @@ import java.util.Properties;
 import org.apache.hadoop.hive.serde.serdeConstants;
 import org.apache.hadoop.hive.serde2.JsonSerDe;
 import org.apache.hadoop.hive.serde2.SerDeException;
+import org.apache.hadoop.hive.serde2.SerDeUtils;
 import org.apache.hadoop.io.Text;
 
 import com.google.common.base.Joiner;
 
 /**
  * Streaming Writer handles utf8 encoded Json (Strict syntax).
- * Uses {@link JsonSerDe} to process Json input
+ * Uses org.apache.hadoop.hive.serde2.JsonSerDe to process Json input
  *
  * NOTE: This record writer is NOT thread-safe. Use one record writer per streaming connection.
  */
@@ -69,7 +70,7 @@ public class StrictJsonWriter extends AbstractRecordWriter {
       tableProps.setProperty(serdeConstants.LIST_COLUMNS, Joiner.on(",").join(inputColumns));
       tableProps.setProperty(serdeConstants.LIST_COLUMN_TYPES, Joiner.on(":").join(inputTypes));
       JsonSerDe serde = new JsonSerDe();
-      serde.initialize(conf, tableProps, null);
+      SerDeUtils.initializeSerDe(serde, conf, tableProps, null);
       this.serde = serde;
       return serde;
     } catch (SerDeException e) {
